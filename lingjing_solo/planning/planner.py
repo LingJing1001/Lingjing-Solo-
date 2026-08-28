@@ -4,7 +4,7 @@
 长程规划：当短程搜索失效 / 目标模糊 / 新关卡时，才触发 LLM（由 Agent 层节制）。
 LLM 调用节制：每关硬预算，直接回应"纯 LLM 烧 token"的失败模式。
 """
-from ..core import SoloConfig, Logger, clamp
+from ..core import SoloConfig, Logger, hash_grid
 
 
 class LightweightPlanner:
@@ -18,18 +18,28 @@ class LightweightPlanner:
         self.field = field
         self.log = logger or Logger()
 
-    def search(self, goal_hint=None, depth=None) -> str:
-        """有限深度 BFS：在转移图上从当前状态向目标搜索。
+    def search(self, goal_hint=None, depth=None, valid_actions=None) -> str | None:
+        """Return a legal action leading to a previously unseen successor.
 
-        返回下一步动作；搜索失败返回 None（上层应降级为探索/反思）。
+        This is deliberately conservative: it only uses observed transitions and
+        never treats an unknown action as a predicted route. The caller can then
+        fall back to exploration when no safe learned transition is available.
         """
-        depth = depth or self.cfg.lightweight_search_depth
-        # 若转移表为空（全新关卡），无法搜索 → 返回 None
-        if len(self.field.transition_table) == 0:
+        if self.field.grid_state is None or not self.field.transition_table:
             return None
-        # 占位：真实实现在此做 (state, action) 图的 BFS，
-        # 用 goal_hint 评估叶子节点贴近度。为保持框架可跑，此处返回 None。
-        return None
+        allowed = set(valid_actions) if valid_actions is not None else None
+        start = hash_grid(self.field.grid_state)
+        candidates = []
+        for (state, action), transitions in self.field.transition_index.items():
+            if state != start or (allowed is not None and action not in allowed):
+                continue
+            for transition in transitions:
+                if transition.state_after not in self.field.visited_set:
+                    candidates.append((transition.t, action))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: item[0])
+        return candidates[0][1]
 
     def greedy_next(self, scored_actions: list) -> str:
         """转移表不足时的贪心：直接取探索评分最高的动作。"""

@@ -18,9 +18,10 @@ from ..core import (
 
 
 class WorldModelField:
-    def __init__(self, cfg: SoloConfig, logger: Logger = None):
+    def __init__(self, cfg: SoloConfig, logger: Logger = None, win_detector=None):
         self.cfg = cfg
         self.log = logger or Logger()
+        self.win_detector = win_detector
         self.reset()
 
     # ---------- 生命周期 ----------
@@ -151,5 +152,10 @@ class WorldModelField:
         )
 
     def detect_win(self, grid) -> bool:
-        """WIN 检测占位：子类/外部可注入更精细的判定（如目标形态匹配）。"""
-        return False
+        """Use an injected detector; fail closed when none is configured."""
+        if self.win_detector is None:
+            return False
+        try:
+            return bool(self.win_detector(grid))
+        except (TypeError, ValueError):
+            return False
