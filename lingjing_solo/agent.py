@@ -26,6 +26,8 @@ class LingjingSoloAgent:
         self.log = logger or Logger()
         self.step = 0
         self._prev_grid = None
+        self._terminal_state = None
+        self._levels_completed = None
 
         # ---- 五层装配 ----
         self.encoder = PerceptionEncoder(self.cfg, self.log)
@@ -48,15 +50,32 @@ class LingjingSoloAgent:
         self.reflector._last_reflect_step = -999
         self.step = 0
         self._prev_grid = None
+        self._terminal_state = None
+        self._levels_completed = None
         self.log.log("Agent", "reset for new game")
+
+    def observe(self, grid, state=None, levels_completed=None):
+        """接收 harness 提供的权威状态，避免仅靠网格猜测终止条件。"""
+        if levels_completed is not None and self._levels_completed is not None:
+            if levels_completed > self._levels_completed:
+                self.field.reset()
+                self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
+                self.planner = LightweightPlanner(self.cfg, self.field, self.log)
+                self._prev_grid = None
+                self._last_action = None
+        self._terminal_state = state
+        self._levels_completed = levels_completed
+        return grid
 
     # ---------- Kaggle 烟囱口：is_done ----------
     def is_done(self, frames, latest_frame) -> bool:
         """判定是否结束当前局。
 
-        官方接口约定：返回 True 时 Agent 停止动作。
-        这里把 WIN 检测与"硬步数上限"结合，避免无限循环拖低 RHAE。
+        official state is authoritative when supplied by the harness.
         """
+        state_name = getattr(self._terminal_state, "name", self._terminal_state)
+        if state_name in {"WIN", "GAME_OVER"}:
+            return True
         grid = self._to_grid(latest_frame)
         if grid is None:
             return False
@@ -103,7 +122,7 @@ class LingjingSoloAgent:
                 return self._commit(action)
 
         # ---- Layer 3：短程规划 ----
-        plan = self.planner.search()
+        plan = self.planner.search(valid_actions=valid)
         if plan and plan in valid:
             return self._commit(plan)
 

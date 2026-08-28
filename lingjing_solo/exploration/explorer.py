@@ -7,7 +7,7 @@
 
 注意：此层不调用 LLM，全部轻量计算，契合 RHAE 步数经济。
 """
-from ..core import SoloConfig, Logger, clamp
+from ..core import Logger, SoloConfig
 
 
 class ExplorationEngine:
@@ -25,6 +25,13 @@ class ExplorationEngine:
         启发式：未知 (s,a) 对越多 → 增益越高；已充分探索的动作增益衰减。
         真实实现可用转移表的计数作为不确定性估计。
         """
+        current = self.field.grid_state
+        if current is not None:
+            from ..core import hash_grid
+            shash = hash_grid(current)
+            used = len(self.field.transition_index.get((shash, action), []))
+            # 未尝试动作优先；重复动作的收益随次数衰减。
+            return 1.0 / (1.0 + used)
         # 若无历史，所有动作等权（随机试探）
         if len(self.field.transition_table) == 0:
             return 1.0
@@ -41,10 +48,12 @@ class ExplorationEngine:
         这是对 RHAE 平方惩罚的直接对冲 —— 优先选"单位步数信息增益最大"的动作。
         """
         scored = []
+        recent_actions = [t.action for t in list(self.field.transition_table)[-8:]]
         for a in valid_actions:
             gain = self.info_gain(a)
-            # 反循环：若执行 a 会回到已访问状态，施加惩罚
-            loop_penalty = 0.0
+            # 反循环：若动作近期重复，降低其探索优先级。
+            recent_count = recent_actions.count(a)
+            loop_penalty = min(0.75, 0.15 * recent_count)
             scored.append((a, gain - loop_penalty))
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored
