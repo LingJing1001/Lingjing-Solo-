@@ -214,7 +214,7 @@
 - [x] 保持 ARC adaptor 简洁，并将核心推理保留在 package 中。
 - [x] 为团队开发者记录本地 editable 安装方式。
 - [x] 将 package/solver 变更 push 到团队约定的远程仓库分支。
-  - 证据：`origin/explore_plan` 指向 commit `ac7c97c5229a435dc1ee60ac0c70e3d80cea70a3`；push 后工作树干净（2026-08-27）。
+  - 证据：本轮提交后 `origin/explore_plan` 已更新；push 后工作树干净（2026-08-29）。
 - [ ] 将 ARC adaptor 固定到有版本号的 package release，或有文档说明的共享 Git 引用。
 - [ ] 验证干净 checkout 可以安装两个仓库，不依赖开发者本机 sibling directory。
 - [ ] 不提交 API key、`.env` 文件、生成的 scorecard 或 build cache。
@@ -246,7 +246,7 @@
 - [x] 新增真实单动作探针：`../ARC-AGI-3-Agents/tools/ls20_single_action_probe.py`，流程为 reset → 单个 ACTION → 前后帧差分。
 - [x] 完成 ACTION1–4 的真实单步 probe：ACTION1/3/4 各改变下方对象 52 格，ACTION2 改变 2 格；四次均未移动 color-1 marker，均为 `NOT_FINISHED`、`levels_completed=0`。
 - [x] 增加 recording 回归测试：`../ARC-AGI-3-Agents/tests/unit/test_action_recording.py`。
-- [x] 远程协作分支已同步：`origin/explore_plan` → `ac7c97c5229a435dc1ee60ac0c70e3d80cea70a3`。
+- [x] 远程协作分支已同步：本轮 `origin/explore_plan` 已更新并完成 push。
 
 **跨 thread 结果的边界：** 这些 probe 证明了动作请求已可追踪、且单步动作会改变场景对象；没有证明 ACTION1–4 的最终方向、目标交互规则或 Level 1 胜利条件。因此后续 action item 仍从有效多步 recording 开始，不能直接把单步变化区域写成方向映射。
 
