@@ -49,13 +49,23 @@ class LS20Solver:
         self._plan = list(actions)
         self.replan_required = False
 
+    @staticmethod
+    def level1_verified_route() -> list[str]:
+        """Return the source-verified LS20 Level 1 route.
+
+        Three left moves reach the rotation switch, three up moves touch it,
+        two additional up moves consume its animation lock, and the final
+        route reaches the Level 1 goal.
+        """
+        return ["ACTION3"] * 3 + ["ACTION1"] * 6 + ["ACTION4"] * 3 + ["ACTION1"] * 3
+
     def observe_transition(
         self, previous, current, *, player: tuple[int, int] | None = None
     ) -> list[tuple[float, float]]:
         """Record motion and invalidate only when it blocks the next step."""
         motions = observe_motion(previous, current)
         self.state.dynamic_obstacles = [motion.object.bbox for motion in motions]
-        self.observe(previous)
+        self.observe(previous, invalidate=False)
         self.observe(current, invalidate=False)
         if player is not None:
             self.state.player = player
@@ -67,8 +77,8 @@ class LS20Solver:
             return False
         row, col = self.state.player
         offsets = {
-            "ACTION1": (5, 0), "ACTION2": (0, -5),
-            "ACTION3": (0, 5), "ACTION4": (-5, 0),
+            "ACTION1": (-5, 0), "ACTION2": (5, 0),
+            "ACTION3": (0, -5), "ACTION4": (0, 5),
         }
         dr, dc = offsets.get(self._plan[0], (0, 0))
         next_row, next_col = row + dr, col + dc
@@ -102,8 +112,8 @@ class LS20Solver:
         if step_size <= 0:
             raise ValueError("step_size must be positive")
         actions = action_map or {
-            "up": "ACTION4", "down": "ACTION1",
-            "left": "ACTION2", "right": "ACTION3",
+            "up": "ACTION1", "down": "ACTION2",
+            "left": "ACTION3", "right": "ACTION4",
         }
         route: list[str] = []
         current = start

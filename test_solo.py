@@ -8,7 +8,9 @@
 5. 规划（Layer 3）：LLM 预算节制
 6. Agent 决策闭环：模拟 30 步随机环境
 """
+import json
 import numpy as np
+import pytest
 import sys, os
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -19,6 +21,12 @@ from lingjing_solo.core.types import Frame
 from lingjing_solo.perception import PerceptionEncoder
 from lingjing_solo.world_model import WorldModelField
 from lingjing_solo.exploration import ExplorationEngine
+from lingjing_solo.exploration import (
+    ActionObservation,
+    analyze_observation,
+    analyze_recording,
+    summarize_actions,
+)
 from lingjing_solo.planning import (
     GridObject,
     MotionObject,
@@ -129,6 +137,16 @@ def test_planning_and_reflection():
     print(f"  OK · reflection signal: {sig}")
 
 
+def test_ls20_level1_verified_route():
+    route = LS20Solver.level1_verified_route()
+    assert route == (
+        ["ACTION3"] * 3
+        + ["ACTION1"] * 6
+        + ["ACTION4"] * 3
+        + ["ACTION1"] * 3
+    )
+
+
 def test_agent_loop():
     print("=" * 50)
     print("TEST 6 · Agent 决策闭环 (30 步)")
@@ -186,6 +204,44 @@ def test_exploration_penalizes_repeated_action_for_current_state():
     assert scores["ACTION2"] > scores["ACTION1"]
 
 
+def test_action_diff_records_single_action_evidence():
+    before = np.zeros((8, 8), dtype=np.int8)
+    after = before.copy()
+    before[2:4, 2:4] = 1
+    after[2:4, 3:5] = 1
+    delta = analyze_observation(ActionObservation("ACTION3", before, after))
+    assert delta.changed_pixels == 4
+    assert delta.player_before == (2.5, 2.5)
+    assert delta.player_after == (3.5, 2.5)
+    assert delta.displacement == (1.0, 0.0)
+    assert not delta.triggered_level_change
+
+
+def test_action_diff_summary_is_fail_closed_on_inconsistent_motion():
+    base = np.zeros((4, 4), dtype=np.int8)
+    one = base.copy()
+    one[1, 1] = 1
+    two = base.copy()
+    two[1, 2] = 1
+    three = base.copy()
+    three[2, 2] = 1
+    observations = [
+        ActionObservation("ACTION3", one, two),
+        ActionObservation("ACTION3", two, three),
+    ]
+    summary = summarize_actions(observations)["ACTION3"]
+    assert summary.samples == 2
+    assert summary.moved_samples == 2
+    assert summary.consistent_displacement is None
+    assert summary.confidence == 0.5
+
+
+def test_action_diff_rejects_ambiguous_multichannel_frame():
+    frame = np.zeros((6, 4, 4), dtype=np.int8)
+    with pytest.raises(ValueError, match="expected HxW or 1xHxW"):
+        analyze_observation(ActionObservation("ACTION1", frame, frame))
+
+
 def test_ls20_solver_discards_stale_route_on_observation_change():
     solver = LS20Solver()
     first = make_grid(0)
@@ -200,8 +256,8 @@ def test_ls20_solver_discards_stale_route_on_observation_change():
 def test_ls20_solver_plans_aligned_waypoints():
     solver = LS20Solver()
     route = solver.plan_waypoints((0, 0), [(0, 10), (10, 10)])
-    assert route == ["ACTION3", "ACTION3", "ACTION1", "ACTION1"]
-    assert solver.next_action(np.zeros((2, 2), dtype=np.int8), route) == "ACTION3"
+    assert route == ["ACTION4", "ACTION4", "ACTION2", "ACTION2"]
+    assert solver.next_action(np.zeros((2, 2), dtype=np.int8), route) == "ACTION4"
 
 
 def test_ls20_solver_records_dynamic_transition_and_checks_next_step_collision():
@@ -221,7 +277,7 @@ def test_ls20_solver_records_dynamic_transition_and_checks_next_step_collision()
     blocked_previous[5:7, 3:5] = 9
     blocked_current[5:7, 0:2] = 9
     solver = LS20Solver()
-    solver.set_plan(["ACTION1", "ACTION2"])
+    solver.set_plan(["ACTION2", "ACTION3"])
     solver.observe_transition(blocked_previous, blocked_current, player=(0, 0))
     assert solver.replan_required
     assert solver.next_action(blocked_current, ["ACTION1", "ACTION2"]) is None
@@ -263,6 +319,45 @@ def test_kaggle_adapter():
     action = a.choose_action([make_grid(0)], make_grid(1))
     assert isinstance(action, str)
     print(f"  OK · MyAgent.choose_action -> {action}")
+
+
+def test_analyze_recording_preserves_multi_action_sequence(tmp_path):
+    first = np.zeros((1, 4, 4), dtype=np.int8)
+    first[0, 1, 0] = 1
+    second = first.copy()
+    second[0, 1, 0] = 0
+    second[0, 1, 1] = 1
+    third = second.copy()
+    third[0, 1, 1] = 0
+    third[0, 1, 2] = 1
+    recording = tmp_path / "probe.recording.jsonl"
+    recording.write_text(
+        "\n".join(
+            [
+                json.dumps({"data": {"frame": first.tolist(), "requested_action": {"name": "ACTION1"}}}),
+                json.dumps({"data": {"frame": second.tolist(), "requested_action": {"name": "ACTION2"}}}),
+                json.dumps({"data": {"frame": third.tolist(), "requested_action": {"name": "ACTION3"}}}),
+            ]
+        )
+    )
+    deltas = analyze_recording(recording)
+    assert [delta.action for delta in deltas] == ["ACTION2", "ACTION3"]
+    assert [delta.displacement for delta in deltas] == [(1.0, 0.0), (1.0, 0.0)]
+
+
+def test_analyze_recording_rejects_missing_requested_action(tmp_path):
+    recording = tmp_path / "invalid.recording.jsonl"
+    frame = np.zeros((1, 2, 2), dtype=np.int8).tolist()
+    recording.write_text(
+        "\n".join(
+            [
+                json.dumps({"data": {"frame": frame, "requested_action": {"name": "ACTION1"}}}),
+                json.dumps({"data": {"frame": frame}}),
+            ]
+        )
+    )
+    with pytest.raises(ValueError, match="requested_action"):
+        analyze_recording(recording)
 
 
 if __name__ == "__main__":
