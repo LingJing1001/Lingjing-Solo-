@@ -280,8 +280,8 @@
 | 2026-08-27 | ARC `ls20` E2E（修复后） | scorecard `54304e35-32a0-40d6-acf5-67b1cc898eec`；执行 81 个动作；`0/7` 关卡完成；得分 `0.0`；无运行时异常。 |
 | 2026-08-28 | 跨 thread recording/动作证据修复 | ARC targeted tests `1 passed`；Lingjing-Solo tests `15 passed`；单动作 probe 四次退出码 0；尚未得到通关分数。 |
 | 2026-08-28 | 多步 recording 与分析 API | scorecard `21661d45-af0e-4e56-b385-734b9574f23e`；`81` actions、`0/7`、`0.0`；`analyze_recording(frame_channel=5)` 返回 `80` 个 delta，四种动作均有记录；全量 package `20 passed, 1 warning`，相关 lint 通过。 |
-| 2026-08-29 | 当前分支回归验证 | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q` 与 `uv run pytest -q` 均返回 `21 passed, 1 warning`；`git diff --check` 通过。 |
-| 2026-08-28 | Level 2 官方引擎状态搜索 | 完成 Level 1 后从 Level 2 初始状态以 `ACTION1–4` 做深度 ≤21 的真实引擎 BFS；访问 `85` 个状态，未找到目标坐标 `(14,40)` 且 rotation `270` 的解。Level 2 尚未提交远程 ARC。 |
+| 2026-08-28 | Level 2 官方引擎状态搜索 | 完成 Level 1 后从 Level 2 初始状态以 `ACTION1–4` 做深度 ≤21 的真实引擎 BFS；访问 `85` 个状态，未找到目标坐标 `(14,40)` 且 rotation `270` 的解。该结果是早期诊断，不能代表后续真实远程状态。 |
 | 2026-08-28 | R4 Level 2 预算诊断 | 官方 source 显示 `StepCounter=42`、`StepsDecrement=None`（运行时默认 decrement `2`），即约 `21` 个有效动作；起点→目标几何下界 `17` 步，起点→旋转开关 `17` 步，且需三次旋转触发，当前简单开关路线超预算。 |
-- 2026-08-28 Level 2 无限预算精确 BFS | 修正 SDK 计数器字段 `current_steps` 后，官方引擎找到 Level 2 最短真实路线 `14111114424222222121211111113333332232222`，长度 `41`；路线满足 rotation `270` 并到达 `(14,40)`。但正常配置默认每步 decrement `2`，仅允许约 `21` 步，确认关卡数据/运行时预算矛盾；未提交远程 ARC。 |
-- 2026-08-28 Level 2 真实远程验证 | scorecard `a726619e-4217-405b-beca-81fb1eb849ab`；`levels_completed=2`；`level_actions=[15,46,20,0,0,0,0]`；score `10.714285714285714`；Level 2 已通过。上述早期 BFS/预算诊断仅保留为历史分析，不再代表当前 Level 2 状态。 |
+| 2026-08-28 | Level 2 无限预算精确 BFS | 修正 SDK 计数器字段 `current_steps` 后，官方引擎找到 Level 2 最短真实路线 `14111114424222222121211111113333332232222`，长度 `41`；路线满足 rotation `270` 并到达 `(14,40)`。该结果揭示预算诊断矛盾，属于后续远程验证前的历史分析。 |
+| 2026-08-28 | Level 2 真实远程验证 | scorecard `a726619e-4217-405b-beca-81fb1eb849ab`；`levels_completed=2`；`level_actions=[15,46,20,0,0,0,0]`；score `10.714285714285714`；Level 2 已通过。 |
+| 2026-08-29 | 当前分支回归验证 | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q` 与 `uv run pytest -q` 均返回 `21 passed, 1 warning`；`git diff --check` 通过。 |
