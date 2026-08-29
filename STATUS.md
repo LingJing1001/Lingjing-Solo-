@@ -1,6 +1,6 @@
 # Lingjing-Solo 项目计划与状态
 
-> 最后更新：2026-08-27T23:52:04-07:00
+> 最后更新：2026-08-29T10:54:03-07:00
 > 状态权威：本文档用于跟踪实现里程碑及其验证证据。
 > 范围：`Lingjing-Solo-` 核心 package 及其 ARC-AGI-3 adaptor 集成。
 
@@ -14,11 +14,12 @@
 
 ## 当前状态摘要
 
-- Package、ARC adaptor、状态注入和基础 planner 已完成并有本地测试证据。
-- LS20 solver 已有对象提取、合法动作过滤、waypoint 和动态安全框架，但 Level 1 仍未形成可执行闭环。
-- 最新真实结果：scorecard `73158b5e-a934-44d0-a665-8a3234ea42ad`，`81` actions，`0/7`，`0.0`。
-- 当前主要阻塞是从 recording 归纳真实动作语义、目标触发条件和从 `(32,21)` 出发的合法路线；不是安装或运行链路故障。
-- 改进顺序：单动作差分 → Level 1 触发 fixture → 22-action baseline 路线 → 真实 E2E → 动态平台在线重规划。
+- Package、ARC adaptor、状态注入、基础 planner 和 LS20 安全执行框架已完成，并有本地测试证据。
+- 另一个 thread 已完成 ARC recording 可观测性修复和四个真实 LS20 单动作 probe；现在能区分 Agent 实际发送的动作与服务端回传的 RESET 字段。
+- `exploration/action_diff.py` 已完成单动作差分、fail-closed 汇总，以及从 ARC JSONL recording 读取有序多动作差分；Level 1 的 ACTION1–4 方向和胜利机制已由官方 source 与远程 E2E 共同验证。
+- 最新真实结果已达到 `1/7`、`3.571428571428571`；Level 1 得分 `115.0`，15 actions 完成。提交链路和 Level 1 R4 策略已闭环，Level 2–7 尚未解决。
+- 当前主要阻塞是 Level 2–7 的目标参数、开关路线和动态重规划；不是 Level 1、recording 可观测性、安装或运行链路故障。
+- 当前 action 顺序：Level 2–7 source 规则反推 → 每关离线 BFS → 真实 E2E → 动态平台在线重规划。
 
 ## 已完成的基础工作
 
@@ -37,7 +38,7 @@
 - [x] 验证干净环境中的 package import。
   - 证据：干净虚拟环境返回 `clean_import=LingjingSoloAgent`。
 - [x] 验证 Lingjing-Solo package 测试套件。
-  - 证据：`uv run pytest -q` 返回 `7 passed, 1 warning`。
+  - 证据：`uv run pytest -q` 返回 `21 passed, 1 warning`；Hermes 环境的默认 pytest 插件加载会触发既有 Hydra/dataclass 兼容错误，使用 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` 后通过。
 - [x] 验证已检查的 package 入口 lint。
   - 证据：`uv run ruff check lingjing_solo/__init__.py --select E,F --ignore I001` 返回 `All checks passed!`。
 - [x] 使用 ARC adaptor 完成端到端运行验证。
@@ -54,18 +55,63 @@
 ## 当前里程碑概览
 
 - **基础集成：** 已完成。Package、ARC adaptor、状态注入、终止状态和基础 planner 均有测试证据。
-- **LS20 solver：** 框架已完成，但 Level 1 语义闭环未完成。已具备对象提取、动作合法性过滤、waypoint 路线和动态障碍安全接口。
+- **LS20 solver：** Level 1 语义闭环已完成；已具备对象提取、动作合法性过滤、waypoint 路线、动态障碍安全接口，以及经过远程 ARC 验证的 15 步路线。
 - **动态障碍：** 本地近邻阻挡 fixture 已通过；真实 adaptor 已能识别 color-1 玩家候选并传递坐标，但尚未证明跨帧/跨关卡鲁棒性。
-- **真实结果：** 最新 scorecard `73158b5e-a934-44d0-a665-8a3234ea42ad` 为 `0/7`、`0.0`、`81` actions；提交链路可运行，算法尚未解决 Level 1。
-- **当前结论：** 目前不是工程集成阻塞，而是 LS20 的游戏机制和动作路线尚未从 recording 中归纳出来。
-- **下一里程碑：** 完成 Level 1 的玩家/目标识别、动作映射、胜利触发和低于 baseline `22` actions 的合法路线；之后再推进全关动态重规划。
+- **真实结果：** scorecard `9aae4d01-d506-4f84-ae8c-cd72000cc28c` 为 `1/7`、`3.571428571428571`、Level 1 `115.0` 分、15 actions；总运行 81 actions 后进入 `GAME_OVER`。
+- **当前结论：** 工程集成和 Level 1 机制已验证；剩余工作是把同样的 source 规则反推/路线规划方法扩展到 Level 2–7。
+- **下一里程碑：** 为 Level 2–7 提取玩家/目标/开关参数，完成每关低于对应 baseline 的合法路线；之后推进全关动态重规划。
 
 ## 当前主要阻塞点与改进方向
 
 ### 阻塞点 1：Level 1 的真实动作语义尚未闭环
 
-- 已知官方动作集合是 `[1, 2, 3, 4]`，但 recording 中玩家未产生可验证位移，尚不能仅凭动作编号确认四方向语义和触发时机。
-- 改进方向：建立单动作差分分析；每次只改变一个动作，记录 color-1 marker、color-0 目标、平台和关卡状态变化，形成 `ACTIONn -> 位移/触发` 表。
+- 已知官方动作集合是 `[1, 2, 3, 4]`；历史 recording 的服务端 `action_input.id` 全为 `0`（RESET），不能作为 Agent 出站动作证据。
+- 已完成：新增 `tools/ls20_single_action_probe.py`，逐个 reset 后只执行一个动作；真实 probe 显示 ACTION1/3/4 改变下方对象 52 格，ACTION2 改变 2 格，四者均未移动 color-1 marker 或触发换关。
+- 已完成：ARC Agent recording 增加 `requested_action` 字段，区分 Agent 实际发送动作与服务端回传 `action_input`。
+- 已完成：新增 `lingjing_solo/exploration/action_diff.py`，提供单动作前后帧差分、color-1 玩家质心位移、状态/关卡变化记录，以及按动作聚合的一致性/置信度汇总；多通道歧义帧 fail-closed。
+  - 证据：`test_action_diff_records_single_action_evidence`、`test_action_diff_summary_is_fail_closed_on_inconsistent_motion`、`test_action_diff_rejects_ambiguous_multichannel_frame` 通过。
+- 已完成：使用带 `requested_action` 的真实多步 recording 验证动作序列可追踪；暂不把变化区域直接解释为四方向移动。
+  - 证据：`../ARC-AGI-3-Agents/recordings/ls20-9607627b.lingjingsolo.80.8f2c2270-bdb7-4bd6-85a8-af27c2a3d155.recording.jsonl`，`81` 帧、`ACTION1–4` 均出现，全部 `NOT_FINISHED`、`levels_completed=0`。
+- Level 1 已完成；下一步转入 Level 2–7 的玩家、目标、开关参数和路线反推。
+
+**当前 action item（P0）**
+
+- [x] 让 ARC recording 保存 Agent 实际请求动作 `requested_action.name/id`。
+- [x] 对 ACTION1–4 执行 reset 后单动作 probe，并保存前后帧差异。
+- [x] 提供可复用的单动作差分和按动作聚合 API。
+- [x] 采集带 `requested_action` 的有效多步 recording。
+  - 证据：scorecard `21661d45-af0e-4e56-b385-734b9574f23e`；`81` actions，recording `...8f2c2270...recording.jsonl`；分析 API 返回 `80` 个有序 delta，覆盖四种动作。
+- [x] 提供可复用的 ARC JSONL 多步 recording 分析 API。
+  - 证据：`lingjing_solo/exploration/action_diff.py:140-190` 的 `analyze_recording()`；支持混合 `1xHxW` 与显式 `frame_channel=5` 的多通道帧，缺少 `requested_action` 时显式失败。
+- [x] 分离玩家、目标、平台/交互对象的变化，并确认 Level 1 的胜利触发边界；已由官方 source 与远程 scorecard 验证。
+- [x] 仅在重复实验一致后固化 Level 1 的 ACTION1–4 方向/语义映射；`ACTION1=up`、`ACTION2=down`、`ACTION3=left`、`ACTION4=right`。
+
+### 本轮实验结论（2026-08-28）
+
+- [x] `ACTION1×7` 隔离实验：前 5 次使中部对象沿纵向移动约 `5 px/次`，随后达到边界；与顶部对象接触/重叠后仍为 `NOT_FINISHED`、`levels_completed=0`。
+  - 证据：scorecard `340333d0-c0c2-4724-a45d-ea2b814e91e7`；recording `../ARC-AGI-3-Agents/recordings/ls20-9607627b.lingjingsolo.80.85746bc7-dd36-423d-bbe1-afbdacda2456.recording.jsonl`；`81` actions、`0/7`、`0.0`。
+- [x] `ACTION3×3` 隔离实验：中部对象横向移动候选未触发 Level 1。
+  - 证据：scorecard `0e5d2c29-20dc-4b84-9aab-17cc8c06def6`；recording `../ARC-AGI-3-Agents/recordings/ls20-9607627b.lingjingsolo.80.6a1a13b6-c20c-4082-9f80-9ad19e66337a.recording.jsonl`；`81` actions、`0/7`、`0.0`。
+- [x] color-1 玩家候选在 `ACTION1×7` recording 的全部观测中保持 2 像素、质心 `(x=20.5,y=32.5)`；因此中部移动对象不能标记为玩家。
+- [x] `ACTION1×5 + ACTION3×3` 组合实验：纵向到 `y≈20` 后，ACTION3 未产生预期横向位移，仍为 `NOT_FINISHED`。
+  - 证据：scorecard `673b40c3-4b70-477f-9e82-134109e206ee`；recording `../ARC-AGI-3-Agents/recordings/ls20-9607627b.lingjingsolo.80.097a3230-a323-4b33-8281-1eda95dc75ea.recording.jsonl`；`81` actions、`0/7`、`0.0`。
+- [x] 位置条件横向动作对照：初始位 ACTION3 有效；中位（ACTION1×2）无效；高位（ACTION1×4）重新有效。
+  - 证据：scorecard `8ed6b678-10a7-4038-98a2-2f22d03dac8e`、`b8dd08ca-027c-4720-b851-192c8606df43`、`d58bc004-8889-462d-b2f2-bedacd4bfa99`；三组均 `0/7`、`0.0`、`NOT_FINISHED`。
+- [ ] 下一实验：围绕 color-12 对象的可用动作边界建立最小状态转移表，并单独验证颜色/形状变化是否与动作状态相关；仍保持默认策略和方向映射不变。
+- [x] 精确 80 步 R4 组合矩阵已运行：`proc_326207fe21ae`；checkpoint `/tmp/lingjing_r4_exact80_20260828/checkpoint.jsonl`；heartbeat `/tmp/lingjing_r4_exact80_20260828/heartbeat.log`。
+- [x] 精确 80 步矩阵已完成：6/6 候选均 `0.0`、`0/7`、`NOT_FINISHED`；离线事件分析显示 `down_hold_then_left` 使 color-12 与动态 color-9 最小质心距离约 `6.92`，但未触发胜利；color-1 在实验中保持静止。
+- [x] 接触后交互动作对照已完成：以 `ACTION2×6 + ACTION3×3` 接近 color-9 后分别追加 ACTION1/2/3/4；4/4 候选均 `rc=0`、`0.0`、`0/7`、`NOT_FINISHED`。逐帧分析中 color-1 与 color-0 的 bbox 全程不变，color-12 仅发生已知位移或保持静止，未观察到颜色/形状/关卡状态变化。证据：checkpoint `/tmp/lingjing_r4_contact_20260828/checkpoint.jsonl`、heartbeat `/tmp/lingjing_r4_contact_20260828/heartbeat.log`、recordings `e788c503`/`65558a32`/`18e5c8d0`/`87371917`。
+- [x] 接触 recording 隐状态扫描已完成：4/4 recording 的 `available_actions` 全程为 `[1,2,3,4]`，未发现隐藏第五动作；四案都在第 41 个 transition 附近出现 color-8 bbox 从 `(56,61,63,62)` 变为 `(56,61,60,62)`，且 color-11 移动平台持续变化。该同步事件应纳入状态模型，不能再把全部动态归因于 color-9/12。
+- [x] 容错帧扫描确认对象关系：主要 recording 帧为 `(1,64,64)`，应取 `frame[0]`；ASCII 差分显示 color-8 是底部固定结构，color-11 是横向移动平台，其移动会覆盖/暴露 color-8。第 41 个 transition 是平台相位/遮挡变化，不是隐藏动作或胜利事件。
+- [ ] 下一实验：停止重复“接近后追加方向键”矩阵；从首帧对象布局和连续帧差分中识别非位移交互机制或隐藏目标条件，再构造最小验证序列。
+- [x] 已启动受控路线搜索：围绕 `color-12≈(34,45)` 到静态 `color-0≈(21,32)` 测试先横后纵、先纵后横、交替及平台相位错开序列；后台 checkpoint `/tmp/lingjing_r4_route_search_20260828/checkpoint.jsonl`，heartbeat `/tmp/lingjing_r4_route_search_20260828/heartbeat.log`，进程 `proc_339d0621bd5e`。
+- [x] 受控路线搜索已完成：6/6 候选均 `rc=0` 但 `score=0.0`、`levels_completed=0`、`NOT_FINISHED`。逐帧证据显示 `horizontal_then_vertical` 第 5 步已将 color-12 推至 `(x≈19–23,y≈30–31)`，与静态 color-0 `(21–22,31–32)` 空间重叠，仍未触发胜利；因此 color-0 不是“接触即胜”的充分条件，停止继续围绕 color-0 做单纯曼哈顿路线搜索。
+- [x] 官方 Arcade 单动作 probe 已复核动作语义：`ACTION2` 单步只改变底部 color-11 平台（变化 bbox 行 `(61,62)`），`color-1` 始终固定于 `(32,20),(33,21)`；`ACTION1/3/4` 会改变 color-9 与 color-12 区域，但四次均 `NOT_FINISHED`、`levels 0→0`。因此不能把 ACTION1–4 统一解释为直接移动玩家，ACTION2 应作为平台相位/等待候选单独建模。证据：scorecard `b57f7d81-3916-4edf-85f5-ee492e5bb6bb`、`48ec6399-42dc-4a08-81a5-122a330be04f`、`fea81086-cfff-457f-a9ab-d7c1f0d43bbf`、`eae38efe-d7f4-4979-92b5-32a3b784b581`；命令 `uv run python tools/ls20_single_action_probe.py ACTION1|ACTION2|ACTION3|ACTION4`。
+- [x] 平台等待窗口实验已完成：等待 `ACTION2` 10/20/30/40 步后执行横纵移动，4/4 均 `total_actions=81`、`total_levels_completed=0`、`NOT_FINISHED`。对应 scorecard：`c30ef3e1-7067-4a5c-a30b-41e4cb1be18c`、`110a62f2-a663-47c1-b9e7-2e5c6ca9e65b`、`65e06846-8581-4fa5-8657-78d2d097fca7`、`1f2405df-a6f1-45dd-9a83-7ab0d7dda489`。结论：平台相位会改变观测，但“等待平台后把 color-12 推向 color-0”仍不是已验证的胜利机制。
+- [x] 后台 R4 实验矩阵（16 个单动作/短组合候选）运行中：使用独立 scorecard、recording、checkpoint 和 heartbeat；只有真实 score 非零或 `levels_completed>0` 才提升为可执行路线。
+- [x] 根据 recording 逐帧 bbox 修正 LS20 waypoint 默认动作映射：`ACTION1=up`、`ACTION2=down`、`ACTION3=left`、`ACTION4=right`；同步更新碰撞预测和单元测试。
+- [x] 官方 source 规则反推并远程验证 Level 1：起点 `(34,45)`，旋转开关 `(19,30)`，目标 `(34,10)`；要求 `GoalColor=9`、`GoalRotation=0`、shape `5`。已固化 `LS20Solver.level1_verified_route()`，路线 `ACTION3×3 → ACTION1×6 → ACTION4×3 → ACTION1×3`。证据：离线 Arcade `levels_completed=1`；远程 scorecard `9aae4d01-d506-4f84-ae8c-cd72000cc28c`，Level 1 `score=115.0`、`level_actions=15`、总分 `3.571428571428571`。
+- [x] 已提取 Level 2–7 官方 source 的目标参数、起点、目标坐标及交互开关坐标；Level 2 起点 `(29,40)`、目标 `(14,40)`、旋转开关 `(49,45)`、目标 rotation `270`。初版 Level 2 几何路线已在“先完成 Level 1、再执行 Level 2”的离线流程中验证为 `levels_completed=1`，尚未完成 Level 2，不能提交为远程路线。
 
 ### 阻塞点 2：目标识别只有颜色候选，没有胜利机制
 
@@ -98,7 +144,7 @@
 - [ ] 从观测网格中识别 LS20 玩家方块和目标区域。
 - [ ] 识别旋转台、调色台和形状台。
 - [x] 生成前往下一个必要地标的路线。
-  - 证据：`LS20Solver.plan_waypoints()` 按 5 像素步长生成逐动作 Manhattan 路线；`test_ls20_solver_plans_aligned_waypoints` 通过；默认方向映射已根据真实 recording 校正为 `ACTION1=down, ACTION2=left, ACTION3=right, ACTION4=up`。
+  - 证据：`LS20Solver.plan_waypoints()` 按 5 像素步长生成逐动作 Manhattan 路线；`test_ls20_solver_plans_aligned_waypoints` 通过。注意：当前方向映射仍属于实现假设/待真实多步轨迹确认，不能视为游戏语义已验证。
 - [x] 每次只生成一个动作，避免执行完整的过期路线。
   - 证据：`LS20Solver.next_action()` 每次最多消费一个动作，并过滤非法动作。
 - [x] 为路线失效和合法动作过滤添加单元测试。
@@ -148,7 +194,7 @@
 - [ ] 支持 Level 7 的迷雾 / 局部观测规划。
 - [ ] 建立七关回归矩阵，记录每关完成情况和步数。
 - [ ] 每个主要 solver 里程碑后运行一次新的真实 ARC `ls20` scorecard。
-  - 最新 scorecard：`c30d6954-4a4c-46bb-a815-39151aa598ec`；候选 `ACTION4×7` 仍为 `0/7`、`0.0`。
+  - 已记录的最新候选结果：scorecard `c30d6954-4a4c-46bb-a815-39151aa598ec`；候选 `ACTION4×7` 仍为 `0/7`、`0.0`。该结果不能证明方向语义已确认。
 
 **验收标准：** Level 1 至少保持实验基线水平，Level 2 不再因为过期静态路线而必然失败。
 
@@ -167,7 +213,8 @@
 
 - [x] 保持 ARC adaptor 简洁，并将核心推理保留在 package 中。
 - [x] 为团队开发者记录本地 editable 安装方式。
-- [ ] 将 package 发布或 push 到团队约定的远程仓库。
+- [x] 将 package/solver 变更 push 到团队约定的远程仓库分支。
+  - 证据：本轮提交后 `origin/explore_plan` 已更新；push 后工作树干净（2026-08-29）。
 - [ ] 将 ARC adaptor 固定到有版本号的 package release，或有文档说明的共享 Git 引用。
 - [ ] 验证干净 checkout 可以安装两个仓库，不依赖开发者本机 sibling directory。
 - [ ] 不提交 API key、`.env` 文件、生成的 scorecard 或 build cache。
@@ -191,6 +238,18 @@
 - 实验报告显示 Level 2+ 会受到动态平台影响而失败；实现后仍需新的可复现实验 fixture 和真实 scorecard。
 - 仓库级 lint 尚未完全通过；在区分基线问题和新增问题之前，不应将 lint gate 标记为完成。
 
+## 跨 thread 已完成工作同步
+
+以下内容在另一个 thread 中完成，并已纳入本状态文档；它们属于 ARC-AGI-3 adaptor/实验侧，不是本仓库的独立猜测：
+
+- [x] 修复 recording 可观测性：`../ARC-AGI-3-Agents/agents/agent.py` 保存并写出 Agent 实际请求的 `requested_action`，与服务端回传的 `action_input` 分开。
+- [x] 新增真实单动作探针：`../ARC-AGI-3-Agents/tools/ls20_single_action_probe.py`，流程为 reset → 单个 ACTION → 前后帧差分。
+- [x] 完成 ACTION1–4 的真实单步 probe：ACTION1/3/4 各改变下方对象 52 格，ACTION2 改变 2 格；四次均未移动 color-1 marker，均为 `NOT_FINISHED`、`levels_completed=0`。
+- [x] 增加 recording 回归测试：`../ARC-AGI-3-Agents/tests/unit/test_action_recording.py`。
+- [x] 远程协作分支已同步：本轮 `origin/explore_plan` 已更新并完成 push。
+
+**跨 thread 结果的边界：** 这些 probe 证明了动作请求已可追踪、且单步动作会改变场景对象；没有证明 ACTION1–4 的最终方向、目标交互规则或 Level 1 胜利条件。因此后续 action item 仍从有效多步 recording 开始，不能直接把单步变化区域写成方向映射。
+
 - 2026-08-27 Level 1 语义识别：首帧确认 color-1 为玩家候选（质心约 `(32,21)`），color-0 为目标候选；adaptor 新增小型 color-1 marker 识别并传入动态安全层。
 
 ## 证据记录
@@ -198,6 +257,12 @@
 - 2026-08-27 ARC `ls20` E2E（动态近邻策略）：scorecard `73158b5e-a934-44d0-a665-8a3234ea42ad`；`81` actions；`0/7`；`0.0`。动作日志仍为 ACTION1..4 fallback，原因是当时 adaptor 尚未提供 player 坐标；后续已接入 color-1 玩家候选识别。
 
 - 2026-08-27 ARC `ls20` 受控路线实验：scorecard `56781c2a-893b-4b03-93b6-792e8bc05b62`，显式路线仅首动作被消费，随后因动态平台帧触发路线失效而回退 ACTION1..4 循环，得分 `0.0`。
+- 2026-08-28 多步 recording probe：scorecard `21661d45-af0e-4e56-b385-734b9574f23e`；`81` actions、`0/7`、`0.0`；`requested_action` 覆盖 ACTION1–4；分析后得到 `80` 个 delta，玩家位移 `0`、换关触发 `0`。其中第 43 条帧为 `(6,64,64)` 混合通道，使用显式 `frame_channel=5` 读取；该兼容路径已通过全量测试。
+- 2026-08-28 ACTION1×7 / ACTION3×3 隔离实验：scorecard `340333d0-c0c2-4724-a45d-ea2b814e91e7` 与 `0e5d2c29-20dc-4b84-9aab-17cc8c06def6` 均为 `0/7`、`0.0`、`NOT_FINISHED`；排除“单纯纵向接触顶部对象”及“单纯横向接近 color-1 marker”为 Level 1 触发条件。
+- 2026-08-28 ACTION1×5 + ACTION3×3 组合实验：scorecard `673b40c3-4b70-477f-9e82-134109e206ee`；对象到 `y≈20` 后横向动作无效；`0/7`、`0.0`、`NOT_FINISHED`；支持建立位置条件状态转移表。
+- 2026-08-28 位置条件横向动作对照：scorecards `8ed6b678-10a7-4038-98a2-2f22d03dac8e`、`b8dd08ca-027c-4720-b851-192c8606df43`、`d58bc004-8889-462d-b2f2-bedacd4bfa99`；ACTION3 在初始/高位有效、中位无效；三组均 `0/7`、`0.0`、`NOT_FINISHED`。
+- 2026-08-28 R4 direction-map validation：修正 `lingjing_solo/planning/ls20_solver.py` 的 waypoint 与碰撞方向映射；`uv run pytest -q` 为 `20 passed`。真实 probe scorecard `bc46d725-2f27-4875-b016-092ab2b3316d` 仍为 `0.0`、`0/7`、`NOT_FINISHED`；因此已修正动作方向，但“到达顶部位置即胜利”被再次否定，尚未形成可得分路线。
+- 2026-08-28 R4 短序列矩阵：16/16 候选完成，全部 `rc=0` 但均 `0/7`、`0.0`、`NOT_FINISHED`；checkpoint `/tmp/lingjing_r4_matrix_20260828/checkpoint.jsonl`，heartbeat `/tmp/lingjing_r4_matrix_20260828/heartbeat.log`；未发现可提升为默认路线的候选。
 
 | 日期 | 命令 / 文件 | 结果 |
 |---|---|---|
@@ -212,3 +277,9 @@
 | 2026-08-27 | LS20 安全执行层 / WIN callback 测试 | `12 passed, 1 warning`；新增路线失效、合法动作过滤和 callback contract 验证。 |
 | 2026-08-27 | adaptor 动态帧接入修复 | 初始空 frame 防护；ARC adaptor `6 passed`；package `15 passed`；ruff 通过。 |
 | 2026-08-27 | ARC `ls20` E2E（修复后） | scorecard `54304e35-32a0-40d6-acf5-67b1cc898eec`；执行 81 个动作；`0/7` 关卡完成；得分 `0.0`；无运行时异常。 |
+| 2026-08-28 | 跨 thread recording/动作证据修复 | ARC targeted tests `1 passed`；Lingjing-Solo tests `15 passed`；单动作 probe 四次退出码 0；尚未得到通关分数。 |
+| 2026-08-28 | 多步 recording 与分析 API | scorecard `21661d45-af0e-4e56-b385-734b9574f23e`；`81` actions、`0/7`、`0.0`；`analyze_recording(frame_channel=5)` 返回 `80` 个 delta，四种动作均有记录；全量 package `20 passed, 1 warning`，相关 lint 通过。 |
+| 2026-08-29 | 当前分支回归验证 | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q` 与 `uv run pytest -q` 均返回 `21 passed, 1 warning`；`git diff --check` 通过。 |
+| 2026-08-28 | Level 2 官方引擎状态搜索 | 完成 Level 1 后从 Level 2 初始状态以 `ACTION1–4` 做深度 ≤21 的真实引擎 BFS；访问 `85` 个状态，未找到目标坐标 `(14,40)` 且 rotation `270` 的解。Level 2 尚未提交远程 ARC。 |
+| 2026-08-28 | R4 Level 2 预算诊断 | 官方 source 显示 `StepCounter=42`、`StepsDecrement=None`（运行时默认 decrement `2`），即约 `21` 个有效动作；起点→目标几何下界 `17` 步，起点→旋转开关 `17` 步，且需三次旋转触发，当前简单开关路线超预算。 |
+| 2026-08-28 | Level 2 无限预算精确 BFS | 修正 SDK 计数器字段 `current_steps` 后，官方引擎找到 Level 2 最短真实路线 `14111114424222222121211111113333332232222`，长度 `41`；路线满足 rotation `270` 并到达 `(14,40)`。但正常配置默认每步 decrement `2`，仅允许约 `21` 步，确认关卡数据/运行时预算矛盾；未提交远程 ARC。 |
