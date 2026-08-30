@@ -9,7 +9,12 @@ from lingjing_solo import LingjingSoloAgent, SoloConfig
 from lingjing_solo.core import FieldSnapshot
 from lingjing_solo.core.types import Frame
 from lingjing_solo.planning import LLMPlanner
-from lingjing_solo.reflection import ReflectionTrigger
+from lingjing_solo.reflection import (
+    R5_DEFAULT_MODEL,
+    R5_SKILL,
+    ReflectionTrigger,
+    build_r5_prompt,
+)
 from lingjing_solo.world_model import WorldModelField
 
 
@@ -58,6 +63,16 @@ def test_reflection_context_contains_valid_actions():
 
     assert snapshot.valid_actions == ["UP", "RIGHT"]
     assert snapshot.step == 7
+
+
+def test_pack_context_can_report_current_trigger_without_prior_throttle_call():
+    cfg = SoloConfig()
+    field = WorldModelField(cfg)
+    field.conflict_flag = True
+
+    snapshot = ReflectionTrigger(cfg, field).pack_context(None)
+
+    assert snapshot.reflection_reasons == ["rule_conflict"]
 
 
 def test_reflection_throttles_repeated_trigger():
@@ -122,3 +137,87 @@ def test_agent_falls_back_when_llm_returns_invalid_action():
 
     assert all(action in agent.cfg.allowed_actions for action in actions)
     assert agent.llm.calls_used == 1
+
+
+def test_r5_prompt_contains_skill_context_and_only_allows_actions():
+    cfg = SoloConfig()
+    field = WorldModelField(cfg)
+    field.update(Frame(grid=grid_with_marker(), t=7))
+    field.propose_rule("marker moves", "marker changes position", confidence=0.8)
+    snapshot = ReflectionTrigger(cfg, field).pack_context(["UP", "RIGHT"], recent_n=3)
+
+    prompt = build_r5_prompt(snapshot, ["UP", "RIGHT"])
+
+    assert R5_SKILL in prompt
+    assert "UP, RIGHT" in prompt
+    assert "marker moves" in prompt
+    assert "只输出一个合法动作" in prompt
+    assert "不要编造" in prompt
+
+
+def test_llm_planner_exposes_prompt_without_calling_model():
+    planner = LLMPlanner(SoloConfig())
+    snapshot = FieldSnapshot(
+        grid_summary="state summary",
+        rules=[],
+        goals=[],
+        recent_transitions=[],
+        visited_count=0,
+        step=1,
+    )
+
+    prompt = planner.build_prompt(snapshot, ["SPACE"])
+
+    assert "state summary" in prompt
+    assert "SPACE" in prompt
+    assert planner.calls_used == 0
+
+
+def test_llm_planner_can_inject_prompt_based_model():
+    planner = LLMPlanner(SoloConfig(llm_calls_per_game=1))
+    snapshot = FieldSnapshot(
+        grid_summary="state summary",
+        rules=[],
+        goals=[],
+        recent_transitions=[],
+        visited_count=0,
+        step=1,
+    )
+    seen = []
+
+    def model(prompt):
+        seen.append(prompt)
+        return "SPACE"
+
+    planner.inject_prompt_llm(model)
+
+    assert planner.plan(snapshot, ["SPACE"]) == "SPACE"
+    assert len(seen) == 1
+    assert "state summary" in seen[0]
+
+
+def test_r5_prompt_explains_rule_conflict_trigger():
+    cfg = SoloConfig()
+    field = WorldModelField(cfg)
+    initial = grid_with_marker()
+    field.update(Frame(grid=initial, t=0))
+    field.update(
+        Frame(grid=grid_with_marker(1), t=1),
+        prev_grid=Frame(grid=initial, t=0),
+        action="UP",
+    )
+    field.grid_state = initial.copy()
+    field.update(
+        Frame(grid=grid_with_marker(2), t=2),
+        prev_grid=Frame(grid=initial, t=0),
+        action="UP",
+    )
+
+    reflector = ReflectionTrigger(cfg, field)
+    assert reflector.should_reflect_now() is True
+    snapshot = reflector.pack_context(["UP", "RIGHT"])
+    prompt = build_r5_prompt(snapshot)
+
+    assert snapshot.reflection_reasons == ["rule_conflict"]
+    assert "规则冲突" in prompt
+    assert R5_DEFAULT_MODEL == "minimax-m3"

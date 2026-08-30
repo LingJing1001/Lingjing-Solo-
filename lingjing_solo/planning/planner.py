@@ -58,18 +58,30 @@ class LLMPlanner:
         self.cfg = cfg
         self.log = logger or Logger()
         self._llm_fn = None
+        self._prompt_llm_fn = None
         self.calls_used = 0
 
     def inject_llm(self, llm_fn):
         """注入 LLM 调用函数：fn(field_snapshot, valid_actions) -> action_str"""
         self._llm_fn = llm_fn
 
+    def inject_prompt_llm(self, llm_fn):
+        """注入 prompt 调用函数：fn(prompt) -> action_str。"""
+        self._prompt_llm_fn = llm_fn
+
     @property
     def budget_left(self) -> int:
         return self.cfg.llm_calls_per_game - self.calls_used
 
     def can_call(self) -> bool:
-        return self._llm_fn is not None and self.budget_left > 0
+        has_callback = self._llm_fn is not None or self._prompt_llm_fn is not None
+        return has_callback and self.budget_left > 0
+
+    def build_prompt(self, snapshot, valid_actions=None) -> str:
+        """构造 R5 prompt；仅生成文本，不调用模型。"""
+        from ..reflection import build_r5_prompt
+
+        return build_r5_prompt(snapshot, valid_actions)
 
     def plan(self, snapshot, valid_actions) -> str:
         """调用 LLM 做战略决策，自动计入预算。"""
@@ -78,7 +90,10 @@ class LLMPlanner:
         self.calls_used += 1
         self.log.log("LLM", f"call #{self.calls_used}/{self.cfg.llm_calls_per_game}")
         try:
-            action = self._llm_fn(snapshot, valid_actions)
+            if self._prompt_llm_fn is not None:
+                action = self._prompt_llm_fn(self.build_prompt(snapshot, valid_actions))
+            else:
+                action = self._llm_fn(snapshot, valid_actions)
         except Exception as e:
             self.log.log("LLM", f"error: {e}")
             return None
