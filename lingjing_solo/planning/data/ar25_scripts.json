@@ -1,0 +1,31 @@
+{
+  "game_id": "ar25",
+  "generated_at": "2026-08-30",
+  "levels": {
+    "0": [
+      "ACTION3",
+      "ACTION3",
+      "ACTION3",
+      "ACTION3",
+      "ACTION3",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2",
+      "ACTION2"
+    ]
+  },
+  "note": "L1 verified: ACTION3×5 + ACTION2×10 → levels_completed=1. A limited BFS once reported L2=ACTION5+ACTION2×8+ACTION3×6 but full replay stays at L=1 (false positive; do not ship).",
+  "evidence": {
+    "0": {
+      "steps": 15,
+      "levels_completed_after": 1,
+      "source": "arc-agi-3-ar25-report.md / local Arcade replay 2026-08-30"
+    }
+  }
+}

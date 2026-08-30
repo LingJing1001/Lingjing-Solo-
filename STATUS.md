@@ -14,13 +14,15 @@
 
 ## 当前状态摘要
 
+- **跨仓库权威分数页**：见上级目录 [`CURRENT_STATUS.md`](../CURRENT_STATUS.md)（ScriptBank / 提交入口）。
 - Package、ARC adaptor、状态注入、基础 planner 和 LS20 安全执行框架已完成，并有本地测试证据。
+- **ScriptBank 已接入** `arc_adaptor` + Starter `my_agent` / `lingjing_team_agent`：ls20 L1–L2、ar25 L1 本地复现通过（`verify_scripts.py`）。
 - 另一个 thread 已完成 ARC recording 可观测性修复和四个真实 LS20 单动作 probe；现在能区分 Agent 实际发送的动作与服务端回传的 RESET 字段。
 - `exploration/action_diff.py` 已完成单动作差分、fail-closed 汇总，以及从 ARC JSONL recording 读取有序多动作差分；Level 1 的 ACTION1–4 方向和胜利机制已由官方 source 与远程 E2E 共同验证。
 - 最新真实结果已完成 Level 2：scorecard `a726619e-4217-405b-beca-81fb1eb849ab` 返回 `levels_completed=2`、`level_actions=[15,46,20,0,0,0,0]`、score `10.714285714285714`。Level 1 和 Level 2 已通过；Level 3–7 尚未接入/验证。
 - 当前主要阻塞是 Level 3–7 的目标参数、开关路线和动态重规划；不是 Level 1/2、recording 可观测性、安装或运行链路故障。
 - 当前 action 顺序：Level 3–7 source 规则反推 → 每关离线 BFS → 真实 E2E → 动态平台在线重规划。
-
+- **ar25**：L1 脚本已固化；L2–L8 仍缺可执行序列（报告作者 8/8 未交付 JSON）。
 ## 已完成的基础工作
 
 - [x] 创建可安装的 `lingjing_solo` Python package。

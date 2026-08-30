@@ -14,6 +14,12 @@ import numpy as np
 from arcengine import FrameData, GameAction, GameState
 from lingjing_solo import LingjingSoloAgent
 from lingjing_solo.planning import LS20Solver
+try:
+    from lingjing_solo.planning.script_bank import ScriptPlayer, flatten_plan, has_scripts
+except ImportError:  # pragma: no cover
+    ScriptPlayer = None  # type: ignore
+    flatten_plan = None  # type: ignore
+    has_scripts = lambda _g: False  # type: ignore
 
 from ..agent import Agent
 
@@ -58,7 +64,11 @@ class LingjingSolo(Agent):
 
     @staticmethod
     def _ls20_default_plan() -> list[str]:
-        """Return the verified LS20 Level 1 -> Level 2 bootstrap route."""
+        """Return ScriptBank flatten or verified LS20 L1→L2 bootstrap."""
+        if flatten_plan is not None:
+            plan = flatten_plan("ls20")
+            if plan:
+                return [a if isinstance(a, str) else str(a.get("action")) for a in plan]
         level2 = ["ACTION1", "ACTION1"]
         level2 += [
             {"R": "ACTION4", "U": "ACTION1", "D": "ACTION2", "L": "ACTION3"}[action]
@@ -77,6 +87,8 @@ class LingjingSolo(Agent):
         )
         self.solo.reset()
         self.ls20_solver = LS20Solver()
+        gid = str(getattr(self, "game_id", "") or "").split("-")[0].lower()
+        self.scripts = ScriptPlayer(gid) if ScriptPlayer is not None else None
         self._ls20_plan = [
             name.strip().upper()
             for name in os.getenv("LINGJING_LS20_PLAN", "").split(",")
@@ -103,11 +115,14 @@ class LingjingSolo(Agent):
             reset = getattr(self.solo, "reset", None)
             if callable(reset):
                 reset()
+            gid = str(getattr(latest_frame, "game_id", "") or getattr(self, "game_id", "")).split("-")[0].lower()
+            if self.scripts is not None:
+                self.scripts.reset(gid)
             solver = getattr(self, "ls20_solver", None)
             if solver is not None:
                 solver.reset()
                 plan = self._ls20_plan
-                if not plan and str(getattr(latest_frame, "game_id", "")).startswith("ls20"):
+                if not plan and gid.startswith("ls20") and not has_scripts("ls20"):
                     plan = self._ls20_default_plan()
                 if plan:
                     solver.set_plan(plan)
@@ -118,13 +133,39 @@ class LingjingSolo(Agent):
         if not legal:
             return GameAction.RESET
 
+        levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
         observe = getattr(self.solo, "observe", None)
         if callable(observe):
             observe(
                 _frame_grid(latest_frame),
                 state=latest_frame.state,
-                levels_completed=getattr(latest_frame, "levels_completed", None),
+                levels_completed=levels,
             )
+
+        # ScriptBank first (any game)
+        if self.scripts is not None:
+            script_act = self.scripts.next(levels)
+            if script_act is not None:
+                if isinstance(script_act, dict):
+                    name = str(script_act.get("action") or "ACTION1").upper()
+                    chosen = getattr(GameAction, name, legal[0])
+                    if name == "ACTION6":
+                        chosen.set_data({
+                            "x": int(script_act.get("x", 0)),
+                            "y": int(script_act.get("y", 0)),
+                        })
+                else:
+                    chosen = getattr(GameAction, str(script_act), None) or legal[0]
+                by_name = {action.name: action for action in legal}
+                if chosen.name in by_name or chosen.name == "ACTION6":
+                    if chosen.is_complex() and not getattr(chosen, "data", None):
+                        chosen.set_data({"x": 0, "y": 0})
+                    chosen.reasoning = {
+                        "source": "script_bank",
+                        "abstract_action": chosen.name,
+                        "level": levels,
+                    }
+                    return chosen
 
         # LS20 solver owns only an explicit, frame-validated plan.  An empty
         # or stale plan falls through to the general Lingjing policy.

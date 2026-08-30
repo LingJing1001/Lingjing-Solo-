@@ -4,6 +4,8 @@
 
 项目地址：<https://github.com/LingJing1001/Lingjing-Solo->
 
+> **与 Starter / 提交对齐**：分数与 ScriptBank 权威说明见仓库根目录 [`CURRENT_STATUS.md`](../CURRENT_STATUS.md)、[`docs/SYNC_AND_SUBMIT.md`](../docs/SYNC_AND_SUBMIT.md)。拉取 `main` 后务必重新同步 `planning/data/*_scripts.json` 与桥接改动。
+
 ## 1. 协作规则
 
 - `main` 是稳定分支，不直接提交代码。
