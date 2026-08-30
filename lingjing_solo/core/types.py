@@ -69,3 +69,4 @@ class FieldSnapshot:
     recent_transitions: List[Transition]
     visited_count: int
     step: int
+    valid_actions: List[str] = field(default_factory=list)

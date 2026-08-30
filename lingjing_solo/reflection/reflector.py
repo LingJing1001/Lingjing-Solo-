@@ -22,8 +22,8 @@ class ReflectionTrigger:
         sig = ReflectionSignal()
         # 1. 循环陷阱
         sig.loop_trapped = self.field.is_loop()
-        # 2. 规则冲突：规则集近期被显著降级（简化：规则数骤减视为冲突）
-        #    更精细实现可在 Field 里维护 conflict_flag
+        # 2. 规则冲突：由世界模型在同一 (state, action) 出现不同后继时标记
+        sig.rule_conflict = bool(getattr(self.field, "conflict_flag", False))
         # 3. 步数预算告急
         estimated = self.cfg.human_baseline_estimate
         used = self.field.step
@@ -38,10 +38,14 @@ class ReflectionTrigger:
         if (self.field.step - self._last_reflect_step) < self.cfg.reflection_min_interval:
             return False
         self._last_reflect_step = self.field.step
+        clear_conflict = getattr(self.field, "clear_conflict_flag", None)
+        if clear_conflict is not None:
+            clear_conflict()
         return True
 
     def pack_context(self, valid_actions, recent_n=10) -> FieldSnapshot:
         """打包 Φ 场摘要，作为 LLM 上下文。"""
         snap = self.field.snapshot(recent_n=recent_n)
+        snap.valid_actions = list(valid_actions or [])
         self.log.log("Reflect", f"pack_context: step={snap.step}, rules={len(snap.rules)}, visited={snap.visited_count}")
         return snap

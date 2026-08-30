@@ -78,7 +78,13 @@ class LLMPlanner:
         self.calls_used += 1
         self.log.log("LLM", f"call #{self.calls_used}/{self.cfg.llm_calls_per_game}")
         try:
-            return self._llm_fn(snapshot, valid_actions)
+            action = self._llm_fn(snapshot, valid_actions)
         except Exception as e:
             self.log.log("LLM", f"error: {e}")
             return None
+        if action is None:
+            return None
+        if valid_actions is not None and action not in valid_actions:
+            self.log.log("LLM", f"invalid action rejected: {action!r}")
+            return None
+        return action
