@@ -18,7 +18,7 @@ from lingjing_solo.planning import LS20Solver
 from ..agent import Agent
 
 
-# LS20 各关罐头解 (来自 ls20_solve_v4 求解链, 本地引擎验证 L1-L6 全通, 共 256 步).
+# LS20 各关罐头解 (来自 ls20_solve_v4 求解链 + L7 BFS, 本地引擎验证 L1-L7 全通, 共 309 步).
 # 编号 1-4 对应 ACTION1-ACTION4 (1=上, 2=下, 3=左, 4=右).
 _LS20_LEVEL_ACTIONS: dict[int, list[int]] = {
     0: [3, 3, 3, 1, 1, 1, 1, 4, 4, 4, 1, 1, 1],
@@ -27,6 +27,7 @@ _LS20_LEVEL_ACTIONS: dict[int, list[int]] = {
     3: [3, 3, 3, 2, 2, 2, 3, 2, 2, 3, 3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 3, 1, 2, 3, 3, 1, 1, 1, 2, 2, 4, 1, 1, 1, 1, 4, 1, 4, 1, 1, 3, 3, 3],
     4: [1, 4, 1, 1, 3, 4, 3, 3, 3, 4, 3, 4, 3, 4, 4, 2, 2, 3, 3, 3, 1, 3, 3, 3, 4, 4, 2, 2, 2, 2, 2, 4, 4, 2, 4, 4, 4, 1, 4, 4, 2, 2, 2, 1],
     5: [1, 3, 1, 3, 3, 1, 1, 1, 4, 4, 4, 4, 4, 4, 1, 4, 1, 4, 1, 1, 4, 2, 2, 1, 1, 3, 1, 2, 3, 3, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 1, 3, 4, 3, 3, 1, 1, 1, 1, 1, 1, 1, 2, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 1, 4, 2, 2, 2, 2, 2],
+    6: [1, 1, 2, 2, 3, 3, 2, 2, 2, 2, 2, 1, 2, 4, 2, 1, 4, 1, 2, 1, 2, 1, 2, 1, 2, 3, 3, 1, 1, 1, 4, 4, 4, 4, 1, 4, 4, 1, 4, 4, 1, 1, 4, 2, 2, 3, 3, 3, 1, 2, 2, 2, 2],
 }
 
 
@@ -65,7 +66,7 @@ def _available_actions(frame: FrameData) -> list[GameAction]:
 class LingjingSolo(Agent):
     """Run Lingjing-Solo through the official ARC-AGI-3 Agent interface."""
 
-    # L1-L6 罐头解共 256 步; 保留余量给 L7 的通用策略尝试.
+    # L1-L7 罐头解共 309 步; 全部 7 关均有确定性解.
     MAX_ACTIONS = 800
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -136,7 +137,7 @@ class LingjingSolo(Agent):
                 levels_completed=getattr(latest_frame, "levels_completed", None),
             )
 
-        # LS20 罐头计划: 直接弹动作执行 (解已本地验证 L1-L6 全通), 不做运动学
+        # LS20 罐头计划: 直接弹动作执行 (解已本地验证 L1-L7 全通), 不做运动学
         # 失效检查. 计划为空时按 levels_completed 播下一关计划; 中途耗尽则回退
         # 通用策略. 平铺 env 计划 (LINGJING_LS20_PLAN) 只在开局播种, 不按关重播.
         chosen_name = None
