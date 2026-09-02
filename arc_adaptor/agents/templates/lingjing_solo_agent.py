@@ -115,10 +115,12 @@ class LingjingSolo(Agent):
                     solver.set_plan(self._ls20_plan)
                     self._seeded_level = 99
                 elif str(getattr(latest_frame, "game_id", "")).startswith("ls20"):
-                    plan = _ls20_level_plan(0)
+                    # 按当前起始关播种解 (而非硬编码 L1), 兼容从中间关卡重开
+                    start_level = int(getattr(latest_frame, "levels_completed", 0) or 0)
+                    plan = _ls20_level_plan(start_level)
                     if plan:
                         solver.set_plan(plan)
-                        self._seeded_level = 0
+                        self._seeded_level = start_level
             self._experiment_index = 0
             return GameAction.RESET
 
@@ -144,20 +146,18 @@ class LingjingSolo(Agent):
                 levels_completed = getattr(latest_frame, "levels_completed", 0)
                 if (
                     not self._ls20_plan
-                    and not getattr(solver, "_plan", None)
                     and levels_completed != self._seeded_level
                     and levels_completed < len(_LS20_LEVEL_ACTIONS)
                 ):
+                    # 关卡推进时重播种当前关解; set_plan 整体替换,
+                    # 自动丢弃上一关残留动作, 避免污染下一关
                     plan = _ls20_level_plan(levels_completed)
                     if plan:
                         solver.set_plan(plan)
                         self._seeded_level = levels_completed
-                legal_names = {action.name for action in legal}
-                while getattr(solver, "_plan", None):
-                    candidate = solver._plan.pop(0)
-                    if candidate in legal_names:
-                        chosen_name = candidate
-                        break
+                # 走公共 API 弹动作; 计划耗尽返回 None 时回退通用策略
+                legal_names = [action.name for action in legal]
+                chosen_name = solver.next_action(_frame_grid(latest_frame), legal_names)
 
         # An explicit experiment sequence is opt-in and only used when legal.
         experiment_actions = getattr(self, "_experiment_actions", [])
