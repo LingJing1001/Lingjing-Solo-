@@ -1,8 +1,8 @@
-# ARC-AGI-3 LS20 Level 1/2 复现指南
+# ARC-AGI-3 LS20 L1-L6 复现指南
 
-本文说明团队成员如何从干净环境运行 Lingjing-Solo Agent，并在 ARC 在线环境中生成 LS20 Scorecard，目标是复现 **Level 1 和 Level 2 pass**。
+本文说明团队成员如何从干净环境运行 Lingjing-Solo Agent，并在 ARC 在线环境中生成 LS20 Scorecard，目标是复现 **Level 1–6 pass（6/7）**。L1-L6 罐头解（共 256 步）已通过本地引擎离线重放与官方线上运行双重验证。
 
-> 本文档只记录已经验证过的运行链路。`exit 0` 或生成 Scorecard 只证明 runner 链路可用；只有 `levels_completed >= 2` 和正分才证明 Level 1/2 实际通过。
+> 本文档只记录已经验证过的运行链路。`exit 0` 或生成 Scorecard 只证明 runner 链路可用；只有 `levels_completed >= 6` 和正分才证明 Level 1–6 实际通过。
 
 ## 1. 重要前提：需要两个仓库
 
@@ -22,7 +22,7 @@ https://github.com/arcprize/ARC-AGI-3-Agents
 
 ### 当前协作限制
 
-`ARC-AGI-3-Agents` 中的 Lingjing-Solo adaptor 当前只在开发者本机存在，团队目前没有 shared adaptor branch 或 shared adaptor commit。因此，其他成员应独立 checkout 官方 ARC 仓库到自己的本地目录，再把本项目保存的两个 adaptor 文件复制到该本地 checkout 中。
+`ARC-AGI-3-Agents` 中的 Lingjing-Solo adaptor 已同步到本仓库 `arc_adaptor/`（分支 `reproduce/lingjing-solo-ls20`，内含 L1-L6 罐头解）。其他成员应独立 checkout 官方 ARC 仓库到自己的本地目录，再从该分支把两个 adaptor 文件复制到本地 checkout 中。
 
 ```text
 Lingjing-Solo-/arc_adaptor/agents/templates/lingjing_solo_agent.py
@@ -160,14 +160,14 @@ ARC_API_KEY configured: True
 
 ## 5. 运行前清除实验覆盖变量
 
-默认 adaptor 计划覆盖 Level 1 → Level 2。运行前清除可能覆盖默认路线的变量：
+默认 adaptor 计划覆盖 Level 1 → Level 6（罐头解，共 256 步）。运行前清除可能覆盖默认路线的变量：
 
 ```bash
 unset LINGJING_LS20_PLAN
 unset LINGJING_EXPERIMENT_ACTIONS
 ```
 
-不要在第一次复现时猜测并设置 `ACTION1,ACTION2,...`。这些变量只用于单动作或自定义路线实验，错误设置会覆盖默认 Level 1/2 计划。
+不要在第一次复现时猜测并设置 `ACTION1,ACTION2,...`。这些变量只用于单动作或自定义路线实验，错误设置会覆盖默认 L1-L6 计划。
 
 ## 6. 正式运行 LS20
 
@@ -187,7 +187,7 @@ env -u LINGJING_LS20_PLAN \
 1. 连接 ARC 在线环境；
 2. 创建 LS20 游戏；
 3. 调用 `lingjingsolo` adaptor；
-4. 按默认计划执行 Level 1 和 Level 2；
+4. 按默认罐头计划依次执行 Level 1–6（每关独立播种、按 `levels_completed` 自动续跑，直接弹动作执行，不做运动学失效检查）；
 5. 结束游戏并关闭 Scorecard；
 6. 输出新的 Scorecard ID。
 
@@ -203,7 +203,7 @@ https://arcprize.org/scorecards/<scorecard-id>
 
 ```text
 scorecard: <新的 UUID>
-levels_completed: 2
+levels_completed: 6
 score: <大于 0>
 ```
 
@@ -218,7 +218,9 @@ state: NOT_FINISHED
 exit code: 0
 ```
 
-`state: NOT_FINISHED` 不等于失败：它表示当前完整游戏仍未完成全部 7 个 Level；本次验收目标是 Level 1/2 已完成并产生正分。
+`state: NOT_FINISHED` 不等于失败：它表示当前完整游戏仍未完成全部 7 个 Level；本次验收目标是 Level 1–6 已完成并产生正分。
+
+已实测：官方 `main.py --agent=lingjingsolo --game=ls20` 一次跑到 **L6 pass（6/7）**；L7 尚未纳入确定性罐头解，交由通用策略尝试。
 
 运行记录通常位于：
 
@@ -247,6 +249,10 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q
 cd ../ARC-AGI-3-Agents
 uv run pytest -q tests/unit/test_lingjing_solo_agent.py
 ```
+
+### L1-L6 罐头解本地引擎验证（离线，不消耗 Scorecard）
+
+罐头解已内嵌在 adaptor 中，可离线重放验证，无需线上运行。前提：ARC checkout 里有本地 ls20 环境文件 `environment_files/ls20/9607627b`，并把 `arc_agi.Arcade` 切到 `OperationMode.OFFLINE`。本地脚本会直接弹动作执行 L1-L6 计划，预期输出逐关完成、256 步到达 L7。
 
 如果要运行 ARC 仓库完整测试：
 
@@ -295,14 +301,14 @@ git -C ../Lingjing-Solo- branch --show-current
 [ ] LINGJING_EXPERIMENT_ACTIONS 未设置
 [ ] runner exit code = 0
 [ ] 输出新的 Scorecard ID
-[ ] levels_completed >= 2
+[ ] levels_completed >= 6
 [ ] score > 0
 [ ] 保存 Scorecard URL 和 recording 路径
 ```
 
 ## 11. 当前限制
 
-- 本文档的真实 Level 1/2 复现依赖 ARC adaptor 已被共享；当前 adaptor 尚未自动进入其他成员的官方 ARC checkout。
-- Level 3–7 尚未纳入默认可验证路线。
+- 本文档的真实 L1-L6 复现依赖 ARC adaptor 已被共享；当前 adaptor 位于 `arc_adaptor/`（分支 `reproduce/lingjing-solo-ls20`），需手动复制进各成员的官方 ARC checkout，尚未自动进入。
+- Level 7 尚未纳入默认可验证路线（罐头解只到 L6；L7 交由通用策略尝试）。
 - `exit 0`、recording 或 Scorecard 生成本身不能替代 Level pass 证据。
 - 不同成员必须使用匹配的 adaptor commit 和 Lingjing-Solo commit；只比较仓库名称不足以保证结果一致。
