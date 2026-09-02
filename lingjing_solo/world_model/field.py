@@ -37,6 +37,7 @@ class WorldModelField:
         self.last_delta_pixels = 0
         self.roi = []                               # 当前高优先级关注区域
         self._rule_id = 0
+        self.conflict_flag = False                 # 最近是否出现规则冲突
 
     # ---------- 主更新入口 ----------
     def update(self, grid: Frame, prev_grid=None, action=None, objects=None):
@@ -106,6 +107,7 @@ class WorldModelField:
         # 同一前驱+动作对应多个不同后继 → 规则冲突
         successors = {m.state_after for m in matches}
         if len(successors) > 1:
+            self.conflict_flag = True
             self.log.log("Field", f"rule_conflict: (s,a) has {len(successors)} successors")
             for r in self.rules:
                 r.confidence = clamp(r.confidence - self.cfg.rule_confidence_dec, 0, 1)
@@ -150,6 +152,10 @@ class WorldModelField:
             visited_count=len(self.visited_set),
             step=self.step,
         )
+
+    def clear_conflict_flag(self):
+        """清除已被反思消费的规则冲突信号。"""
+        self.conflict_flag = False
 
     def detect_win(self, grid) -> bool:
         """Use an injected detector; fail closed when none is configured."""

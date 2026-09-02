@@ -47,7 +47,7 @@ class LingjingSoloAgent:
         self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
         self.planner = LightweightPlanner(self.cfg, self.field, self.log)
         self.llm.calls_used = 0
-        self.reflector._last_reflect_step = -999
+        self.reflector.reset()
         self.step = 0
         self._prev_grid = None
         self._terminal_state = None
