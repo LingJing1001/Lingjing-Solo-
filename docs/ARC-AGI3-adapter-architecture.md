@@ -1,46 +1,49 @@
-# Lingjing-Solo ARC-AGI-3 Adapter Architecture
+# Lingjing-Solo ARC-AGI-3 Adapter 架构
 
-## Status
+## 1. 文档状态
 
-- Branch: `feature/arc-strategy-registry`
-- Scope: restructure the ARC boundary adapter without changing the Lingjing core.
-- Current validated game: `LS20`
-- Next game: intentionally out of scope until LS20 is re-verified on this architecture.
+- 当前架构分支：`feature/arc-strategy-registry`
+- 重构提交：`2276016`
+- 当前已验证游戏：`LS20`
+- 下一目标：R11；在 LS20 新架构验证完成后再开始
+- 本次范围：重组 ARC boundary adapter，不改动 Lingjing 核心 Agent
 
-## Decision
+## 2. 架构决策
 
-Do not create one independent solver for every ARC game. Use one stable agent core and resolve a game strategy at runtime:
+不为每个 ARC 游戏创建一个相互独立的完整 solver。项目使用一个稳定的 Agent 核心，在运行时根据 `game_id` 解析对应策略：
 
 ```text
-ARC FrameData/GameAction
-          |
-          v
-  LingjingSolo ARC Adapter
-          |
-          v
-  GameStrategyRegistry
-       /           \
-LS20Strategy    GenericStrategy
-       |               |
-validated route   Lingjing core exploration/planning
+ARC FrameData / GameAction
+          │
+          ▼
+LingjingSolo ARC Adapter
+          │
+          ▼
+GameStrategyRegistry
+       ┌──┴──┐
+       ▼     ▼
+ LS20Strategy  GenericStrategy
+       │             │
+       ▼             ▼
+已验证路线       Lingjing 通用探索/规划核心
 ```
 
-A game receives a specialized strategy only when generic exploration cannot provide a stable route. A route artifact is data, not a new solver class.
+只有在通用探索无法提供稳定路线时，才为特定游戏增加专用策略。路线本身属于可版本化的数据产物，不等于新建一个 solver 类。
 
-## Repository tree
+## 3. 项目结构
 
 ```text
 arc_adaptor/
 ├── agents/
 │   ├── __init__.py
 │   ├── templates/
-│   │   └── lingjing_solo_agent.py   # thin ARC boundary adapter
+│   │   └── lingjing_solo_agent.py   # 薄 ARC boundary adapter
 │   └── strategies/
 │       ├── __init__.py
 │       ├── base.py                  # strategy protocol
-│       ├── generic.py               # default fallback
-│       ├── ls20.py                  # validated LS20 policy
-│       └── registry.py              # game_id -> strategy resolution
+│       ├── generic.py               # 未知游戏的默认策略
+│       ├── ls20.py                  # 已验证的 LS20 策略
+│       └── registry.py              # game_id → strategy
 ├── tests/
 │   ├── test_lingjing_solo_agent.py
 │   └── test_action_recording.py
@@ -52,7 +55,7 @@ arc_adaptor/
 └── sync_to_arc.sh
 ```
 
-The long-term route layout is:
+长期路线数据计划使用以下结构：
 
 ```text
 routes/
@@ -63,55 +66,66 @@ routes/
     └── README.md
 ```
 
-The sync script intentionally does not overwrite the ARC checkout's native `agents/__init__.py`; the ARC registration import remains an ARC-side integration change. This prevents the bundle from deleting unrelated ARC exports.
+当前 LS20 route 为兼容既有验证结果，仍由 Lingjing planning implementation 提供；待本 adapter 结构稳定后，再迁移为独立、可版本化的 JSON route artifact。
 
-The current LS20 route remains supplied by the existing Lingjing planning implementation for compatibility. Moving the route into versioned data files is a follow-up migration after the adapter structure is validated.
+同步脚本不会覆盖 ARC checkout 原生的 `agents/__init__.py`，只同步 adapter、strategies、测试和工具。ARC 侧仍需确认 `LingjingSolo` 已注册，避免删除 ARC 原有 exports。
 
-## Component contracts
+## 4. 组件职责
 
-### `LingjingSolo`
+### 4.1 `LingjingSolo`
 
-Owns only ARC lifecycle concerns:
+只负责 ARC 生命周期和边界转换：
 
-- convert `FrameData.frame` to a numpy grid;
-- normalize legal actions;
-- call `observe()` on the Lingjing core;
-- handle RESET and terminal states;
-- resolve the strategy through the registry;
-- convert a strategy action name back to `GameAction`;
-- apply the safe legal-action fallback.
+- 将 `FrameData.frame` 转换为 numpy grid；
+- 规范化 legal actions；
+- 调用 Lingjing 核心的 `observe()`；
+- 处理 RESET 与终止状态；
+- 通过 registry 解析策略；
+- 将策略返回的 action name 转换为 `GameAction`；
+- 对非法或未知 action 执行安全 fallback。
 
-It must not contain game-specific route branches.
+adapter 不应包含 LS20 或其他游戏的 route 分支。
 
-### `GameStrategy`
+### 4.2 `GameStrategy`
 
-The strategy boundary receives the current frame, grid, legal action names, and completed-level count. It returns an abstract action name or `None`.
+策略边界接收当前 frame、grid、合法 action 名称和已完成关卡数，返回抽象 action name 或 `None`。
 
-Required lifecycle:
+生命周期接口：
 
 ```python
 strategy.reset(frame)
-strategy.choose_action(frames, frame, grid, legal_names, levels_completed)
+strategy.choose_action(
+    frames,
+    frame,
+    grid,
+    legal_names,
+    levels_completed,
+)
 ```
 
-### `GenericStrategy`
+### 4.3 `GenericStrategy`
 
-Default for unknown games. It delegates to the general Lingjing core and does not assume a game-specific action sequence. If the core proposes an illegal/unknown action, the adapter selects the first legal action as a fail-closed fallback.
+未知游戏的默认策略：
 
-### `LS20Strategy`
+- 委托 Lingjing 通用核心进行探索和规划；
+- 不假设特定游戏的动作序列；
+- 如果核心返回非法或未知 action，由 adapter 选择第一个合法 action；
+- 为新游戏提供初始探测、记录和 profile 建立入口。
 
-Owns LS20-only behavior:
+### 4.4 `LS20Strategy`
 
-- LS20 default level plans;
-- explicit `LINGJING_LS20_PLAN` override;
-- LS20 solver reset and level reseeding;
-- action selection from the validated route.
+只拥有 LS20 专用行为：
 
-No other game may import or depend on this strategy.
+- LS20 默认 Level 计划；
+- `LINGJING_LS20_PLAN` 显式覆盖；
+- LS20 solver reset 与关卡重新播种；
+- 根据已完成关卡选择已验证路线动作。
 
-### `GameStrategyRegistry`
+其他游戏不得依赖 `LS20Strategy`。
 
-The only place that maps game identifiers to specialized policies:
+### 4.5 `GameStrategyRegistry`
+
+registry 是唯一的游戏 ID 到专用策略映射位置：
 
 ```python
 if game_id.startswith("ls20"):
@@ -119,52 +133,87 @@ if game_id.startswith("ls20"):
 return GenericStrategy(...)
 ```
 
-Future games add a profile or strategy registration here, not another branch in `LingjingSolo.choose_action()`.
+未来新增游戏时，应优先增加 profile 或 route artifact；只有通用策略无法表达时，才添加新的专用策略。不要把新的 `if/else` 写回 `LingjingSolo.choose_action()`。
 
-## Game onboarding policy
+## 5. 新游戏接入流程
 
-Each new game follows this progression:
+每个新游戏按以下顺序推进：
 
-1. **Generic mode** — reset, probe legal actions, record frame/action/state changes.
-2. **Game profile** — record action family, reset behavior, coordinate requirements, and level count.
-3. **Route artifact** — store a replayable route when a stable route is discovered.
-4. **Specialized strategy** — add only if stateful behavior or route selection cannot be represented by the generic planner plus data.
-5. **Replay verification** — run the route through the same adapter and compare terminal state, action legality, and level progress.
+1. **Generic 模式**：重置游戏，探测合法动作，记录 frame、action 和 state 变化。
+2. **Game profile**：记录动作类别、reset 行为、坐标需求和关卡数量。
+3. **Route artifact**：发现稳定路线后，以可重放数据文件保存。
+4. **专用策略**：只有当状态行为或路线选择无法由通用 planner 加数据表达时才增加。
+5. **重放验证**：通过同一个 adapter 比较终止状态、动作合法性和关卡进度。
 
-This prevents the one-solver-per-game anti-pattern while still allowing difficult games to receive targeted policies.
+该流程避免“一游戏一 solver”的碎片化，同时保留处理复杂游戏的扩展能力。
 
-## LS20 re-verification gate
+## 6. LS20 验收门槛
 
-The restructure is accepted only if all of the following pass:
+新架构只有在以下条件全部满足时才视为通过：
 
-- the registry resolves `ls20-9607627b` to `LS20Strategy`;
-- LS20 reset loads the expected level-0 plan;
-- explicit LS20 plan override still works;
-- every emitted action is legal or safely falls back;
-- terminal states remain recognized;
-- the official ARC harness completes an LS20 run and returns observable output;
-- recording tests continue to pass when the optional recording patch is applied.
+- registry 将 `ls20-9607627b` 解析为 `LS20Strategy`；
+- LS20 reset 能加载预期的 Level 0 计划；
+- `LINGJING_LS20_PLAN` 显式覆盖仍然有效；
+- 每个输出 action 都合法，或能安全 fallback；
+- terminal state 仍能正确识别；
+- 官方 ARC harness 完成 LS20 跑测并返回可观察结果；
+- 应用可选 recording patch 后，recording 测试仍然通过。
 
-R11L and other new games are deliberately not part of this validation gate.
+R11 和其他新游戏不属于本次 LS20 验收范围。
 
-## Failure and safety behavior
+## 7. 失败与安全行为
 
-- Empty legal action list: return RESET.
-- Unknown game id: use `GenericStrategy`.
-- Unknown strategy action: use the first legal action.
-- Complex action without coordinates: set the existing neutral coordinate payload.
-- Already-applied recording patch: do not apply it twice; verify the target diff and run recording tests.
-- No external credentials or secret values are stored in this bundle.
+- legal action 列表为空：返回 RESET；
+- 未知 game ID：使用 `GenericStrategy`；
+- 策略返回未知 action：使用第一个合法 action；
+- 复杂 action 缺少坐标：使用现有 neutral coordinate payload；
+- recording patch 已应用：不要重复 apply，先检查目标 diff；
+- bundle 不保存外部凭据、API key 或 secret。
 
-## Verification commands
+## 8. 同步到 ARC checkout
 
-From the ARC-AGI-3-Agents checkout:
+在 ARC-AGI-3-Agents checkout 中运行：
 
 ```bash
 bash ../Lingjing-Solo-/arc_adaptor/sync_to_arc.sh .
-uv run pytest -q tests/unit/test_lingjing_solo_agent.py
-uv run pytest -q tests/unit/test_lingjing_solo_agent.py tests/unit/test_action_recording.py
-uv run python main.py -a lingjingsolo -g ls20-9607627b -t restructure,ls20-reverify
 ```
 
-The final online run must be reported with its actual exit code and harness/Scorecard evidence. A passing unit test alone is not sufficient evidence of game completion.
+脚本会同步：
+
+- `agents/templates/lingjing_solo_agent.py`；
+- `agents/strategies/`；
+- adapter tests；
+- 调试工具。
+
+脚本不会覆盖 ARC 原生 `agents/__init__.py`。同步后需确认 ARC 侧注册了 `LingjingSolo` 和 `lingjingsolo`。
+
+## 9. 验证命令与实际证据
+
+```bash
+uv run pytest -q tests/unit/test_lingjing_solo_agent.py
+uv run pytest -q \
+  tests/unit/test_lingjing_solo_agent.py \
+  tests/unit/test_action_recording.py
+uv run python main.py \
+  -a lingjingsolo \
+  -g ls20-9607627b \
+  -t restructure,ls20-reverify
+```
+
+最新真实 LS20 Scorecard：
+
+```text
+Scorecard: 904b4c76-f8bf-44fa-a218-b4cd665060f6
+score: 100.0
+state: WIN
+levels_completed: 7
+actions: 309
+resets: 0
+completed: true
+```
+
+Scorecard 地址：
+
+https://arcprize.org/scorecards/904b4c76-f8bf-44fa-a218-b4cd665060f6
+
+单元测试和官方线上跑测都必须有实际输出；仅有 `exit 0` 或生成 Scorecard 不能代替关卡通过证据。
