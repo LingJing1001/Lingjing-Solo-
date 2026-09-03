@@ -22,7 +22,16 @@ class WorldModelField:
         self.cfg = cfg
         self.log = logger or Logger()
         self.win_detector = win_detector
+        self._ar25 = None
         self.reset()
+
+    @property
+    def ar25(self):
+        """Lazy AR25 reflection field (Layer 1 game-specific)."""
+        if self._ar25 is None:
+            from .ar25_field import Ar25Field
+            self._ar25 = Ar25Field()
+        return self._ar25
 
     # ---------- 生命周期 ----------
     def reset(self):
@@ -38,6 +47,7 @@ class WorldModelField:
         self.roi = []                               # 当前高优先级关注区域
         self._rule_id = 0
         self.conflict_flag = False                 # 最近是否出现规则冲突
+        self._ar25 = None
 
     # ---------- 主更新入口 ----------
     def update(self, grid: Frame, prev_grid=None, action=None, objects=None):
