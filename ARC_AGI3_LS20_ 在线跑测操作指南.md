@@ -22,18 +22,21 @@ https://github.com/arcprize/ARC-AGI-3-Agents
 
 ### 当前协作限制
 
-`ARC-AGI-3-Agents` 中的 Lingjing-Solo adaptor 已同步到本仓库 `arc_adaptor/`（分支 `fix/ls20-plan-reseed`，内含 L1-L7 罐头解）。其他成员应独立 checkout 官方 ARC 仓库到自己的本地目录，再从该分支把两个 adaptor 文件复制到本地 checkout 中。
+`ARC-AGI-3-Agents` 中的 Lingjing-Solo reproduction bundle 已同步到本仓库 `arc_adaptor/`（分支 `fix/ls20-plan-reseed`，内含 L1-L7 罐头解、测试、调试工具和可选 patch）。其他成员应独立 checkout 官方 ARC 仓库到自己的本地目录，再使用 bundle 的同步脚本复制到本地 checkout 中。
 
 ```text
 Lingjing-Solo-/arc_adaptor/agents/templates/lingjing_solo_agent.py
 Lingjing-Solo-/arc_adaptor/agents/__init__.py
+Lingjing-Solo-/arc_adaptor/tests/
+Lingjing-Solo-/arc_adaptor/tools/
+Lingjing-Solo-/arc_adaptor/patches/
 ```
 
-这两个文件保持 ARC 仓库中的相对目录结构。其他成员 checkout 两个仓库后，直接复制到 ARC checkout 的对应位置即可。
+这些文件保持 ARC 仓库中的相对目录结构。其他成员 checkout 两个仓库后，运行 `sync_to_arc.sh` 即可同步 adaptor、测试和调试工具。完整清单及版本基准见 `arc_adaptor/MANIFEST.md`。
 
 ## 1.1 独立 checkout ARC 仓库并复制 adaptor
 
-每个人独立 checkout 官方 ARC 仓库到自己的本地目录，然后把本项目携带的两个 adaptor 文件复制进去。这里不依赖任何 shared adaptor branch/commit，也不要求在 ARC 仓库上使用其他人的分支：
+每个人独立 checkout 官方 ARC 仓库到自己的本地目录，然后从本项目的 reproduction bundle 同步文件。这里不依赖 ARC 仓库上的 shared adaptor branch：
 
 ```bash
 cd ~/projects
@@ -41,27 +44,37 @@ cd ~/projects
 git clone https://github.com/arcprize/ARC-AGI-3-Agents.git
 cd ARC-AGI-3-Agents
 
-mkdir -p agents/templates
-cp ../Lingjing-Solo-/arc_adaptor/agents/templates/lingjing_solo_agent.py \
-   agents/templates/lingjing_solo_agent.py
-cp ../Lingjing-Solo-/arc_adaptor/agents/__init__.py \
-   agents/__init__.py
+bash ../Lingjing-Solo-/arc_adaptor/sync_to_arc.sh
 ```
 
-此时可以确认两个 adaptor 文件已经进入本地 ARC checkout：
+此时可以确认 adaptor、测试和调试工具已经进入本地 ARC checkout：
 
 ```bash
 git status --short
 
 test -f agents/templates/lingjing_solo_agent.py
 grep -n "lingjing_solo_agent\|lingjingsolo" agents/__init__.py
+test -f tests/unit/test_lingjing_solo_agent.py
+test -f tests/unit/test_action_recording.py
+test -f tools/ls20_single_action_probe.py
 ```
 
-预期 `git status` 显示两个文件被修改/新增，并且能看到 adaptor 文件和 `lingjingsolo` 注册导入。
+预期 `git status` 显示 adaptor、测试和工具文件被修改/新增，并且能看到 adaptor 文件和 `lingjingsolo` 注册导入。
 
-> `agents/__init__.py` 是 ARC 仓库的完整文件，不是只追加一行。复制时应使用本项目 `arc_adaptor/agents/__init__.py` 的完整版本，避免遗漏现有 imports。
+> `agents/__init__.py` 是 ARC 仓库的完整文件，不是只追加一行。同步脚本使用本项目 bundle 中的完整版本，避免遗漏现有 imports。
 
-> 如果 ARC checkout 中已有本地修改，先处理或保存这些修改，再执行复制；复制会覆盖 ARC checkout 中的同名文件。不要把本机绝对路径、`.env` 或 API key 提交到 Git。
+> 如果 ARC checkout 中已有本地修改，先处理或保存这些修改，再执行同步；同步会覆盖 ARC checkout 中的同名 adaptor、测试和工具文件。脚本不会复制 `.env`、API key、虚拟环境或缓存。
+
+### 可选 recording patch
+
+`arc_adaptor/patches/arc-agent-recording.patch` 会让 ARC recording 额外记录 requested action。它不是 LS20 正式运行的必要条件，只在需要审计 action recording 时应用：
+
+```bash
+cd ../ARC-AGI-3-Agents
+bash ../Lingjing-Solo-/arc_adaptor/sync_to_arc.sh . --with-recording-patch
+```
+
+如果不需要 recording 增强，不要应用该 patch。测试 `test_action_recording.py` 只有在应用 patch 后才运行。
 
 ## 2. Checkout Lingjing-Solo
 
@@ -78,18 +91,18 @@ git clone https://github.com/LingJing1001/Lingjing-Solo-.git
 cd Lingjing-Solo-
 ```
 
-使用 `main` 创建自己的复现分支，并在该分支上运行：
+使用 `fix/ls20-plan-reseed` 作为团队统一复现基线：
 
 ```bash
-git switch main
-git pull --ff-only origin main
-git switch -c reproduce/lingjing-solo-ls20
+git fetch origin
+git switch --track -c fix/ls20-plan-reseed origin/fix/ls20-plan-reseed
 ```
 
-如果该个人分支已经存在，则直接切换到它：
+如果该本地分支已经存在，则直接切换并快进更新：
 
 ```bash
-git switch reproduce/lingjing-solo-ls20
+git switch fix/ls20-plan-reseed
+git pull --ff-only origin fix/ls20-plan-reseed
 ```
 
 确认当前分支和工作树：
@@ -243,16 +256,34 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q
 21 passed, 1 warning
 ```
 
-### ARC adaptor 定向测试
+### ARC adaptor 和 bundle 定向测试
 
 ```bash
 cd ../ARC-AGI-3-Agents
-uv run pytest -q tests/unit/test_lingjing_solo_agent.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q \
+  tests/unit/test_lingjing_solo_agent.py
+```
+
+如果已应用可选 recording patch，再运行：
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q \
+  tests/unit/test_lingjing_solo_agent.py \
+  tests/unit/test_action_recording.py
+```
+
+### 单动作调试工具（可选，在线）
+
+该工具每次创建新游戏并执行一个动作，会产生远程环境访问；只在需要诊断动作行为时使用：
+
+```bash
+cd ../ARC-AGI-3-Agents
+uv run python tools/ls20_single_action_probe.py ACTION1
 ```
 
 ### L1-L7 罐头解本地引擎验证（离线，不消耗 Scorecard）
 
-罐头解已内嵌在 adaptor 中，可离线重放验证，无需线上运行。前提：ARC checkout 里有本地 ls20 环境文件 `environment_files/ls20/9607627b`，并把 `arc_agi.Arcade` 切到 `OperationMode.OFFLINE`。本地脚本会直接弹动作执行 L1-L7 计划，预期输出逐关完成、309 步全通。
+罐头解已内嵌在 adaptor 中，可离线重放验证，无需线上运行。前提：ARC checkout 里有本地 ls20 环境文件 `environment_files/ls20/9607627b`，并把 `arc_agi.Arcade` 切到 `OperationMode.OFFLINE`。当前 bundle 不包含该环境文件；它必须通过 ARC 官方允许的方式单独取得，不能从仓库或他人机器复制 API/受限数据。
 
 如果要运行 ARC 仓库完整测试：
 
@@ -270,7 +301,7 @@ uv run pytest -q
 
 ### 只 checkout 官方 ARC `main` 能不能运行 Lingjing Agent？
 
-不一定。必须确认官方 checkout 中存在 `lingjing_solo_agent.py` 并注册了 `lingjingsolo`。如果没有，需要 checkout 团队 adaptor 分支/commit。
+不一定。必须运行 `arc_adaptor/sync_to_arc.sh`，确认官方 checkout 中存在 `lingjing_solo_agent.py` 并注册了 `lingjingsolo`。方案 A 不要求在 ARC 仓库使用团队分支。
 
 ### 生成 Scorecard 但 `levels_completed=0` 怎么办？
 
@@ -282,7 +313,7 @@ env | grep '^LINGJING_'
 git -C ../Lingjing-Solo- branch --show-current
 ```
 
-然后确保没有设置 `LINGJING_LS20_PLAN` 或 `LINGJING_EXPERIMENT_ACTIONS`，重新执行第 6 节的命令。
+然后确保没有设置 `LINGJING_LS20_PLAN` 或 `LINGJING_EXPERIMENT_ACTIONS`，重新执行第 6 节的命令。若要检查 adaptor 测试，先确认是否应用了 optional recording patch。
 
 ### 能否把 API key 写在命令行里？
 
@@ -291,8 +322,13 @@ git -C ../Lingjing-Solo- branch --show-current
 ## 10. 复现完成清单
 
 ```text
-[ ] 两个仓库都已 checkout
+[ ] Lingjing-Solo checkout `fix/ls20-plan-reseed`
+[ ] 两个仓库 commit 基准已记录在 `arc_adaptor/MANIFEST.md`
 [ ] ARC 仓库包含并注册 Lingjing-Solo adaptor
+[ ] `arc_adaptor/sync_to_arc.sh` 执行成功
+[ ] ARC adaptor 测试通过
+[ ] 可选 recording patch（如需要）通过 `git apply --check`
+[ ] 可选调试工具已同步且无 `__pycache__`/`.pyc`
 [ ] uv sync 成功
 [ ] uv pip install -e ../Lingjing-Solo- 成功
 [ ] ARC_API_KEY 已配置且未泄露
@@ -308,7 +344,9 @@ git -C ../Lingjing-Solo- branch --show-current
 
 ## 11. 当前限制
 
-- 本文档的真实 L1-L7 复现依赖 ARC adaptor 已被共享；当前 adaptor 位于 `arc_adaptor/`（分支 `fix/ls20-plan-reseed`），需手动复制进各成员的官方 ARC checkout，尚未自动进入。
+- 本文档的真实 L1-L7 复现依赖 ARC reproduction bundle 已被共享；当前 bundle 位于 `arc_adaptor/`（分支 `fix/ls20-plan-reseed`），各成员需在自己的官方 ARC checkout 运行同步脚本。
+- `test_action_recording.py` 依赖可选的 `arc-agent-recording.patch`；不应用 patch 时不要运行该测试。
+- `ls20_single_action_probe.py` 是可选在线诊断工具，每次调用会创建新的远程游戏；正式跑测前不需要运行。
 - 全部 7 关均有确定性罐头解（L1-L7 共 309 步），已在线上验证 score=100.0, state=WIN。
 - `exit 0`、recording 或 Scorecard 生成本身不能替代 Level pass 证据。
 - 不同成员必须使用匹配的 adaptor commit 和 Lingjing-Solo commit；只比较仓库名称不足以保证结果一致。
