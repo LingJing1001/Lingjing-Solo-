@@ -8,7 +8,7 @@ from agents.templates.lingjing_solo_agent import (
     _frame_grid,
     _ls20_level_plan,
 )
-from agents.strategies import GenericStrategy, LS20Strategy
+from agents.strategies import AR25Strategy, GenericStrategy, LS20Strategy, ar25_level_plan
 
 
 def make_frame(state=GameState.NOT_FINISHED, actions=None, game_id="test"):
@@ -32,7 +32,16 @@ def test_frame_conversion_and_legal_action_filtering():
 def test_registry_resolves_specialized_and_generic_strategies():
     agent = LingjingSolo("card", "test", "test", "", False, None)
     assert isinstance(agent.strategies.resolve("ls20-9607627b"), LS20Strategy)
+    assert isinstance(agent.strategies.resolve("ar25-0c556536"), AR25Strategy)
     assert isinstance(agent.strategies.resolve("r11l-495a7899"), GenericStrategy)
+
+
+def test_ar25_plans_cover_eight_levels():
+    lengths = [len(ar25_level_plan(i)) for i in range(8)]
+    assert lengths == [15, 32, 40, 22, 28, 53, 48, 47]
+    assert sum(lengths) == 285
+    assert ar25_level_plan(0)[:2] == ["ACTION3", "ACTION3"]
+    assert "ACTION5" in ar25_level_plan(1)
 
 
 def test_empty_legal_actions_fail_closed_to_reset():
