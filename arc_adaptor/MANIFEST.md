@@ -11,7 +11,8 @@ This directory contains the versioned files needed to reproduce the Lingjing-Sol
 
 ## Bundle contents
 
-- `agents/`: required ARC adaptor and registration.
+- `agents/`: required ARC boundary adapter, strategy registry, game strategies, and registration.
+- `agents/strategies/`: `GameStrategy` protocol, generic fallback, and the isolated LS20 route strategy.
 - `tests/`: adaptor tests; `test_action_recording.py` requires the optional recording patch.
 - `tools/`: optional online single-action probe.
 - `patches/arc-agent-recording.patch`: optional ARC `Agent` recording enhancement. Apply only when recording requested actions is needed.
