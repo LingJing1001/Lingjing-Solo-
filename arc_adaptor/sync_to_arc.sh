@@ -20,16 +20,16 @@ cd "$ARC_DIR"
 git rev-parse --show-toplevel >/dev/null
 test -f main.py
 
-mkdir -p agents/templates tests/unit tools
+mkdir -p agents/templates agents/strategies tests/unit tools
 cp "$SCRIPT_DIR/agents/templates/lingjing_solo_agent.py" agents/templates/lingjing_solo_agent.py
-cp "$SCRIPT_DIR/agents/__init__.py" agents/__init__.py
+cp -R "$SCRIPT_DIR/agents/strategies/." agents/strategies/
 cp "$SCRIPT_DIR/tests/test_lingjing_solo_agent.py" tests/unit/test_lingjing_solo_agent.py
 cp "$SCRIPT_DIR/tests/test_action_recording.py" tests/unit/test_action_recording.py
 cp "$SCRIPT_DIR/tools/ls20_single_action_probe.py" tools/ls20_single_action_probe.py
 
 if (( WITH_RECORDING_PATCH )); then
-  git apply --check "$SCRIPT_DIR/patches/arc-agent-recording.patch"
-  git apply "$SCRIPT_DIR/patches/arc-agent-recording.patch"
+  git apply --check --unidiff-zero "$SCRIPT_DIR/patches/arc-agent-recording.patch"
+  git apply --unidiff-zero "$SCRIPT_DIR/patches/arc-agent-recording.patch"
   echo "recording_patch=APPLIED"
 else
   echo "recording_patch=NOT_APPLIED (optional; use --with-recording-patch)"
