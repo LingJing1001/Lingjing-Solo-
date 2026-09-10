@@ -59,6 +59,35 @@ class LS20Solver:
         """
         return ["ACTION3"] * 3 + ["ACTION1"] * 6 + ["ACTION4"] * 3 + ["ACTION1"] * 3
 
+    # ─── 预存路线（来自 verified_solutions）────────────────
+    # 动作 ID -> 字符串动作名的映射（与 level1_verified_route 风格一致）
+    _ID_TO_ACTION = {
+        1: "ACTION1",  # UP
+        2: "ACTION2",  # DOWN
+        3: "ACTION3",  # LEFT
+        4: "ACTION4",  # RIGHT
+        5: "ACTION5",  # SWITCH
+    }
+
+    @classmethod
+    def get_verified_route(cls, level: str) -> list[str] | None:
+        """返回预存的 LS20 关卡路线（字符串动作形式）。
+
+        Args:
+            level: "L1" | "L2" | "L3" | "L4"
+
+        Returns:
+            动作字符串列表，如 ["ACTION3", "ACTION3", ...]，
+            或 None（未知关卡）。
+        """
+        from .data.verified_solutions import LS20_SOLUTIONS
+
+        key = level.upper()
+        if key not in LS20_SOLUTIONS:
+            return None
+        ids = LS20_SOLUTIONS[key]
+        return [cls._ID_TO_ACTION[i] for i in ids]
+
     def observe_transition(
         self, previous, current, *, player: tuple[int, int] | None = None
     ) -> list[tuple[float, float]]:
