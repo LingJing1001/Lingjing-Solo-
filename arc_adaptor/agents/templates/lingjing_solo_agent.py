@@ -97,10 +97,11 @@ class LingjingSolo(Agent):
             strategy.reset(latest_frame)
 
         legal_names = [action.name for action in legal]
-        chosen_name = strategy.choose_action(
+        chosen_request = strategy.choose_action(
             frames, latest_frame, grid, legal_names,
             int(getattr(latest_frame, "levels_completed", 0) or 0),
         )
+        chosen_name = chosen_request.get("name") if isinstance(chosen_request, dict) else chosen_request
 
         if self._experiment_index < len(self._experiment_actions):
             candidate = self._experiment_actions[self._experiment_index]
@@ -111,6 +112,9 @@ class LingjingSolo(Agent):
         by_name = {action.name: action for action in legal}
         chosen = by_name.get(chosen_name) or legal[0]
         if chosen.is_complex():
-            chosen.set_data({"x": 0, "y": 0})
+            if isinstance(chosen_request, dict) and "x" in chosen_request and "y" in chosen_request:
+                chosen.set_data({"x": int(chosen_request["x"]), "y": int(chosen_request["y"])})
+            else:
+                chosen.set_data({"x": 0, "y": 0})
         chosen.reasoning = {"source": "lingjing-solo", "strategy": type(strategy).__name__, "abstract_action": chosen.name}
         return chosen

@@ -1,6 +1,6 @@
 # Lingjing-Solo 项目计划与状态
 
-> 最后更新：2026-09-02T18:13:01-07:00
+> 最后更新：2026-09-02T22:43:00-07:00
 > 状态权威：本文档用于跟踪实现里程碑及其验证证据。
 > 范围：`Lingjing-Solo-` 核心 package 及其 ARC-AGI-3 adaptor 集成。
 
@@ -61,7 +61,7 @@
 - **动态障碍：** 本地近邻阻挡 fixture 已通过；真实 adaptor 已能识别 color-1 玩家候选并传递坐标，但尚未证明跨帧/跨关卡鲁棒性。
 - **真实结果：** 公开 Scorecard `5fcf8efa-6932-4243-951d-d72521311b40` 为 `7/7`、`WIN`、309 actions、score `100.00`；该结果是参考证据，不替代团队成员新建 Scorecard 的独立复跑。
 - **当前结论：** 最新 adaptor 已覆盖并线上验证 L1-L7 canned route；仍需在团队成员自己的 ARC checkout 中用 bundle 同步后独立复跑并保存新 Scorecard。
-- **下一里程碑：** 完成 reproduction bundle 的提交和干净 checkout 验证；随后按需推进不依赖 canned route 的通用 LS20 规则推断/动态重规划。
+- **下一里程碑：** R11L 已完成 probe/profile、策略坐标语义修正和 ARC harness smoke gate；`agents.structs` collection blocker 已解除。当前已通过官方 Level 0 source + offline engine 将剩余 blocker 收敛为可复现的 source/环境矛盾：目标 predicate 要求 `{15}`，对象为 `{6,15}`，且无合法 destination 同时满足碰撞与颜色条件。需更换/修复 `r11l-495a7899` 环境版本后，才能继续 P1 route/replay/Scorecard；不以在线 `exit 0` 替代通关证据。
 
 ## 当前主要阻塞点与改进方向
 

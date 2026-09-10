@@ -5,6 +5,7 @@ from .ar25 import level_plan as ar25_level_plan
 from .base import GameStrategy
 from .generic import GenericStrategy
 from .ls20 import LS20Strategy, level_plan
+from .r11l import R11LStrategy
 from .registry import GameStrategyRegistry
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     "GenericStrategy",
     "LS20Strategy",
     "AR25Strategy",
+    "R11LStrategy",
     "GameStrategyRegistry",
     "level_plan",
     "ar25_level_plan",

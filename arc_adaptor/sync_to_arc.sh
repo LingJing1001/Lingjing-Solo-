@@ -25,7 +25,9 @@ cp "$SCRIPT_DIR/agents/templates/lingjing_solo_agent.py" agents/templates/lingji
 cp -R "$SCRIPT_DIR/agents/strategies/." agents/strategies/
 cp "$SCRIPT_DIR/tests/test_lingjing_solo_agent.py" tests/unit/test_lingjing_solo_agent.py
 cp "$SCRIPT_DIR/tests/test_action_recording.py" tests/unit/test_action_recording.py
+cp "$SCRIPT_DIR/tests/test_r11l_probe.py" tests/unit/test_r11l_probe.py
 cp "$SCRIPT_DIR/tools/ls20_single_action_probe.py" tools/ls20_single_action_probe.py
+cp "$SCRIPT_DIR/tools/r11l_single_action_probe.py" tools/r11l_single_action_probe.py
 
 if (( WITH_RECORDING_PATCH )); then
   git apply --check --unidiff-zero "$SCRIPT_DIR/patches/arc-agent-recording.patch"
@@ -43,6 +45,8 @@ printf '%s\n' \
   agents/__init__.py \
   tests/unit/test_lingjing_solo_agent.py \
   tests/unit/test_action_recording.py \
-  tools/ls20_single_action_probe.py
+  tests/unit/test_r11l_probe.py \
+  tools/ls20_single_action_probe.py \
+  tools/r11l_single_action_probe.py
 
 git diff --check

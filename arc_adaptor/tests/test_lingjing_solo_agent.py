@@ -8,7 +8,7 @@ from agents.templates.lingjing_solo_agent import (
     _frame_grid,
     _ls20_level_plan,
 )
-from agents.strategies import AR25Strategy, GenericStrategy, LS20Strategy, ar25_level_plan
+from agents.strategies import AR25Strategy, GenericStrategy, LS20Strategy, R11LStrategy, ar25_level_plan
 
 
 def make_frame(state=GameState.NOT_FINISHED, actions=None, game_id="test"):
@@ -33,7 +33,7 @@ def test_registry_resolves_specialized_and_generic_strategies():
     agent = LingjingSolo("card", "test", "test", "", False, None)
     assert isinstance(agent.strategies.resolve("ls20-9607627b"), LS20Strategy)
     assert isinstance(agent.strategies.resolve("ar25-0c556536"), AR25Strategy)
-    assert isinstance(agent.strategies.resolve("r11l-495a7899"), GenericStrategy)
+    assert isinstance(agent.strategies.resolve("r11l-495a7899"), R11LStrategy)
 
 
 def test_ar25_plans_cover_eight_levels():
@@ -82,8 +82,51 @@ def test_strategy_returns_valid_ls20_action():
     assert action in {GameAction.ACTION1, GameAction.ACTION6}
 
 
+def test_r11l_strategy_returns_clickable_component_coordinates():
+    agent = LingjingSolo("card", "r11l-495a7899", "test", "", False, None)
+    frame = FrameData(
+        game_id="r11l-495a7899",
+        frame=[[[0, 0, 0, 0], [0, 3, 3, 0], [0, 3, 3, 0], [0, 0, 0, 6]]],
+        state=GameState.NOT_FINISHED,
+        levels_completed=0,
+        win_levels=6,
+        available_actions=[GameAction.ACTION6],
+    )
+    action = agent.choose_action([], frame)
+    assert action is GameAction.ACTION6
+    assert action.action_data.x == 1
+    assert action.action_data.y == 1
+
+
+def test_r11l_strategy_inserts_safe_tick_after_click():
+    strategy = R11LStrategy()
+    frame = SimpleNamespace(levels_completed=0)
+    grid = [[[0, 0, 0], [0, 3, 3], [0, 3, 3]]]
+    first = strategy.choose_action([], frame, grid, ["ACTION6"], 0)
+    second = strategy.choose_action([], frame, grid, ["ACTION6"], 0)
+    assert first == {"name": "ACTION6", "x": 1, "y": 1}
+    assert second == {"name": "ACTION6", "x": 0, "y": 0}
+
+
+def test_r11l_reset_clears_pending_safe_tick():
+    strategy = R11LStrategy()
+    frame = SimpleNamespace(levels_completed=0)
+    grid = [
+        [0, 0, 0, 0],
+        [0, 0, 3, 3],
+        [0, 0, 3, 3],
+        [0, 0, 0, 0],
+    ]
+    strategy.choose_action([], frame, [grid], ["ACTION6"], 0)
+    strategy.reset(frame)
+    action = strategy.choose_action([], frame, [grid], ["ACTION6"], 0)
+    assert action == {"name": "ACTION6", "x": 2, "y": 1}
+
+
 def test_generic_strategy_uses_core_and_falls_back_to_legal_action():
     agent = LingjingSolo("card", "r11l-495a7899", "test", "", False, None)
+    # Unknown core output must still fail closed to the first legal action.
+    agent.strategies._generic = GenericStrategy(agent.solo)
     agent.solo.choose_action = lambda *args, **kwargs: "UNKNOWN"
-    action = agent.choose_action([], make_frame(game_id="r11l-495a7899"))
+    action = agent.choose_action([], make_frame(game_id="unknown"))
     assert action is GameAction.ACTION1
