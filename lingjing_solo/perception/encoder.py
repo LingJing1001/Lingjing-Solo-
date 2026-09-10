@@ -1,25 +1,31 @@
-"""Layer 0 · 感知编码层 (Perception Encoder)
+"""Layer 0/L3 · 感知编码 = 协议 4「求解场 → 感知世界」
 
-对应原灵境引擎的"泡壁局部高精度"思想 —— 全盘每步都送 LLM 是浪费，
-只在"变化像素周围 ROI"做高精度推理，远处保持低分辨率特征。
-
-职责：
-1. 帧差分 → 提取 Δ（变化像素集合，"泡壁"的化身）
-2. 连通域分割 → 把网格切成若干 GameObject
-3. CNN 轻量编码 → 4 层卷积压成低维特征向量（不开 LLM）
+泡壁思想：全盘每步送 LLM 浪费；只在变化像素周围 ROI 做高精度。
+输出 PerceptionSnapshot：特征 + 对象 + Φ + 泡壁 + 弯曲代理。
 """
+from __future__ import annotations
+
 import numpy as np
-from ..core import SoloConfig, GameObject, Logger
+from ..core import (
+    SoloConfig, GameObject, Logger, PerceptionSnapshot,
+    compute_phi, compute_bubble, curvature_proxy,
+)
 
 
 class PerceptionEncoder:
     def __init__(self, cfg: SoloConfig, logger: Logger = None):
         self.cfg = cfg
         self.log = logger or Logger()
+        self._cnn = None
+        try:
+            from .cnn import LingjingCNN
 
-    # ---------- 1. 帧差分 ----------
+            self._cnn = LingjingCNN(cfg)
+            self._cnn.build()
+        except Exception:
+            self._cnn = None
+
     def compute_delta(self, prev: np.ndarray, curr: np.ndarray):
-        """计算变化像素集合 Δ。prev=None 时返回全盘作为初始 ROI。"""
         if prev is None:
             H, W = curr.shape
             return [(i, j) for i in range(H) for j in range(W)]
@@ -28,13 +34,7 @@ class PerceptionEncoder:
             for i, j in zip(*np.where(prev != curr))
         ]
 
-    # ---------- 2. 连通域分割 ----------
     def segment(self, grid: np.ndarray, delta_pixels=None) -> list[GameObject]:
-        """对网格做 4-邻域连通域分割，返回 GameObject 列表。
-
-        若提供了 delta_pixels，则只在变化区域做增量分割（ROI 高精度）。
-        这里用并查集实现，避免引入 cv2/scipy 依赖，保证无网络评测可复现。
-        """
         H, W = grid.shape
         parent = {}
 
@@ -49,15 +49,13 @@ class PerceptionEncoder:
             if ra != rb:
                 parent[ra] = rb
 
-        # 仅在 ROI 内构建对象（增量模式）
         region = set(delta_pixels) if delta_pixels else None
-
         for i in range(H):
             for j in range(W):
                 if region and (i, j) not in region:
                     continue
                 c = int(grid[i, j])
-                if c == 0:  # 背景色跳过（可选）
+                if c == 0:
                     continue
                 key = (i, j)
                 parent.setdefault(key, key)
@@ -68,7 +66,6 @@ class PerceptionEncoder:
                         if neigh in parent:
                             union(key, neigh)
 
-        # 聚合为对象
         groups = {}
         for (i, j), root in parent.items():
             groups.setdefault(find(root), []).append((i, j))
@@ -76,35 +73,42 @@ class PerceptionEncoder:
         objs = []
         for pixs in groups.values():
             color = int(grid[pixs[0]])
-            objs.append(GameObject(color=color, pixels=pixs))
+            ys = [p[0] for p in pixs]
+            xs = [p[1] for p in pixs]
+            objs.append(GameObject(
+                color=color, pixels=pixs,
+                bbox=(min(xs), min(ys), max(xs), max(ys)),
+            ))
         return objs
 
-    # ---------- 3. CNN 轻量编码 ----------
     def encode(self, grid: np.ndarray) -> np.ndarray:
-        """4 层卷积把帧压成 cfg.cnn_feature_dim 维特征。
-
-        无 torch/tensorflow 依赖时自动降级为「统计直方图 + 位置特征」，
-        保证框架在任何环境可跑；有 torch 时可用 LingjingCNN 替换。
-        """
+        if self._cnn is not None:
+            try:
+                feat = self._cnn.forward(grid)
+                if feat is not None and getattr(feat, "size", 0):
+                    dim = int(self.cfg.cnn_feature_dim)
+                    out = np.zeros(dim, dtype=np.float32)
+                    # fuse: CNN front + histogram/block fallback tail for stability
+                    fb = self._fallback_features(grid)
+                    n = min(dim, int(feat.shape[0]))
+                    out[:n] = np.asarray(feat[:n], dtype=np.float32)
+                    # blend last half with classical stats so online heads stay grounded
+                    half = dim // 2
+                    out[half:] = 0.65 * out[half:] + 0.35 * fb[half:]
+                    return out
+            except Exception:
+                pass
         return self._fallback_features(grid)
 
     def _fallback_features(self, grid: np.ndarray) -> np.ndarray:
-        """无 DL 框架时的可微特征：颜色直方图 + 空间金字塔 + 全局统计。
-
-        虽然非神经网，但已是 O(1) 特征提取，满足"每步不开 LLM"的设计意图。
-        """
         H, W = grid.shape
         dim = self.cfg.cnn_feature_dim
         feat = np.zeros(dim, dtype=np.float32)
-
-        # 颜色直方图（前 16 维）
         hist, _ = np.histogram(grid.flatten(), bins=self.cfg.num_colors, range=(0, self.cfg.num_colors))
         if hist.sum() > 0:
             hist = hist / hist.sum()
         end = min(self.cfg.num_colors, dim)
         feat[:end] = hist[:end]
-
-        # 空间金字塔：把网格分成 2x2 块，每块颜色占比
         q = 4
         idx = self.cfg.num_colors
         for bi in range(q):
@@ -116,8 +120,6 @@ class PerceptionEncoder:
                 block = grid[yi0:yi1, xj0:xj1]
                 feat[idx] = float(block.mean()) / self.cfg.num_colors
                 idx += 1
-
-        # 全局统计：质心、方差
         if idx < dim:
             ys, xs = np.where(grid > 0)
             if len(xs) > 0:
@@ -128,13 +130,39 @@ class PerceptionEncoder:
                 feat[idx] = float(grid.var())
         return feat
 
-    # ---------- 统一入口 ----------
-    def __call__(self, prev: np.ndarray, curr: np.ndarray) -> dict:
+    def perceive(self, prev, curr, version: int = 0, tick: int = 0,
+                 levels: int = 0, env_state: str = "NOT_FINISHED") -> PerceptionSnapshot:
+        """协议 4 主入口：求解局部场 → PerceptionSnapshot。"""
         delta = self.compute_delta(prev, curr)
-        objs = self.segment(curr, delta_pixels=delta) if delta else []
+        # 泡壁内分割（面积律：只在 ROI 高精度）
+        bubble = compute_bubble(prev, curr, pad=self.cfg.bubble_pad, grid_size=self.cfg.grid_size)
+        roi_pixels = delta if delta else None
+        objs = self.segment(curr, delta_pixels=roi_pixels) if roi_pixels else []
         feat = self.encode(curr)
+        phi = compute_phi(curr, block=self.cfg.phi_block_size)
+        curv = curvature_proxy(phi)
+        return PerceptionSnapshot(
+            version=version,
+            tick=tick,
+            feature=feat,
+            objects=objs,
+            delta_pixels=delta if isinstance(delta, list) else list(delta),
+            bubble=bubble,
+            phi=phi,
+            curvature_proxy=curv,
+            levels=levels,
+            env_state=env_state,
+        )
+
+    def __call__(self, prev: np.ndarray, curr: np.ndarray) -> dict:
+        """向后兼容：返回 dict；新代码请用 perceive()。"""
+        snap = self.perceive(prev, curr)
         return {
-            "feature": feat,
-            "delta_pixels": delta,
-            "objects": objs,
+            "feature": snap.feature,
+            "delta_pixels": snap.delta_pixels,
+            "objects": snap.objects,
+            "bubble": snap.bubble,
+            "phi": snap.phi,
+            "curvature_proxy": snap.curvature_proxy,
+            "snapshot": snap,
         }

@@ -1,10 +1,4 @@
-"""Official ARC-AGI-3 adapter for the installable Lingjing-Solo package.
-
-The package owns the reasoning logic; this module only translates
-ARC ``FrameData``/``GameAction`` values at the boundary. Install Lingjing-Solo
-with ``uv pip install -e /path/to/Lingjing-Solo-`` during local development,
-or install the pinned public package in a team environment.
-"""
+"""Official ARC-AGI-3 boundary adapter for Lingjing-Solo."""
 from __future__ import annotations
 
 import os
@@ -13,36 +7,19 @@ from typing import Any
 import numpy as np
 from arcengine import FrameData, GameAction, GameState
 from lingjing_solo import LingjingSoloAgent
-from lingjing_solo.planning import LS20Solver
 
 from ..agent import Agent
-
-
-# LS20 各关罐头解 (来自 ls20_solve_v4 求解链 + L7 BFS, 本地引擎验证 L1-L7 全通, 共 309 步).
-# 编号 1-4 对应 ACTION1-ACTION4 (1=上, 2=下, 3=左, 4=右).
-_LS20_LEVEL_ACTIONS: dict[int, list[int]] = {
-    0: [3, 3, 3, 1, 1, 1, 1, 4, 4, 4, 1, 1, 1],
-    1: [1, 4, 1, 1, 1, 1, 1, 4, 4, 2, 4, 2, 2, 2, 2, 2, 2, 1, 2, 2, 3, 3, 4, 1, 4, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 2, 3, 2, 2, 2, 2, 2],
-    2: [1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 3, 3, 1, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 3, 1, 2, 1, 4, 2],
-    3: [3, 3, 3, 2, 2, 2, 3, 2, 2, 3, 3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 3, 1, 2, 3, 3, 1, 1, 1, 2, 2, 4, 1, 1, 1, 1, 4, 1, 4, 1, 1, 3, 3, 3],
-    4: [1, 4, 1, 1, 3, 4, 3, 3, 3, 4, 3, 4, 3, 4, 4, 2, 2, 3, 3, 3, 1, 3, 3, 3, 4, 4, 2, 2, 2, 2, 2, 4, 4, 2, 4, 4, 4, 1, 4, 4, 2, 2, 2, 1],
-    5: [1, 3, 1, 3, 3, 1, 1, 1, 4, 4, 4, 4, 4, 4, 1, 4, 1, 4, 1, 1, 4, 2, 2, 1, 1, 3, 1, 2, 3, 3, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 1, 3, 4, 3, 3, 1, 1, 1, 1, 1, 1, 1, 2, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 1, 4, 2, 2, 2, 2, 2],
-    6: [1, 1, 2, 2, 3, 3, 2, 2, 2, 2, 2, 1, 2, 4, 2, 1, 4, 1, 2, 1, 2, 1, 2, 1, 2, 3, 3, 1, 1, 1, 4, 4, 4, 4, 1, 4, 4, 1, 4, 4, 1, 1, 4, 2, 2, 3, 3, 3, 1, 2, 2, 2, 2],
-}
+from ..strategies import GameStrategyRegistry, level_plan
 
 
 def _ls20_level_plan(level_index: int) -> list[str]:
-    """Return the verified canned action-name plan for an LS20 level, if any."""
-    numbers = _LS20_LEVEL_ACTIONS.get(level_index)
-    if numbers is None:
-        return []
-    return [f"ACTION{number}" for number in numbers]
+    """Compatibility export; route data is owned by ``strategies/ls20.py``."""
+    return level_plan(level_index)
 
 
 def _frame_grid(frame: FrameData) -> np.ndarray:
     """Convert official FrameData.frame into Lingjing's numpy grid."""
     array = np.asarray(frame.frame, dtype=np.int8)
-    # FrameData stores one or more 2-D planes; Lingjing consumes one grid.
     return array[0] if array.ndim == 3 else array
 
 
@@ -66,7 +43,6 @@ def _available_actions(frame: FrameData) -> list[GameAction]:
 class LingjingSolo(Agent):
     """Run Lingjing-Solo through the official ARC-AGI-3 Agent interface."""
 
-    # L1-L7 罐头解共 309 步; 全部 7 关均有确定性解.
     MAX_ACTIONS = 800
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -79,13 +55,8 @@ class LingjingSolo(Agent):
             human_baseline_estimate=self.MAX_ACTIONS,
         )
         self.solo.reset()
-        self.ls20_solver = LS20Solver()
-        self._seeded_level: int | None = None
-        self._ls20_plan = [
-            name.strip().upper()
-            for name in os.getenv("LINGJING_LS20_PLAN", "").split(",")
-            if name.strip()
-        ]
+        self.strategies = GameStrategyRegistry(self.solo)
+        self._strategy = None
         self._experiment_actions = [
             name.strip().upper()
             for name in os.getenv("LINGJING_EXPERIMENT_ACTIONS", "").split(",")
@@ -100,28 +71,15 @@ class LingjingSolo(Agent):
     def is_done(self, frames: list[FrameData], latest_frame: FrameData) -> bool:
         return latest_frame.state in (GameState.WIN, GameState.GAME_OVER)
 
-    def choose_action(
-        self, frames: list[FrameData], latest_frame: FrameData
-    ) -> GameAction:
+    def choose_action(self, frames: list[FrameData], latest_frame: FrameData) -> GameAction:
+        game_id = str(getattr(latest_frame, "game_id", ""))
+        strategy = self.strategies.resolve(game_id)
         if latest_frame.state is GameState.NOT_PLAYED:
             reset = getattr(self.solo, "reset", None)
             if callable(reset):
                 reset()
-            solver = getattr(self, "ls20_solver", None)
-            if solver is not None:
-                solver.reset()
-                self._seeded_level = None
-                if self._ls20_plan:
-                    # 环境变量平铺计划: 开局播种一次, 全链直接执行, 不按关重播
-                    solver.set_plan(self._ls20_plan)
-                    self._seeded_level = 99
-                elif str(getattr(latest_frame, "game_id", "")).startswith("ls20"):
-                    # 按当前起始关播种解 (而非硬编码 L1), 兼容从中间关卡重开
-                    start_level = int(getattr(latest_frame, "levels_completed", 0) or 0)
-                    plan = _ls20_level_plan(start_level)
-                    if plan:
-                        solver.set_plan(plan)
-                        self._seeded_level = start_level
+            strategy.reset(latest_frame)
+            self._strategy = strategy
             self._experiment_index = 0
             return GameAction.RESET
 
@@ -130,56 +88,29 @@ class LingjingSolo(Agent):
             return GameAction.RESET
 
         observe = getattr(self.solo, "observe", None)
+        grid = _frame_grid(latest_frame)
         if callable(observe):
-            observe(
-                _frame_grid(latest_frame),
-                state=latest_frame.state,
-                levels_completed=getattr(latest_frame, "levels_completed", None),
-            )
+            observe(grid, state=latest_frame.state, levels_completed=getattr(latest_frame, "levels_completed", None))
 
-        # LS20 罐头计划: 直接弹动作执行 (解已本地验证 L1-L7 全通), 不做运动学
-        # 失效检查. 计划为空时按 levels_completed 播下一关计划; 中途耗尽则回退
-        # 通用策略. 平铺 env 计划 (LINGJING_LS20_PLAN) 只在开局播种, 不按关重播.
-        chosen_name = None
-        if str(getattr(latest_frame, "game_id", "")).startswith("ls20"):
-            solver = getattr(self, "ls20_solver", None)
-            if solver is not None:
-                levels_completed = getattr(latest_frame, "levels_completed", 0)
-                if (
-                    not self._ls20_plan
-                    and levels_completed != self._seeded_level
-                    and levels_completed < len(_LS20_LEVEL_ACTIONS)
-                ):
-                    # 关卡推进时重播种当前关解; set_plan 整体替换,
-                    # 自动丢弃上一关残留动作, 避免污染下一关
-                    plan = _ls20_level_plan(levels_completed)
-                    if plan:
-                        solver.set_plan(plan)
-                        self._seeded_level = levels_completed
-                # 走公共 API 弹动作; 计划耗尽返回 None 时回退通用策略
-                legal_names = [action.name for action in legal]
-                chosen_name = solver.next_action(_frame_grid(latest_frame), legal_names)
+        if self._strategy is not strategy:
+            self._strategy = strategy
+            strategy.reset(latest_frame)
 
-        # An explicit experiment sequence is opt-in and only used when legal.
-        experiment_actions = getattr(self, "_experiment_actions", [])
-        experiment_index = getattr(self, "_experiment_index", 0)
-        if experiment_index < len(experiment_actions):
-            candidate = experiment_actions[experiment_index]
-            self._experiment_index = experiment_index + 1
-            if candidate in {action.name for action in legal}:
+        legal_names = [action.name for action in legal]
+        chosen_name = strategy.choose_action(
+            frames, latest_frame, grid, legal_names,
+            int(getattr(latest_frame, "levels_completed", 0) or 0),
+        )
+
+        if self._experiment_index < len(self._experiment_actions):
+            candidate = self._experiment_actions[self._experiment_index]
+            self._experiment_index += 1
+            if candidate in set(legal_names):
                 chosen_name = candidate
 
-        if chosen_name is None:
-            chosen_name = self.solo.choose_action(
-                frames,
-                _frame_grid(latest_frame),
-                valid_actions=[action.name for action in legal],
-            )
         by_name = {action.name: action for action in legal}
-        chosen = by_name.get(chosen_name)
-        if chosen is None:
-            chosen = legal[0]
+        chosen = by_name.get(chosen_name) or legal[0]
         if chosen.is_complex():
             chosen.set_data({"x": 0, "y": 0})
-        chosen.reasoning = {"source": "lingjing-solo", "abstract_action": chosen.name}
+        chosen.reasoning = {"source": "lingjing-solo", "strategy": type(strategy).__name__, "abstract_action": chosen.name}
         return chosen
