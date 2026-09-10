@@ -95,6 +95,31 @@ python test_solo.py
 python notebook_template.py
 ```
 
+## R5 的 prompt 与 skill
+
+R5 不是“每一步都问 LLM”。只有检测到循环、规则冲突或步数告急时，
+`ReflectionTrigger` 才会打包摘要。`lingjing_solo/reflection/skill.py` 中的
+`R5_SKILL` 是固定工作规则，`prompt.py` 中的 `build_r5_prompt()` 会把规则、
+最近转移、目标假设、触发原因和合法动作拼成一次模型输入。
+
+默认模型标识为 `minimax-m3`（`R5_DEFAULT_MODEL`），但仓库不会自动联网，
+也不会自动读取或打印密钥。接入本地模型时，由调用方注入 `llm_fn`，让适配器
+使用这个模型标识；返回值必须是合法动作字符串，例如 `"UP"`。
+
+```python
+from lingjing_solo import LingjingSoloAgent
+from lingjing_solo.reflection import R5_DEFAULT_MODEL
+
+agent = LingjingSoloAgent()
+
+def local_minimax(prompt):
+    # 在这里调用你自己的本地适配器，模型固定使用 R5_DEFAULT_MODEL。
+    # 不要把 API key 写进代码或提交到 Git。
+    return adapter.generate(model=R5_DEFAULT_MODEL, prompt=prompt)
+
+agent.llm.inject_prompt_llm(local_minimax)
+```
+
 ## API key 与安全
 
 - API key 只放在本地 `.env` 或环境变量中。

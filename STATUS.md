@@ -1,6 +1,6 @@
 # Lingjing-Solo 项目计划与状态
 
-> 最后更新：2026-08-29T14:37:40-07:00
+> 最后更新：2026-09-02T18:13:01-07:00
 > 状态权威：本文档用于跟踪实现里程碑及其验证证据。
 > 范围：`Lingjing-Solo-` 核心 package 及其 ARC-AGI-3 adaptor 集成。
 
@@ -15,11 +15,11 @@
 ## 当前状态摘要
 
 - Package、ARC adaptor、状态注入、基础 planner 和 LS20 安全执行框架已完成，并有本地测试证据。
-- 另一个 thread 已完成 ARC recording 可观测性修复和四个真实 LS20 单动作 probe；现在能区分 Agent 实际发送的动作与服务端回传的 RESET 字段。
-- `exploration/action_diff.py` 已完成单动作差分、fail-closed 汇总，以及从 ARC JSONL recording 读取有序多动作差分；Level 1 的 ACTION1–4 方向和胜利机制已由官方 source 与远程 E2E 共同验证。
-- 最新真实结果已完成 Level 2：scorecard `a726619e-4217-405b-beca-81fb1eb849ab` 返回 `levels_completed=2`、`level_actions=[15,46,20,0,0,0,0]`、score `10.714285714285714`。Level 1 和 Level 2 已通过；Level 3–7 尚未接入/验证。
-- 当前主要阻塞是 Level 3–7 的目标参数、开关路线和动态重规划；不是 Level 1/2、recording 可观测性、安装或运行链路故障。
-- 当前 action 顺序：Level 3–7 source 规则反推 → 每关离线 BFS → 真实 E2E → 动态平台在线重规划。
+- ARC recording 可观测性修复、单动作 probe 和 action-diff 工具已整理进 `arc_adaptor/` reproduction bundle；团队成员可从 Lingjing branch 同步到各自 ARC checkout。
+- `fix/ls20-plan-reseed` 当前包含 L1-L7 确定性 canned plan，共 309 步；计划长度为 `{0: 13, 1: 45, 2: 39, 3: 43, 4: 44, 5: 72, 6: 53}`。
+- 最新公开真实结果为 Scorecard `5fcf8efa-6932-4243-951d-d72521311b40`：`levels_completed=7/7`、`state=WIN`、score `100.00`、309 actions。
+- ARC 在线 runner setup 已在当前环境验证：editable package import、`main.py --help`、adaptor 定向测试均通过；实际新线上复跑仍需单独创建 Scorecard。
+- 当前主要限制是 ARC 在线环境/Scorecard 属于外部状态，且本机没有离线 `environment_files/ls20/9607627b`；不能用 package 单测替代真实 Level 6/7 验收。
 
 ## 已完成的基础工作
 
@@ -30,19 +30,21 @@
 - [x] 将项目许可证从 MIT 改为 MIT-0。
   - 证据：`LICENSE` 以 `MIT No Attribution` 开头；`pyproject.toml` 声明 `license = "MIT-0"` 并包含 `LICENSE`。
 - [x] 更新 ARC adaptor，使其导入已安装的 package。
-  - 证据：`../ARC-AGI-3-Agents/agents/templates/lingjing_solo_agent.py:14` 使用 `from lingjing_solo import LingjingSoloAgent`。
+  - 证据：`arc_adaptor/agents/templates/lingjing_solo_agent.py:14` 使用 `from lingjing_solo import LingjingSoloAgent`。
 - [x] 在 ARC agent registry 中注册 adaptor。
-  - 证据：`../ARC-AGI-3-Agents/agents/__init__.py` 注册了 `lingjingsolo` template。
-- [x] 添加 ARC 帧转换和动作规范化单元测试。
-  - 证据：`../ARC-AGI-3-Agents/tests/unit/test_lingjing_solo_agent.py`；此前验证结果：`5 passed`。
+  - 证据：`arc_adaptor/agents/__init__.py` 注册了 `lingjingsolo` template。
+- [x] 将 ARC adaptor 测试、单动作调试工具和可选 recording patch 纳入 reproduction bundle。
+  - 证据：`arc_adaptor/tests/`、`arc_adaptor/tools/`、`arc_adaptor/patches/`、`arc_adaptor/sync_to_arc.sh`、`arc_adaptor/MANIFEST.md`。
+- [x] 添加 ARC 帧转换、动作规范化和 recording 回归测试。
+  - 证据：ARC checkout 定向测试返回 `9 passed in 0.77s`；recording 测试在应用 optional patch 后运行。
 - [x] 验证干净环境中的 package import。
   - 证据：干净虚拟环境返回 `clean_import=LingjingSoloAgent`。
 - [x] 验证 Lingjing-Solo package 测试套件。
   - 证据：`uv run pytest -q` 返回 `21 passed, 1 warning`；Hermes 环境的默认 pytest 插件加载会触发既有 Hydra/dataclass 兼容错误，使用 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` 后通过。
 - [x] 验证已检查的 package 入口 lint。
   - 证据：`uv run ruff check lingjing_solo/__init__.py --select E,F --ignore I001` 返回 `All checks passed!`。
-- [x] 使用 ARC adaptor 完成端到端运行验证。
-  - 证据：2026-08-27 ARC 运行退出码为 0，生成 scorecard `36d36853-2560-43b6-9b66-7f90992c1c0b`，执行 81 个动作；得分为 0.0，7 关完成 0 关，说明集成可运行但尚未解决游戏。
+- [x] 使用最新 L1-L7 canned adaptor 完成端到端结果核验。
+  - 证据：公开 Scorecard `5fcf8efa-6932-4243-951d-d72521311b40` 显示 `7/7`、`WIN`、309 actions、score `100.00`；这不是本次新建的 Scorecard。
 - [x] 将 ARC `GameState` 和 `levels_completed` 注入 package agent（兼容没有 `observe()` 的旧 fake agent）。
   - 证据：`lingjing_solo/agent.py` 新增 `observe()`；ARC adaptor 调用 `getattr(..., "observe")`；adaptor 单元测试 `5 passed`。
 - [x] 让 package agent 在权威状态为 `WIN` / `GAME_OVER` 时终止，并在关卡数增加时重置内部模型。
@@ -55,11 +57,11 @@
 ## 当前里程碑概览
 
 - **基础集成：** 已完成。Package、ARC adaptor、状态注入、终止状态和基础 planner 均有测试证据。
-- **LS20 solver：** Level 1 语义闭环和 Level 2 远程路线验证已完成；已具备对象提取、动作合法性过滤、waypoint 路线、动态障碍安全接口，以及 Level 1 的 15 步路线和 Level 2 的 46 步路线。
+- **LS20 solver/adaptor：** 当前 `fix/ls20-plan-reseed` adaptor 使用 L1-L7 确定性 canned plan，共 309 步；同时保留对象提取、动作合法性过滤、waypoint 路线和动态障碍安全接口。
 - **动态障碍：** 本地近邻阻挡 fixture 已通过；真实 adaptor 已能识别 color-1 玩家候选并传递坐标，但尚未证明跨帧/跨关卡鲁棒性。
-- **真实结果：** Level 1 scorecard `9aae4d01-d506-4f84-ae8c-cd72000cc28c` 为 `1/7`、Level 1 `115.0` 分、15 actions；后续真实远程 scorecard `a726619e-4217-405b-beca-81fb1eb849ab` 完成 Level 2，总分 `10.714285714285714`，Level 2 使用 46 actions。
-- **当前结论：** 工程集成、Level 1 和 Level 2 机制/路线已获得真实远程证据；剩余工作是把 source 规则反推/路线规划方法扩展到 Level 3–7。
-- **下一里程碑：** 为 Level 3–7 提取玩家/目标/开关参数，完成每关低于对应 baseline 的合法路线；之后推进全关动态重规划。
+- **真实结果：** 公开 Scorecard `5fcf8efa-6932-4243-951d-d72521311b40` 为 `7/7`、`WIN`、309 actions、score `100.00`；该结果是参考证据，不替代团队成员新建 Scorecard 的独立复跑。
+- **当前结论：** 最新 adaptor 已覆盖并线上验证 L1-L7 canned route；仍需在团队成员自己的 ARC checkout 中用 bundle 同步后独立复跑并保存新 Scorecard。
+- **下一里程碑：** 完成 reproduction bundle 的提交和干净 checkout 验证；随后按需推进不依赖 canned route 的通用 LS20 规则推断/动态重规划。
 
 ## 当前主要阻塞点与改进方向
 
@@ -188,12 +190,12 @@
 
 - [ ] 解析 HUD 或等价状态信息，包括形状、颜色、旋转和剩余步数预算。
 - [x] 支持 Level 2 的颜色/旋转目标并完成真实远程验证。
-- [ ] 支持 Level 3 的颜色加旋转目标。
-- [ ] 支持 Level 4 的形状切换。
-- [ ] 支持 Level 5 的调色台行为。
-- [ ] 支持 Level 6 的有序多目标任务。
-- [ ] 支持 Level 7 的迷雾 / 局部观测规划。
-- [ ] 建立七关回归矩阵，记录每关完成情况和步数。
+- [x] 通过确定性 canned plan 覆盖 Level 3 的颜色加旋转目标。
+- [x] 通过确定性 canned plan 覆盖 Level 4 的形状切换。
+- [x] 通过确定性 canned plan 覆盖 Level 5 的调色台行为。
+- [x] 通过确定性 canned plan 覆盖 Level 6 的有序多目标任务。
+- [x] 通过确定性 canned plan 覆盖 Level 7 的迷雾 / 局部观测路线。
+- [x] 建立 L1-L7 canned plan 回归矩阵，记录每关动作数 `{13,45,39,43,44,72,53}`。
 - [ ] 每个主要 solver 里程碑后运行一次新的真实 ARC `ls20` scorecard。
   - 已记录的最新候选结果：scorecard `c30d6954-4a4c-46bb-a815-39151aa598ec`；候选 `ACTION4×7` 仍为 `0/7`、`0.0`。该结果不能证明方向语义已确认。
 
@@ -216,8 +218,9 @@
 - [x] 为团队开发者记录本地 editable 安装方式。
 - [x] 将 package/solver 变更 push 到团队约定的远程仓库分支。
   - 证据：本轮提交后 `origin/explore_plan` 已更新；push 后工作树干净（2026-08-29）。
-- [ ] 将 ARC adaptor 固定到有版本号的 package release，或有文档说明的共享 Git 引用。
-- [ ] 验证干净 checkout 可以安装两个仓库，不依赖开发者本机 sibling directory。
+- [x] 将 ARC adaptor、测试、调试工具和可选 recording patch 固定到 `arc_adaptor/` reproduction bundle。
+  - 证据：`arc_adaptor/MANIFEST.md`、`sync_to_arc.sh`；基准为 Lingjing `5b476ca` 和 ARC `4743e7d`。
+- [ ] 验证干净 checkout 可以安装两个仓库，不依赖开发者本机 sibling directory；当前 bundle 仍使用 sibling checkout 的 editable 安装方式。
 - [ ] 不提交 API key、`.env` 文件、生成的 scorecard 或 build cache。
 
 ## 每个实现里程碑的验证清单
@@ -243,10 +246,10 @@
 
 以下内容在另一个 thread 中完成，并已纳入本状态文档；它们属于 ARC-AGI-3 adaptor/实验侧，不是本仓库的独立猜测：
 
-- [x] 修复 recording 可观测性：`../ARC-AGI-3-Agents/agents/agent.py` 保存并写出 Agent 实际请求的 `requested_action`，与服务端回传的 `action_input` 分开。
-- [x] 新增真实单动作探针：`../ARC-AGI-3-Agents/tools/ls20_single_action_probe.py`，流程为 reset → 单个 ACTION → 前后帧差分。
+- [x] 修复 recording 可观测性：bundle 的 `arc_adaptor/patches/arc-agent-recording.patch` 可选保存 Agent 实际请求的 `requested_action`，与服务端回传的 `action_input` 分开。
+- [x] 新增真实单动作探针：`arc_adaptor/tools/ls20_single_action_probe.py`，流程为 reset → 单个 ACTION → 前后帧差分。
 - [x] 完成 ACTION1–4 的真实单步 probe：ACTION1/3/4 各改变下方对象 52 格，ACTION2 改变 2 格；四次均未移动 color-1 marker，均为 `NOT_FINISHED`、`levels_completed=0`。
-- [x] 增加 recording 回归测试：`../ARC-AGI-3-Agents/tests/unit/test_action_recording.py`。
+- [x] 增加 recording 回归测试：`arc_adaptor/tests/test_action_recording.py`；应用 optional patch 后运行。
 - [x] 远程协作分支已同步：本轮 `origin/explore_plan` 已更新并完成 push。
 
 **跨 thread 结果的边界：** 这些 probe 证明了动作请求已可追踪、且单步动作会改变场景对象；没有证明 ACTION1–4 的最终方向、目标交互规则或 Level 1 胜利条件。因此后续 action item 仍从有效多步 recording 开始，不能直接把单步变化区域写成方向映射。
