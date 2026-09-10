@@ -15,6 +15,11 @@ from .hotspot_candidates import (
     stable_hotspot_id,
 )
 from .hotspot_detector import R4HotspotDetector
+from .probe_dry_run import (
+    DryRunProbe,
+    prepare_probe_dry_run,
+    write_probe_dry_run_jsonl,
+)
 from .probe_evidence import (
     ProbeEvidence,
     run_synthetic_probe_loop,
@@ -46,6 +51,7 @@ __all__ = [
     "HotspotFeatures",
     "HotspotScore",
     "FeedbackOutcome",
+    "DryRunProbe",
     "ProbeAction",
     "ProbeEvidence",
     "ProbeFeedback",
@@ -60,8 +66,10 @@ __all__ = [
     "stable_hotspot_id",
     "attribute_feedback",
     "calculate_frame_delta",
+    "prepare_probe_dry_run",
     "run_synthetic_probe_loop",
     "update_candidate_after_feedback",
+    "write_probe_dry_run_jsonl",
     "write_probe_evidence_jsonl",
     "TemporalWindowSummary",
     "analyze_temporal_window",
