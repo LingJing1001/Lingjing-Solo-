@@ -19,7 +19,8 @@
   - keyboard observation 始终拒绝 click probe；
   - 输入 `ProbePlan` 保持不可变；
   - 回退只返回空 action plan，不调用外部 harness。
-- 增加专项测试，覆盖正常 dry-run、JSONL 输出、越界坐标、动作/模式不一致、未知动作、feature flag 回退、keyboard 隔离和计划幂等性。
+- 完成 Field/Learner 边界的最小契约：`HypothesisContext` 经 observation 传入 planner；probe 保留 `hypothesis_space_type`，并在有上下文时标记 `phi_interactive_hotspot`。
+- 增加专项测试，覆盖正常 dry-run、JSONL 输出、越界坐标、动作/模式不一致、未知动作、feature flag 回退、keyboard 隔离、计划幂等性和 hypothesis/Φ 边界。
 
 ## 当前证据等级
 
@@ -38,13 +39,13 @@
 - `empty_input`：通过空计划只写运行头的测试。
 - `invalid_input`：通过非法动作、模式和坐标测试。
 - `boundary_limit`：复用规划器的最多三个探测限制；既有测试通过。
-- `existing_state`：只追加 JSONL，不覆盖既有 artifact；feature flag 不修改输入计划。
+- `existing_state`：只追加 JSONL，不覆盖既有 artifact；feature flag 不修改输入计划；hypothesis context 只读传递。
 - `idempotency`：相同计划生成稳定请求字段；通过专项测试。
 - `partial_failure`：验证阶段失败时不调用外部 harness；通过 fail-closed 异常测试。
 - `restart_adoption`：未验证。
 - `rollback`：feature flag 关闭时返回空 action plan；通过专项测试；真实部署回滚未验证。
 - `security_permissions`：未验证真实部署目录权限；测试只写入临时目录。
-- `integration`：真实 harness、recording、action payload 尚未接入。
+- `integration`：真实 harness、recording、action payload 尚未接入；本轮只验证 Field/Learner context 的离线传递。
 
 ## 阻塞与未验证项
 
@@ -55,15 +56,15 @@
 
 ## 下一步
 
-1. 在可访问真实计划文档的环境中同步本轮 dry-run 适配层状态。
-2. 用真实 recording 或官方 harness 冻结帧引用、坐标系和动作 payload schema。
-3. 将 dry-run 请求接到真实动作调用的前置校验点，并保留执行前 artifact。
-4. 在真实环境只开放明确 feature flag，先执行 observe-only，再评估 click 动作。
+1. 通过 SSH `wsl` 继续检查官方 checkout 或真实 recording 入口；
+2. 接入真实 recording 后冻结坐标、action payload 和 scorecard schema；
+3. 在真实环境仅开放 observe-only，再评估 click 动作；
+4. 补齐 hypothesis space / Φ 证据的真实 Field/Learner 消费端，并验证 ft09/r11l 共用候选 schema；
 5. 基线导入问题修复后运行全量测试，并补充重启接管、回滚和集成验证。
 
 ## 本轮验证记录
 
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 /tmp/run_r4_m2_pytest.py`：33 passed，exit 0。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 /tmp/run_r4_m2_pytest.py`：35 passed，exit 0。
 - `ruff check ...`：通过，exit 0。
 - `python3 -m py_compile ...`：通过，exit 0。
 - `git diff --check`：通过，exit 0。

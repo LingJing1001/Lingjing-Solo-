@@ -17,6 +17,8 @@ class ProbeAction:
     mode: str
     evidence_refs: tuple[str, ...]
     reason: str
+    hypothesis_space_type: str | None = None
+    evidence_role: str = "r4_hotspot"
 
 
 @dataclass(frozen=True)
@@ -51,18 +53,31 @@ class ProbePlanner:
             raise ValueError("max_probes must be in [0, 3]")
         budget = observation.remaining_budget
         if budget is not None and budget < 1:
-            return ProbePlan((), tuple(c.hotspot_id for c in detection.candidates), budget,
-                             ("remaining budget is exhausted",))
+            return ProbePlan(
+                (),
+                tuple(c.hotspot_id for c in detection.candidates),
+                budget,
+                ("remaining budget is exhausted",),
+            )
         if observation.game_family == "keyboard":
-            return ProbePlan((), tuple(c.hotspot_id for c in detection.candidates), budget,
-                             ("keyboard game family has no click probes",))
+            return ProbePlan(
+                (),
+                tuple(c.hotspot_id for c in detection.candidates),
+                budget,
+                ("keyboard game family has no click probes",),
+            )
         if observation.legal_actions is not None and "click" not in observation.legal_actions:
-            return ProbePlan((), tuple(c.hotspot_id for c in detection.candidates), budget,
-                             ("click is not a legal action",))
+            return ProbePlan(
+                (),
+                tuple(c.hotspot_id for c in detection.candidates),
+                budget,
+                ("click is not a legal action",),
+            )
         tabu = set(tabu_hotspot_ids)
         actions: list[ProbeAction] = []
         skipped: list[str] = []
         effective_limit = min(max_probes, budget) if budget is not None else max_probes
+        hypothesis = observation.current_hypothesis
         for candidate in detection.candidates:
             if len(actions) >= effective_limit:
                 skipped.append(candidate.hotspot_id)
@@ -86,6 +101,14 @@ class ProbePlanner:
                         "detector_ranked_candidate"
                         if mode == "click"
                         else "low_confidence_observe_only"
+                    ),
+                    hypothesis_space_type=(
+                        hypothesis.hypothesis_space_type if hypothesis is not None else None
+                    ),
+                    evidence_role=(
+                        "phi_interactive_hotspot"
+                        if hypothesis is not None
+                        else "r4_hotspot"
                     ),
                 )
             )

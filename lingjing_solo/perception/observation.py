@@ -23,8 +23,22 @@ class ActionRecord:
 
 @dataclass(frozen=True)
 class HypothesisContext:
+    """Field/Learner context passed in without exposing level constants."""
+
     hypothesis_space_type: Optional[str] = None
     relevance_by_source: tuple[tuple[str, float], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.hypothesis_space_type is not None and (
+            not isinstance(self.hypothesis_space_type, str)
+            or not self.hypothesis_space_type
+        ):
+            raise ValueError("hypothesis_space_type must be a non-empty string or None")
+        for source, relevance in self.relevance_by_source:
+            if not isinstance(source, str) or not source:
+                raise ValueError("hypothesis relevance source must be a non-empty string")
+            if not 0 <= relevance <= 1:
+                raise ValueError("hypothesis relevance must be in [0, 1]")
 
 
 @dataclass(frozen=True)
@@ -63,8 +77,6 @@ def _as_grid(frame: Any) -> np.ndarray:
     if array.ndim == 2:
         return array.copy()
     if array.ndim == 3:
-        # Accept HxWxC and CxHxW RGB/grayscale payloads. Keep a deterministic
-        # luminance plane so the detector remains independent of image libraries.
         if array.shape[-1] in (1, 3, 4):
             channels = array[..., :3]
         elif array.shape[0] in (1, 3, 4):
