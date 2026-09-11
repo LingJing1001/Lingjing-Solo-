@@ -50,8 +50,8 @@
 ## 阻塞与未验证项
 
 - 已通过 SSH `wsl` 重新读取并更新 Windows 计划文档；当前可见路径为 `/mnt/c/JWang/2026/Projects/Lingjing/learning/`。
-- WSL 侧搜索 `/mnt/c/JWang/2026/Projects/Lingjing` 和 `/mnt/c/newtask-pi` 后，仍未发现可读取的真实 ft09 recording、JSONL recording 或动作 payload 样本。
-- 尚未找到可读取的真实 ft09 recording、坐标约定和动作 payload schema；没有伪造真实环境证据。
+- WSL 侧搜索 `/mnt/c/JWang/2026/Projects/Lingjing` 和 `/mnt/c/newtask-pi` 后，未发现已生成的 ft09 本地 recording、带 frame data 的 JSONL recording 或动作 payload 样本；这不表示 ARC-AGI-3 没有 ft09 游戏。
+- 当前缺少的是从官方 ARC-AGI-3 环境实际运行 ft09 后生成的 recording、坐标约定和动作 payload schema；没有伪造真实环境证据。
 - 全量 pytest 仍受仓库既有导入/测试基线影响，未修改 `click_sweep` 或 `Ar25Config` 问题。
 
 ## 下一步
