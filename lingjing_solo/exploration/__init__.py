@@ -34,6 +34,7 @@ from .probe_feedback import (
     calculate_frame_delta,
     update_candidate_after_feedback,
 )
+from .probe_gate import R4ProbeGate
 from .probe_planner import ProbeAction, ProbePlan, ProbePlanner
 from .temporal_noise import (
     TemporalWindowSummary,
@@ -57,6 +58,7 @@ __all__ = [
     "ProbeFeedback",
     "ProbePlan",
     "ProbePlanner",
+    "R4ProbeGate",
     "R4HotspotDetector",
     "TabuContext",
     "TabuEntry",

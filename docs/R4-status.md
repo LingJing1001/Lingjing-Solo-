@@ -13,8 +13,13 @@
   - 运行标识、帧标识、候选标识和 evidence refs 保留；
   - 明确写入 `executed: false` 和 `status: dry_run`；
   - 以 JSONL 保存可复盘的探测请求。
-- 将 dry-run 适配层导出为公开探索 API；它不调用 harness、不执行点击、不执行键盘动作。
-- 增加专项测试，覆盖正常 dry-run、JSONL 输出、越界坐标、动作/模式不一致和未知动作。
+- 新增 `probe_gate.py`，把 R4 探测能力放在 Field/Learner 之外：
+  - feature flag 默认关闭并 fail-closed；
+  - 启用时仅允许 click-family observation 继续；
+  - keyboard observation 始终拒绝 click probe；
+  - 输入 `ProbePlan` 保持不可变；
+  - 回退只返回空 action plan，不调用外部 harness。
+- 增加专项测试，覆盖正常 dry-run、JSONL 输出、越界坐标、动作/模式不一致、未知动作、feature flag 回退、keyboard 隔离和计划幂等性。
 
 ## 当前证据等级
 
@@ -33,11 +38,11 @@
 - `empty_input`：通过空计划只写运行头的测试。
 - `invalid_input`：通过非法动作、模式和坐标测试。
 - `boundary_limit`：复用规划器的最多三个探测限制；既有测试通过。
-- `existing_state`：只追加 JSONL，不覆盖既有 artifact；通过 writer 行为检查。
+- `existing_state`：只追加 JSONL，不覆盖既有 artifact；feature flag 不修改输入计划。
 - `idempotency`：相同计划生成稳定请求字段；通过专项测试。
 - `partial_failure`：验证阶段失败时不调用外部 harness；通过 fail-closed 异常测试。
 - `restart_adoption`：未验证。
-- `rollback`：未验证；本轮没有真实动作副作用。
+- `rollback`：feature flag 关闭时返回空 action plan；通过专项测试；真实部署回滚未验证。
 - `security_permissions`：未验证真实部署目录权限；测试只写入临时目录。
 - `integration`：真实 harness、recording、action payload 尚未接入。
 
@@ -57,7 +62,7 @@
 
 ## 本轮验证记录
 
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 /tmp/run_r4_m2_pytest.py`：27 passed，exit 0。
-- `ruff check lingjing_solo/exploration lingjing_solo/perception/observation.py tests/test_hotspot_detector.py tests/test_probe_planner.py tests/test_progress_signal.py tests/test_temporal_noise_and_evidence.py tests/test_probe_dry_run.py`：通过，exit 0。
-- `python3 -m py_compile lingjing_solo/exploration/*.py lingjing_solo/perception/observation.py tests/test_probe_dry_run.py`：通过，exit 0。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 /tmp/run_r4_m2_pytest.py`：33 passed，exit 0。
+- `ruff check ...`：通过，exit 0。
+- `python3 -m py_compile ...`：通过，exit 0。
 - `git diff --check`：通过，exit 0。
