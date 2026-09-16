@@ -102,47 +102,6 @@ def _find_rot_pad(grid: np.ndarray, start: Optional[tuple[int, int]] = None) -> 
             return min(reachable_cands, key=lambda t: abs(t[0] - start[0]) + abs(t[1] - start[1]))
     return cands[0]
 
-    # ─── 预存路线（来自 verified_solutions）────────────────
-    # 动作 ID -> 字符串动作名的映射（与 level1_verified_route 风格一致）
-    _ID_TO_ACTION = {
-        1: "ACTION1",  # UP
-        2: "ACTION2",  # DOWN
-        3: "ACTION3",  # LEFT
-        4: "ACTION4",  # RIGHT
-        5: "ACTION5",  # SWITCH
-    }
-
-    @classmethod
-    def get_verified_route(cls, level: str) -> list[str] | None:
-        """返回预存的 LS20 关卡路线（字符串动作形式）。
-
-        Args:
-            level: "L1" | "L2" | "L3" | "L4"
-
-        Returns:
-            动作字符串列表，如 ["ACTION3", "ACTION3", ...]，
-            或 None（未知关卡）。
-        """
-        from .data.verified_solutions import LS20_SOLUTIONS
-
-        key = level.upper()
-        if key not in LS20_SOLUTIONS:
-            return None
-        ids = LS20_SOLUTIONS[key]
-        return [cls._ID_TO_ACTION[i] for i in ids]
-
-    def observe_transition(
-        self, previous, current, *, player: tuple[int, int] | None = None
-    ) -> list[tuple[float, float]]:
-        """Record motion and invalidate only when it blocks the next step."""
-        motions = observe_motion(previous, current)
-        self.state.dynamic_obstacles = [motion.object.bbox for motion in motions]
-        self.observe(previous, invalidate=False)
-        self.observe(current, invalidate=False)
-        if player is not None:
-            self.state.player = player
-        self.replan_required = self._next_step_blocked()
-        return [motion.displacement for motion in motions]
 
 def _find_shape_pad(grid: np.ndarray, start: Optional[tuple[int, int]] = None) -> Optional[tuple[int, int]]:
     """形状台 ttfwljgohq：含 0 且非旋转台色型。"""
@@ -454,6 +413,34 @@ def looks_like_ls20(grid: np.ndarray | None) -> bool:
 
 class Ls20Solver:
     """在线单步 BFS：每步用最新网格重规划，适配移动障碍。"""
+
+    # 动作 ID -> 字符串动作名（与 verified_solutions / ScriptBank 风格一致）
+    _ID_TO_ACTION = {
+        1: "ACTION1",  # UP
+        2: "ACTION2",  # DOWN
+        3: "ACTION3",  # LEFT
+        4: "ACTION4",  # RIGHT
+        5: "ACTION5",  # SWITCH
+    }
+
+    @classmethod
+    def get_verified_route(cls, level: str) -> list[str] | None:
+        """返回预存的 LS20 关卡路线（字符串动作形式）。
+
+        Args:
+            level: "L1" | "L2" | "L3" | "L4"
+
+        Returns:
+            动作字符串列表，如 ["ACTION3", "ACTION3", ...]，
+            或 None（未知关卡）。
+        """
+        from .data.verified_solutions import LS20_SOLUTIONS
+
+        key = level.upper()
+        if key not in LS20_SOLUTIONS:
+            return None
+        ids = LS20_SOLUTIONS[key]
+        return [cls._ID_TO_ACTION[i] for i in ids]
 
     def __init__(self, cfg: SoloConfig = None, logger: Logger = None):
         self.cfg = cfg or SoloConfig()

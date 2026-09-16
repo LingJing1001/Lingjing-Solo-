@@ -7,7 +7,7 @@
   版本号     → 每 Tick 单调递增的事实源版本（协议 6 Solo 化）
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 
@@ -147,3 +147,66 @@ class FieldSnapshot:
     fog_ratio: float = 0.0
     phi_grad_energy: float = 0.0
     manifesto_tag: str = "Lingjing EtherealRealm-Solo"
+
+
+# ---------- AR25 (kaleidoscope mirror) structured observation ----------
+
+
+@dataclass
+class Ar25Piece:
+    """Movable / fixed polyomino for AR25."""
+    id: str
+    x: int
+    y: int
+    pixels: List[List[int]]
+    tags: Tuple[str, ...] = ()
+    fixed: bool = False
+
+    @property
+    def pixels_hash(self) -> str:
+        # Stable across processes (unlike built-in hash()).
+        return repr(tuple(tuple(row) for row in self.pixels))
+
+
+@dataclass
+class Ar25Axis:
+    """Reflection axis: kind V (vertical line) or H (horizontal line)."""
+    id: str
+    kind: str  # "V" | "H"
+    x: int
+    y: int
+    tags: Tuple[str, ...] = ()
+    fixed: bool = False
+
+
+@dataclass
+class Ar25Obs:
+    """Layer-0 structured observation for one AR25 level."""
+    grid_w: int
+    grid_h: int
+    targets: List[Tuple[int, int]]
+    pieces: List[Ar25Piece]
+    axes: List[Ar25Axis]
+    selected_id: Optional[str] = None
+    steps_left: int = 64
+    rotate_dist: Dict[str, int] = field(default_factory=dict)
+    level_index: Optional[int] = None
+
+
+@dataclass
+class Ar25Config:
+    """Target poses in configuration space (not action sequences)."""
+    piece_xy: Dict[str, Tuple[int, int]] = field(default_factory=dict)
+    axis_coord: Dict[str, int] = field(default_factory=dict)
+
+    def state_key(self) -> str:
+        pieces = tuple(sorted((k, v[0], v[1]) for k, v in self.piece_xy.items()))
+        axes = tuple(sorted(self.axis_coord.items()))
+        return f"p={pieces}|a={axes}"
+
+
+@dataclass
+class Ar25CoverReport:
+    covered: set
+    uncovered: List[Tuple[int, int]]
+    ok: bool
