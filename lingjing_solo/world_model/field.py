@@ -24,7 +24,16 @@ class WorldModelField:
     def __init__(self, cfg: SoloConfig, logger: Logger = None):
         self.cfg = cfg
         self.log = logger or Logger()
+        self._ar25 = None
         self.reset()
+
+    @property
+    def ar25(self):
+        """Lazy AR25 reflection field (Layer 1 game-specific)."""
+        if self._ar25 is None:
+            from .ar25_field import Ar25Field
+            self._ar25 = Ar25Field()
+        return self._ar25
 
     def reset(self):
         self.grid_state = None
@@ -57,6 +66,7 @@ class WorldModelField:
         self._rule_id = 0
         self._last_levels = 0
         self.pending_source: SourceTerm | None = None
+        self._ar25 = None
 
     # ---------- 协议 5：注入源项（决策写回意图）----------
     def inject_source_term(self, action: str, rationale: str = "",

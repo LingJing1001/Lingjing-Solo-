@@ -7,7 +7,7 @@
 from __future__ import annotations
 import time
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
 

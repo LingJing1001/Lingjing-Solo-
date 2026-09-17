@@ -33,6 +33,29 @@ python_files = ["test_*.py"]
 
 [tool.ruff]
 line-length = 100
+extend-exclude = [
+  "environment_files",
+  "reference",
+  "docs",
+  "agent",
+  "_report_*.txt",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+ignore = [
+  "E501",  # legacy research code routinely exceeds 100 cols
+  "E701",  # one-liner style used throughout solo modules
+  "E702",  # semicolon-joined statements in compact helpers
+  "E401",  # multi-import lines common in package inits
+  "E402",  # lazy/local imports after path setup
+  "E722",  # bare except retained in defensive game I/O
+  "E731",  # lambda assignment used as small local helpers
+  "I001",  # do not force mass import reorders on sync
+  "F401",  # unused imports widespread in WIP research modules
+  "F841",  # unused locals common in exploratory probes
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_solo.py" = ["F401", "F841"]
+"tests/*" = ["F401", "F841"]

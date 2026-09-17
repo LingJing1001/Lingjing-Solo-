@@ -1,20 +1,28 @@
-"""可选：带 torch 时的神经 CNN 编码。无 torch 时自动跳过，不影响主流程。"""
+"""可选：带 torch 时的神经 CNN 编码。无 torch 时自动走 NumpyCNN，不影响主流程。"""
+from __future__ import annotations
+
+from typing import Optional
+
+import numpy as np
+
 from ..core import SoloConfig
 
 
 class LingjingCNN:
-    """4 层卷积 + 全局池化的轻量编码器（参考 StochasticGoose 思路）。
+    """感知 CNN：优先 torch；否则纯 numpy NumpyCNN（同构嵌入）。"""
 
-    评测期若无 torch，encoder.py 的 fallback 特征会自动顶上，
-    架构层无需任何改动 —— 这是「可插拔编码」的设计意图。
-    """
     def __init__(self, cfg: SoloConfig):
         self.cfg = cfg
         self._model = None
+        self._numpy_cnn = None
+        self.backend = "none"
 
     def build(self):
+        dim = int(getattr(self.cfg, "cnn_feature_dim", 128) or 128)
+        colors = int(getattr(self.cfg, "num_colors", 16) or 16)
         try:
             import torch.nn as nn
+
             self._model = nn.Sequential(
                 nn.Conv2d(1, 16, 3, padding=1), nn.ReLU(),
                 nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(),
@@ -23,15 +31,27 @@ class LingjingCNN:
                 nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
                 nn.AdaptiveAvgPool2d(1),
                 nn.Flatten(),
-                nn.Linear(64, self.cfg.cnn_feature_dim),
+                nn.Linear(64, dim),
             )
+            self.backend = "torch"
         except ImportError:
             self._model = None
+            from ..neural.conv import NumpyCNN
 
-    def forward(self, grid):
-        if self._model is None:
-            return None
-        import torch
-        x = torch.from_numpy(grid).float().unsqueeze(0).unsqueeze(0)
-        with torch.no_grad():
-            return self._model(x).squeeze(0).numpy()
+            # NumpyCNN native embed is 64; PerceptionEncoder pads to cnn_feature_dim
+            self._numpy_cnn = NumpyCNN(num_colors=colors, embed_dim=min(64, dim))
+            self.backend = "numpy"
+
+    def forward(self, grid) -> Optional[np.ndarray]:
+        if self._model is None and self._numpy_cnn is None:
+            self.build()
+        if self._model is not None:
+            import torch
+
+            x = torch.from_numpy(np.asarray(grid)).float().unsqueeze(0).unsqueeze(0)
+            with torch.no_grad():
+                return self._model(x).squeeze(0).numpy()
+        if self._numpy_cnn is not None:
+            dim = int(getattr(self.cfg, "cnn_feature_dim", 128) or 128)
+            return self._numpy_cnn.encode_padded(grid, dim)
+        return None

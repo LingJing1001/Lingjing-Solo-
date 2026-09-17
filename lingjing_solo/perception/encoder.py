@@ -16,6 +16,7 @@ class PerceptionEncoder:
     def __init__(self, cfg: SoloConfig, logger: Logger = None):
         self.cfg = cfg
         self.log = logger or Logger()
+        self._ar25 = None
         self._cnn = None
         try:
             from .cnn import LingjingCNN
@@ -24,6 +25,14 @@ class PerceptionEncoder:
             self._cnn.build()
         except Exception:
             self._cnn = None
+
+    @property
+    def ar25(self):
+        """Lazy AR25 encoder (Layer 0 game-specific)."""
+        if self._ar25 is None:
+            from .ar25_encoder import Ar25Encoder
+            self._ar25 = Ar25Encoder()
+        return self._ar25
 
     def compute_delta(self, prev: np.ndarray, curr: np.ndarray):
         if prev is None:
@@ -166,3 +175,8 @@ class PerceptionEncoder:
             "curvature_proxy": snap.curvature_proxy,
             "snapshot": snap,
         }
+
+    def encode_ar25_level(self, level_index: int, source_path=None):
+        """R2 AR25 path: structured obs from engine source (not raw frame)."""
+        from .ar25_encoder import Ar25Encoder
+        return Ar25Encoder(source_path).encode_level(level_index)

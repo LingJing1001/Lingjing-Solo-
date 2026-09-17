@@ -54,9 +54,7 @@ class LingjingSoloAgent:
         self.clicks = BubbleClickPlanner(self.cfg, self.log)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor = StrategicAdvisor(self.cfg, self.log)
-        self.reflector = ReflectionTrigger(
-            self.cfg, self.field, self.explorer, self.search, self.log
-        )
+        self.reflector = ReflectionTrigger(self.cfg, self.field, self.log)
         self.discrete_nav = DiscreteNavPlanner(self.cfg, self.log)
         self.discrete_nav.bind_hasher(lambda: self.field.current_hash())
         self.ls20 = Ls20Solver(self.cfg, self.log)
@@ -79,9 +77,7 @@ class LingjingSoloAgent:
         self.clicks = BubbleClickPlanner(self.cfg, self.log)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor.calls_used = 0
-        self.reflector = ReflectionTrigger(
-            self.cfg, self.field, self.explorer, self.search, self.log
-        )
+        self.reflector = ReflectionTrigger(self.cfg, self.field, self.log)
         self.discrete_nav = DiscreteNavPlanner(self.cfg, self.log)
         self.discrete_nav.bind_hasher(lambda: self.field.current_hash())
         self.ls20 = Ls20Solver(self.cfg, self.log)

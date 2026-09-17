@@ -6,6 +6,7 @@ from .action_diff import (
     analyze_recording,
     summarize_actions,
 )
+from .click_sweep import BubbleClickPlanner
 from .explorer import ExplorationEngine
 from .hotspot_candidates import (
     HotspotCandidate,
@@ -46,6 +47,7 @@ __all__ = [
     "ActionDelta",
     "ActionObservation",
     "ActionSummary",
+    "BubbleClickPlanner",
     "ExplorationEngine",
     "HotspotCandidate",
     "HotspotDetectionResult",
