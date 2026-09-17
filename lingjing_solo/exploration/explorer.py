@@ -17,6 +17,7 @@ class ExplorationEngine:
         self.log = logger or Logger()
         self._probe_budget = 0     # 当前探测剩余步数
         self._probing = False
+        self.last_score_details = {}
 
     # ---------- 信息增益估算 ----------
     def info_gain(self, action: str) -> float:
@@ -47,14 +48,45 @@ class ExplorationEngine:
 
         这是对 RHAE 平方惩罚的直接对冲 —— 优先选"单位步数信息增益最大"的动作。
         """
+        if not valid_actions:
+            self.last_score_details = {}
+            return []
         scored = []
+        self.last_score_details = {}
         recent_actions = [t.action for t in list(self.field.transition_table)[-8:]]
-        for a in valid_actions:
+        for order, a in enumerate(valid_actions):
             gain = self.info_gain(a)
             # 反循环：若动作近期重复，降低其探索优先级。
             recent_count = recent_actions.count(a)
             loop_penalty = min(0.75, 0.15 * recent_count)
-            scored.append((a, gain - loop_penalty))
+            goal_bonus = 0.0
+            current_hash = self.field.current_hash()
+            predicted = self.field.predict(current_hash, a) if current_hash else None
+            if predicted is not None:
+                goal_bonus = max(
+                    (
+                        float(goal.confidence)
+                        for goal in self.field.goals
+                        if goal.state_hash and goal.state_hash == predicted
+                    ),
+                    default=0.0,
+                ) * self.cfg.goal_score_bonus
+            score = gain - loop_penalty + goal_bonus
+            reason = ["information_gain"]
+            if recent_count:
+                reason.append("loop_penalty")
+            if goal_bonus:
+                reason.append("goal_successor")
+            self.last_score_details[a] = {
+                "score": score,
+                "information_gain": gain,
+                "loop_penalty": loop_penalty,
+                "goal_bonus": goal_bonus,
+                "reason": "+".join(reason),
+                "input_order": order,
+            }
+            scored.append((a, score))
+        # Python's stable sort preserves caller order for equal scores.
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored
 
@@ -92,9 +124,11 @@ class ExplorationEngine:
         if not self._probing:
             return False
         self._probe_budget -= 1
-        if self._probe_budget <= 0:
+        if self._probe_budget < 0:
             self._probing = False
             return False
+        if self._probe_budget == 0:
+            self._probing = False
         return True
 
     # ---------- 目标假设推断 ----------

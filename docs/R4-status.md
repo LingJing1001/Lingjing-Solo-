@@ -22,6 +22,24 @@
 - 完成 Field/Learner 边界的最小契约：`HypothesisContext` 经 observation 传入 planner；probe 保留 `hypothesis_space_type`，并在有上下文时标记 `phi_interactive_hotspot`。
 - 增加专项测试，覆盖正常 dry-run、JSONL 输出、越界坐标、动作/模式不一致、未知动作、feature flag 回退、keyboard 隔离、计划幂等性和 hypothesis/Φ 边界。
 
+## 后续实施（2026-09-17）
+
+本轮按 P0 继续完成了离线探索决策契约的第一步，未接入真实 harness：
+
+- 在 `lingjing_solo/exploration/explorer.py:20,51-92` 增加 `last_score_details`，记录信息增益、反循环惩罚、目标奖励、总分、输入顺序和选择原因。
+- 在 `lingjing_solo/exploration/explorer.py:124-133` 修正 `step_probe()` 预算语义：`probe_max_steps=N` 时恰好允许 N 次调用，耗尽后关闭 probing。
+- 在 `lingjing_solo/core/config.py:43` 增加可选 `goal_score_bonus`，默认值为 `0.0`，保持原有默认评分行为；当已知后继命中目标状态时，可按目标置信度加分。
+- 新增 `tests/test_r4_explorer.py`，覆盖预算边界、空动作、稳定 tie-break、目标后继奖励和评分审计字段。
+
+本轮证据：
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q tests/test_r4_explorer.py tests/test_probe_planner.py tests/test_probe_gate.py tests/test_probe_dry_run.py`：18 passed，exit 0。
+- `ruff check lingjing_solo/core/config.py lingjing_solo/exploration/explorer.py tests/test_r4_explorer.py`：通过，exit 0。
+- `git diff --check`：通过，exit 0。
+- 全量 pytest：57 passed，5 failed；5 个失败仍集中在既有 `tests/test_r5_reflection.py` 基线，未因本轮修改增加。
+
+本轮未完成：目标推断、严格信息增益、recording reset/多关卡切分、真实 ft09 L3、重启接管、真实部署回滚和真实收益对比。
+
 ## 当前证据等级
 
 `L1`：离线与 synthetic fixture 闭环通过；尚未宣称真实 ft09 L3。

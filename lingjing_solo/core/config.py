@@ -40,6 +40,7 @@ class SoloConfig:
     loop_action_penalty: float = 2.5
     noop_penalty: float = 1.5
     progress_bonus: float = 3.0
+    goal_score_bonus: float = 0.0          # 可选：预测到目标状态时的评分奖励
     unexplored_bonus: float = 1.2
     effect_ema_bonus: float = 1.5         # 高实测因果强度动作加分
     effect_ema_alpha: float = 0.25        # ΔJ 实测 EMA 平滑系数
