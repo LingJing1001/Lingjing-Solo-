@@ -1,0 +1,17 @@
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+game_id = ar25-0c556536
+
+AR25 R2+R3+R4 组合闯关 (r234 flow)
+  搜索预算: 120.0s / 500000 nodes
+  总预算: 500 steps / 900.0s
+  关 方法         步数   预算     搜索耗时      节点 结果
+-----------------------------------------------------------------
+  1 R3搜索       64   64     0.0s       0 ✓通关 15步
+  2 R3搜索       64   64     0.0s       0 ✗未通关
+  执行后未通关, 切换 R4 贪心
+    R4回退: ✗失败 +0步
+
+=================================================================
+总计: 29步, 0搜索节点, 0.026s
+结果: L2, state=GameState.NOT_FINISHED, won=False
+RESULT_FILE=F:\pro\Lingjing-Solo-\state\ar25_r234_20260918_084809_372846\result.json

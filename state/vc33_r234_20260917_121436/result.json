@@ -1,0 +1,37 @@
+{
+  "game": "vc33-5430563c",
+  "mode": "OFFLINE",
+  "strategy": "arc_adaptor/r2r3r4_combo.py:smart_play_step",
+  "seed": 0,
+  "max_steps": 500,
+  "executed_steps": 0,
+  "decisions": [
+    {
+      "step": 0,
+      "perception": {
+        "state_hash": "0637b9b5dbd409ff",
+        "player_pos": [
+          51,
+          29
+        ],
+        "target_center": [
+          45,
+          39
+        ],
+        "player_count": 168,
+        "target_count": 20,
+        "axis_count": 0,
+        "victory": true
+      },
+      "proposed_action": null,
+      "available_actions": [
+        6
+      ]
+    }
+  ],
+  "stop_reason": "strategy_returned_none_without_engine_win",
+  "state": "NOT_FINISHED",
+  "levels_completed": 0,
+  "win_levels": 7,
+  "elapsed_seconds": 0.0
+}

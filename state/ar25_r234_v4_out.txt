@@ -1,0 +1,4 @@
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+game_id = ar25-0c556536
+2026-09-18 09:08:16 | INFO | Created new scorecard: 46a34fcd-9418-4c88-b2a9-c6c923722082
+2026-09-18 09:08:16 | INFO | Successfully loaded game class Ar25 from F:\pro\Lingjing-Solo-\environment_files\ar25\0c556536\ar25.py
