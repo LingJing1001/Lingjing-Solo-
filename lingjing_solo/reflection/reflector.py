@@ -36,7 +36,7 @@ class ReflectionTrigger:
         sig.budget_warning = (used / max(1, estimated)) >= self.cfg.budget_warn_ratio
         return sig
 
-    def should_reflect_now(self) -> bool:
+    def should_reflect_now(self, advisor=None) -> bool:
         sig = self.evaluate()
         if not sig.should_reflect:
             return False
@@ -54,6 +54,7 @@ class ReflectionTrigger:
         """打包 Φ 场摘要，作为 LLM 上下文。"""
         snap = self.field.snapshot(recent_n=recent_n)
         actions = getattr(snap, "valid_actions", None) if valid_actions is None else valid_actions
+        actions = getattr(snap, "valid_actions", []) if valid_actions is None else valid_actions
         snap.valid_actions = list(actions or [])
         if not any(
             (self._last_signal.loop_trapped, self._last_signal.rule_conflict,
@@ -74,3 +75,13 @@ class ReflectionTrigger:
             f"visited={snap.visited_count}",
         )
         return snap
+        return snap
+
+    def should_give_up(self, advisor) -> bool:
+        """兼容顶层 Agent 的封闭模式终止检查。"""
+        return bool(getattr(advisor, "symbolic_exhausted", False))
+
+    def mark_symbolic_exhausted(self, advisor) -> None:
+        """把符号顾问耗尽状态写入最近信号，供后续上下文审计。"""
+        if getattr(advisor, "symbolic_exhausted", False):
+            self._last_signal.hypotheses_exhausted = True

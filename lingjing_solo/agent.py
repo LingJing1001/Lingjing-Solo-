@@ -244,7 +244,13 @@ class LingjingSoloAgent:
             if nav and nav in valid:
                 action, rationale = nav, "discrete_nav"
 
-        if not discrete and self.clicks.should_click(valid) and "ACTION6" in valid:
+        if (
+            action is None
+            and not discrete
+            and self.clicks.should_click(valid)
+            and "ACTION6" in valid
+            and not (self.reflector.evaluate().should_reflect and self.advisor.can_call())
+        ):
             self.clicks.refill(
                 curr.grid,
                 bubble=self.field.bubble or snap.bubble,

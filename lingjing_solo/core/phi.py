@@ -38,8 +38,10 @@ def compute_phi(grid: np.ndarray, block: int = 8) -> PhiDensity:
             uniq = float(len(np.unique(patch))) / 16.0
             blocks[i, j] = 0.7 * nz + 0.3 * uniq
 
-    # 梯度能量
-    gy, gx = np.gradient(blocks.astype(np.float64))
+    # 梯度能量；AR25 等小网格可能粗粒化为 1×1，单轴时只计算可用方向。
+    values = blocks.astype(np.float64)
+    gy = np.gradient(values, axis=0) if values.shape[0] >= 2 else np.zeros_like(values)
+    gx = np.gradient(values, axis=1) if values.shape[1] >= 2 else np.zeros_like(values)
     grad_e = float((gy * gy + gx * gx).sum())
     peak = tuple(int(x) for x in np.unravel_index(int(np.argmax(blocks)), blocks.shape))
     return PhiDensity(
