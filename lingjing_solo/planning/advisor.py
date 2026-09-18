@@ -160,10 +160,29 @@ class StrategicAdvisor:
         self.symbolic = SymbolicHypothesisExpander(cfg, logger)
 
     def inject_llm(self, llm_fn):
+        self.cfg.use_llm_advisor = True
         self._llm_fn = llm_fn
 
     def inject_hypothesis_llm(self, fn):
         self._hypothesis_fn = fn
+
+    def inject_prompt_llm(self, fn):
+        """注入只接收 Prompt 文本的模型，并切换到开放顾问模式。"""
+        self.cfg.use_llm_advisor = True
+        self._llm_fn = lambda snapshot, valid_actions: fn(
+            self.build_prompt(snapshot, valid_actions)
+        )
+
+    def build_prompt(self, snapshot: FieldSnapshot, valid_actions=None) -> str:
+        """构造可审计的 R5 Prompt，不消耗 LLM 预算。"""
+        from ..reflection.prompt import build_r5_prompt
+
+        prompt = build_r5_prompt(snapshot, valid_actions)
+        return (
+            f"{prompt}\n"
+            f"【顾问预算】剩余调用次数：{self.budget_left}\n"
+            f"【当前触发原因】{', '.join(getattr(snapshot, 'reflection_reasons', [])) or '未记录'}\n"
+        )
 
     @property
     def budget_left(self) -> int:
@@ -190,7 +209,11 @@ class StrategicAdvisor:
         self.log.log("Advisor", f"LLM call #{self.calls_used}/{self.cfg.llm_calls_per_game}")
         try:
             result = self._llm_fn(snapshot, valid_actions)
-            return canonicalize(result) if result else None
+            action = canonicalize(result) if result else ""
+            for valid_action in valid_actions or []:
+                if canonicalize(valid_action) == action:
+                    return valid_action
+            return None
         except Exception as e:
             self.log.log("Advisor", f"LLM error: {e}")
             return None

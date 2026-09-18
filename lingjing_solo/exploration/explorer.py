@@ -18,6 +18,7 @@ class ExplorationEngine:
         self._probe_budget = 0     # 当前探测剩余步数
         self._probing = False
         self.last_score_details = {}
+        self._failure_counts = {}
 
     # ---------- 信息增益估算 ----------
     def info_gain(self, action: str) -> float:
@@ -114,6 +115,19 @@ class ExplorationEngine:
                     if not any(r.premise == premise for r in self.field.rules):
                         self.field.propose_rule(premise, conclusion)
                     break
+
+    # ---------- 反馈归因 ----------
+    def record_action_outcome(self, action: str, delta_pixels: int, progressed: bool) -> None:
+        """记录无进展动作，供 R5 符号扩增器避开重复失败。"""
+        if delta_pixels <= 0 and not progressed:
+            self._failure_counts[action] = self._failure_counts.get(action, 0) + 1
+        else:
+            self._failure_counts.pop(action, None)
+
+    def on_environment_feedback(self, state: str, levels: int, previous_levels: int) -> None:
+        """关卡变化后清理上一关的失败计数。"""
+        if levels > previous_levels:
+            self._failure_counts.clear()
 
     # ---------- 探测模式控制 ----------
     def start_probe(self):

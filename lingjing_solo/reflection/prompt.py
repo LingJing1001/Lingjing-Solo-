@@ -42,9 +42,9 @@ def _format_reasons(snapshot: FieldSnapshot) -> str:
         "rule_conflict": "规则冲突：同一状态和动作出现了不同后继",
         "budget_warning": "步数告急：已用步数接近人类基线估计",
     }
-    if not snapshot.reflection_reasons:
+    if not getattr(snapshot, "reflection_reasons", []):
         return "（未记录具体触发原因，请结合全部数据保守判断）"
-    return "\n".join(f"- {labels.get(reason, reason)}" for reason in snapshot.reflection_reasons)
+    return "\n".join(f"- {labels.get(reason, reason)}" for reason in getattr(snapshot, "reflection_reasons", []))
 
 
 def build_r5_prompt(snapshot: FieldSnapshot, valid_actions=None) -> str:
