@@ -53,7 +53,7 @@ class ReflectionTrigger:
     def pack_context(self, valid_actions, recent_n=10) -> FieldSnapshot:
         """打包 Φ 场摘要，作为 LLM 上下文。"""
         snap = self.field.snapshot(recent_n=recent_n)
-        actions = snap.valid_actions if valid_actions is None else valid_actions
+        actions = getattr(snap, "valid_actions", None) if valid_actions is None else valid_actions
         snap.valid_actions = list(actions or [])
         if not any(
             (self._last_signal.loop_trapped, self._last_signal.rule_conflict,

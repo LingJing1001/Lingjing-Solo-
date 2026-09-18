@@ -28,14 +28,8 @@ from lingjing_solo.exploration import (
     summarize_actions,
 )
 from lingjing_solo.planning import (
-    GridObject,
-    MotionObject,
     LightweightPlanner,
     LLMPlanner,
-    LS20Solver,
-    extract_objects,
-    moved_objects,
-    observe_motion,
 )
 from lingjing_solo.reflection import ReflectionTrigger
 

@@ -18,20 +18,14 @@ from .data.verified_solutions import (
 from .simulator import AR25Simulator
 
 __all__ = [
-    # 原有导出
     "LightweightPlanner", "LLMPlanner",
-    "LS20Solver", "LS20State",
-    "GridObject", "MotionObject",
-    "extract_objects", "moved_objects", "observe_motion",
-    # 新增搜索算法
+    "SearchEngine", "StrategicAdvisor",
     "astar_search", "bfs_search", "dfs_search",
     "AStarResult", "BFSResult", "DFSResult",
-    # 新增预存解法
     "get_solution",
     "LS20_SOLUTIONS", "AR25_SOLUTIONS", "ARC_SOLUTIONS",
     "L7_SOLUTION", "L8_SOLUTION", "AR25_L3_SOLUTION",
     "SU15_SOLUTIONS", "FT09_SOLUTIONS",
     "ACT_UP", "ACT_DOWN", "ACT_LEFT", "ACT_RIGHT", "ACT_SWITCH",
-    # 模拟器
     "AR25Simulator",
 ]
