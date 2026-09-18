@@ -1,6 +1,6 @@
 # R4 热点检测状态
 
-日期：2026-09-10
+日期：2026-09-17
 分支：`feature/r4-hotspot-detection`
 
 ## 本轮完成
@@ -43,21 +43,25 @@
 - `ExplorationEngine.infer_goal()` 不再是占位接口：接受带 `description/state_hash/confidence/kind` 的权威 WIN/level 反馈，并写入 `GoalHypothesis`；无 callback 时使用 Field 已记录的 WIN hash。
 - `info_gain()` 统一使用 `WorldModelField.current_hash()`，避免 level-aware hash 与 transition index 不一致；在 novelty 衰减之外增加后继状态熵项，有限权重奖励不确定动作。
 - `action_diff.analyze_recording()` 遇到 `state=RESET` 或 `requested_action=RESET` 时切断前后帧，reset 后重新建立 baseline；支持嵌套 action payload `{name/id}`。
-- `compute_phi()` 对 1×1、单行和单列粗粒网格安全处理；AR25 8×8 输入不再因 `np.gradient()` 边界条件失败。
+- `action_diff._normalize_grid()` 支持 ARC recording 的 `N×H×W` 动画帧栈：默认取最后一层作为动作完成后的 settled/current observation，仍支持 `frame_channel` 显式选择。
 - 新增 LS20 64×64 与 AR25 8×8 FrameData/action schema replay 测试，覆盖动作写入、关卡推进和 WIN 反馈。
 
-本轮证据：
+- 真实 LS20 recording：`/srv/agent-platform/projects/ARC-AGI-3-Agents/recordings/ls20-9607627b.lingjingsolo.800.bbc5baae-3c02-44f1-9a96-70159143d4b2.recording.jsonl`。
+- recording 解析：309 records、309 条 `requested_action`、frame shapes 为 `(1,64,64)/(2,64,64)/(6,64,64)/(17,64,64)`、state `NOT_FINISHED=308/WIN=1`、levels `0→7`。
+- R4 action diff：308 deltas、308 个带动作 transition、最高 level 7。
+- R4 Field replay：308 transitions、`field_levels=7`、`field_env_state=WIN`、`field_win_hash_count=1`、`field_version=308`，VERDICT PASS。
+- 执行命令：`PYTHONPATH=/srv/agent-platform/projects/Lingjing-Solo- python3 /tmp/verify_ls20_r4.py`，exit 0。
 
-- R4 专项、LS20/AR25 schema replay 与探测回归：`21 passed`，exit 0。
-- 全量 pytest：`69 passed`，exit 0。
+本轮回归证据：
+
+- R4 + recording boundary + goal/explorer 定向测试：`12 passed`，exit 0。
+- 全量 pytest：`70 passed`，exit 0。
 - `ruff check lingjing_solo tests`：`All checks passed!`。
 - `git diff --check`：通过，exit 0。
 
-本轮未完成：真实 ft09 L3、重启接管、真实部署回滚和真实收益对比；LS20 schema replay 已接入 R4 离线验证，但不替代未知游戏的真实探索证据。
+本轮未完成：真实 ft09 L3、AR25 原始 recording、重启接管、真实部署回滚和真实收益对比；LS20 真实 recording replay 已通过，但不替代未知游戏的真实探索证据。
 
-## 当前证据等级
-
-`L1`：离线、LS20 schema replay 与 synthetic fixture 闭环通过；尚未宣称真实 ft09 L3。
+`L1`：真实 LS20 309-recording replay 闭环通过（Field 308 transitions，最终 `levels=7/state=WIN`）；尚未宣称真实 ft09 L3。
 
 ## 验收标准
 
@@ -78,29 +82,27 @@
 - `restart_adoption`：未验证。
 - `rollback`：feature flag 关闭时返回空 action plan；通过专项测试；真实部署回滚未验证。
 - `security_permissions`：未验证真实部署目录权限；测试只写入临时目录。
-- `integration`：LS20 FrameData/requested_action 与 AR25 8×8/action1-7 schema 已通过 replay 接入 Field；真实 harness、ft09 recording 和真实 action payload 仍未接入。
+- `integration`：真实 LS20 recording 已通过 `action_diff → WorldModelField` replay；AR25 仅有 schema replay，真实 harness、AR25/ft09 recording 和真实 action payload 仍未接入。
 
 ## 阻塞与未验证项
 
-- 已通过 SSH `wsl` 重新读取并更新 Windows 计划文档；当前可见路径为 `/mnt/c/JWang/2026/Projects/Lingjing/learning/`。
-- WSL 侧搜索 `/mnt/c/JWang/2026/Projects/Lingjing` 和 `/mnt/c/newtask-pi` 后，未发现已生成的 ft09 本地 recording、带 frame data 的 JSONL recording 或动作 payload 样本；这不表示 ARC-AGI-3 没有 ft09 游戏。
-- 当前缺少的是从官方 ARC-AGI-3 环境实际运行 ft09 后生成的 recording、坐标约定和动作 payload schema；没有伪造真实环境证据。
-- 全量 pytest 仍受仓库既有导入/测试基线影响，未修改 `click_sweep` 或 `Ar25Config` 问题。
+- DGX 官方 checkout 已发现 69 个 LS20 recording；本轮使用其中最新的 309-recording 文件完成真实 replay。
+- 当前 `/srv/agent-platform/projects/ARC-AGI-3-Agents/recordings/` 未发现 AR25 或 ft09 原始 recording；这不表示官方环境没有对应游戏。
+- 当前缺少的是 AR25/ft09 的真实 recording、坐标约定和动作 payload 样本；没有伪造这些真实环境证据。
+- 全量 pytest 本轮已通过 70 tests；历史 `click_sweep` / `Ar25Config` 问题未作为本轮变更范围。
 
 ## 下一步
 
-1. 通过 SSH `wsl` 继续检查官方 checkout 或真实 recording 入口；
+1. 对 AR25 获取并重放真实 recording，冻结其多层 frame / action payload 语义；
 2. 接入真实 recording 后冻结坐标、action payload 和 scorecard schema；
 3. 在真实环境仅开放 observe-only，再评估 click 动作；
 4. 补齐 hypothesis space / Φ 证据的真实 Field/Learner 消费端，并验证 ft09/r11l 共用候选 schema；
-5. 基线导入问题修复后运行全量测试，并补充重启接管、回滚和集成验证。
-
-- LS20 schema replay：`tests/test_r4_recording_boundaries.py::test_ls20_frame_data_schema_replays_into_r4_field` 通过；与 RESET/缺 action 边界合计 recording 定向测试 3 passed。
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q tests/test_r4_recording_boundaries.py tests/test_r4_explorer.py tests/test_r4_goal_inference.py`：10 passed，exit 0。
+5. 补充重启接管、回滚和部署集成验证。
 
 ## 本轮验证记录
 
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 /tmp/run_r4_m2_pytest.py`：35 passed，exit 0。
-- `ruff check ...`：通过，exit 0。
-- `python3 -m py_compile ...`：通过，exit 0。
+- `PYTHONPATH=/srv/agent-platform/projects/Lingjing-Solo- python3 /tmp/verify_ls20_r4.py`：真实 LS20 recording replay PASS，exit 0。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q tests/test_r4_recording_boundaries.py tests/test_r4_explorer.py tests/test_r4_goal_inference.py`：11 passed，exit 0。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q --disable-warnings`：69 passed，exit 0。
+- `ruff check lingjing_solo tests`：通过，exit 0。
 - `git diff --check`：通过，exit 0。

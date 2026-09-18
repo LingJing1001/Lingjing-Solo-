@@ -70,7 +70,10 @@ def _normalize_grid(
                     f"frame_channel out of range: {frame_channel} for shape={array.shape}"
                 )
             return array[frame_channel]
-    raise ValueError(f"expected HxW or 1xHxW grid, got shape={array.shape}")
+        # ARC recordings may store an animation stack (N,H,W). The last
+        # channel is the settled/current observation for the action.
+        return array[-1]
+    raise ValueError(f"expected HxW or NxHxW grid, got shape={array.shape}")
 
 
 def _centroid(grid: np.ndarray, color: int) -> Optional[tuple[float, float]]:

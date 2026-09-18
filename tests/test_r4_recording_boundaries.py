@@ -3,7 +3,7 @@ import json
 import numpy as np
 
 from lingjing_solo.core import Frame, SoloConfig
-from lingjing_solo.exploration.action_diff import analyze_recording
+from lingjing_solo.exploration.action_diff import _normalize_grid, analyze_recording
 from lingjing_solo.world_model.field import WorldModelField
 
 
@@ -86,6 +86,15 @@ def test_ar25_action_schema_replays_into_r4_field():
     assert field.levels == 1
     assert field.env_state == "WIN"
     assert field.win_hashes
+
+def test_multichannel_recording_uses_settled_last_frame():
+    stack = np.zeros((3, 4, 4), dtype=np.int8)
+    stack[0, 1, 1] = 1
+    stack[2, 2, 3] = 9
+
+    assert np.array_equal(_normalize_grid(stack), stack[2])
+    assert np.array_equal(_normalize_grid(stack, frame_channel=0), stack[0])
+
 
 def test_recording_rejects_missing_action_after_baseline(tmp_path):
     path = tmp_path / "missing-action.jsonl"
