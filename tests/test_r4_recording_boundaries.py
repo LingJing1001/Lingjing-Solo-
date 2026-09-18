@@ -62,6 +62,31 @@ def test_ls20_frame_data_schema_replays_into_r4_field():
     assert field.win_hashes
 
 
+def test_ar25_action_schema_replays_into_r4_field():
+    grid0 = np.zeros((8, 8), dtype=np.int8)
+    grid1 = grid0.copy(); grid1[2, 2] = 9
+    grid2 = grid1.copy(); grid2[2, 3] = 9
+    grid3 = grid2.copy(); grid3[3, 3] = 9
+    frames = [
+        (grid0, "NOT_FINISHED", 0, None),
+        (grid1, "NOT_FINISHED", 0, {"name": "ACTION3", "id": 3}),
+        (grid2, "NOT_FINISHED", 0, {"name": "ACTION5", "id": 5}),
+        (grid3, "WIN", 1, {"name": "ACTION7", "id": 7}),
+    ]
+    field = WorldModelField(SoloConfig())
+    previous = None
+    for tick, (grid, state, level, requested_action) in enumerate(frames):
+        current = Frame(grid, t=tick, state=state, levels_completed=level)
+        action = requested_action["name"] if requested_action else None
+        field.update(current, previous, action)
+        previous = current
+
+    assert len(field.transition_table) == 3
+    assert [t.action for t in field.transition_table] == ["ACTION3", "ACTION5", "ACTION7"]
+    assert field.levels == 1
+    assert field.env_state == "WIN"
+    assert field.win_hashes
+
 def test_recording_rejects_missing_action_after_baseline(tmp_path):
     path = tmp_path / "missing-action.jsonl"
     write_jsonl(path, [{"frame": frame(0)}, {"frame": frame(1)}])

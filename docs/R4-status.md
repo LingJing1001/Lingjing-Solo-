@@ -43,12 +43,13 @@
 - `ExplorationEngine.infer_goal()` 不再是占位接口：接受带 `description/state_hash/confidence/kind` 的权威 WIN/level 反馈，并写入 `GoalHypothesis`；无 callback 时使用 Field 已记录的 WIN hash。
 - `info_gain()` 统一使用 `WorldModelField.current_hash()`，避免 level-aware hash 与 transition index 不一致；在 novelty 衰减之外增加后继状态熵项，有限权重奖励不确定动作。
 - `action_diff.analyze_recording()` 遇到 `state=RESET` 或 `requested_action=RESET` 时切断前后帧，reset 后重新建立 baseline；支持嵌套 action payload `{name/id}`。
-- 新增目标推断和 recording reset/缺动作 fail-closed 测试。
+- `compute_phi()` 对 1×1、单行和单列粗粒网格安全处理；AR25 8×8 输入不再因 `np.gradient()` 边界条件失败。
+- 新增 LS20 64×64 与 AR25 8×8 FrameData/action schema replay 测试，覆盖动作写入、关卡推进和 WIN 反馈。
 
 本轮证据：
 
-- R4 专项与探测回归：`23 passed`，exit 0。
-- 全量 pytest：`67 passed`，exit 0。
+- R4 专项、LS20/AR25 schema replay 与探测回归：`21 passed`，exit 0。
+- 全量 pytest：`69 passed`，exit 0。
 - `ruff check lingjing_solo tests`：`All checks passed!`。
 - `git diff --check`：通过，exit 0。
 
@@ -77,7 +78,7 @@
 - `restart_adoption`：未验证。
 - `rollback`：feature flag 关闭时返回空 action plan；通过专项测试；真实部署回滚未验证。
 - `security_permissions`：未验证真实部署目录权限；测试只写入临时目录。
-- `integration`：LS20 FrameData/requested_action schema 已通过 replay 接入 Field；真实 harness、ft09 recording 和真实 action payload 仍未接入。
+- `integration`：LS20 FrameData/requested_action 与 AR25 8×8/action1-7 schema 已通过 replay 接入 Field；真实 harness、ft09 recording 和真实 action payload 仍未接入。
 
 ## 阻塞与未验证项
 
