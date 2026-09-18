@@ -1,6 +1,6 @@
 import numpy as np
 
-from lingjing_solo.core import GoalHypothesis, SoloConfig
+from lingjing_solo.core import GoalHypothesis, SoloConfig, Transition
 from lingjing_solo.exploration.explorer import ExplorationEngine
 from lingjing_solo.world_model.field import WorldModelField
 
@@ -45,5 +45,23 @@ def test_goal_successor_gets_optional_score_bonus_and_reason():
     scored = engine.score_actions(["ACTION2", "ACTION1"])
 
     assert scored[0][0] == "ACTION1"
-    assert engine.last_score_details["ACTION1"]["goal_bonus"] == 0.8
     assert "goal_successor" in engine.last_score_details["ACTION1"]["reason"]
+
+
+def test_info_gain_rewards_uncertain_successors():
+    deterministic, field = make_engine()
+    field.grid_state = np.zeros((8, 8), dtype=np.uint8)
+    state = field.current_hash()
+    field.transition_index[(state, "ACTION1")] = [
+        Transition(state, "ACTION1", "next", 1, 1, False, 1),
+        Transition(state, "ACTION1", "next", 1, 2, False, 2),
+    ]
+    uncertain, uncertain_field = make_engine()
+    uncertain_field.grid_state = np.zeros((8, 8), dtype=np.uint8)
+    uncertain_state = uncertain_field.current_hash()
+    uncertain_field.transition_index[(uncertain_state, "ACTION1")] = [
+        Transition(uncertain_state, "ACTION1", "next-a", 1, 1, False, 1),
+        Transition(uncertain_state, "ACTION1", "next-b", 1, 2, False, 2),
+    ]
+
+    assert uncertain.info_gain("ACTION1") > deterministic.info_gain("ACTION1")

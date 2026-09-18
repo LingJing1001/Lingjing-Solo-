@@ -162,7 +162,18 @@ def analyze_recording(
             action = data.get("requested_action")
             if isinstance(action, dict):
                 action = action.get("name") or action.get("id")
+            state = str(data.get("state") or "").upper()
+            is_reset = state == "RESET" or str(action or "").upper() == "RESET"
             if previous is None:
+                previous = (
+                    _normalize_grid(
+                        np.asarray(data["frame"]), frame_channel=frame_channel
+                    ),
+                    data.get("state"),
+                    data.get("levels_completed"),
+                )
+                continue
+            if is_reset:
                 previous = (
                     _normalize_grid(
                         np.asarray(data["frame"]), frame_channel=frame_channel

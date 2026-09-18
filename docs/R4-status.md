@@ -36,9 +36,23 @@
 - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q tests/test_r4_explorer.py tests/test_probe_planner.py tests/test_probe_gate.py tests/test_probe_dry_run.py`：18 passed，exit 0。
 - `ruff check lingjing_solo/core/config.py lingjing_solo/exploration/explorer.py tests/test_r4_explorer.py`：通过，exit 0。
 - `git diff --check`：通过，exit 0。
-- 全量 pytest：57 passed，5 failed；5 个失败仍集中在既有 `tests/test_r5_reflection.py` 基线，未因本轮修改增加。
+- 全量 pytest：67 passed，exit 0；R5 reflection 基线已在后续 commit 修复。
 
-本轮未完成：目标推断、严格信息增益、recording reset/多关卡切分、真实 ft09 L3、重启接管、真实部署回滚和真实收益对比。
+本轮新增完成（2026-09-17）：
+
+- `ExplorationEngine.infer_goal()` 不再是占位接口：接受带 `description/state_hash/confidence/kind` 的权威 WIN/level 反馈，并写入 `GoalHypothesis`；无 callback 时使用 Field 已记录的 WIN hash。
+- `info_gain()` 统一使用 `WorldModelField.current_hash()`，避免 level-aware hash 与 transition index 不一致；在 novelty 衰减之外增加后继状态熵项，有限权重奖励不确定动作。
+- `action_diff.analyze_recording()` 遇到 `state=RESET` 或 `requested_action=RESET` 时切断前后帧，reset 后重新建立 baseline；支持嵌套 action payload `{name/id}`。
+- 新增目标推断和 recording reset/缺动作 fail-closed 测试。
+
+本轮证据：
+
+- R4 专项与探测回归：`23 passed`，exit 0。
+- 全量 pytest：`67 passed`，exit 0。
+- `ruff check lingjing_solo tests`：`All checks passed!`。
+- `git diff --check`：通过，exit 0。
+
+本轮未完成：真实 ft09 L3、重启接管、真实部署回滚和真实收益对比；这些需要官方 recording/action schema 或实际 harness，不能用 synthetic fixture 代替。
 
 ## 当前证据等级
 

@@ -7,6 +7,9 @@
 
 注意：此层不调用 LLM，全部轻量计算，契合 RHAE 步数经济。
 """
+from collections import Counter
+from math import log2
+
 from ..core import Logger, SoloConfig
 
 
@@ -29,11 +32,23 @@ class ExplorationEngine:
         """
         current = self.field.grid_state
         if current is not None:
-            from ..core import hash_grid
-            shash = hash_grid(current)
+            shash = self.field.current_hash()
             used = len(self.field.transition_index.get((shash, action), []))
             # 未尝试动作优先；重复动作的收益随次数衰减。
-            return 1.0 / (1.0 + used)
+            novelty = 1.0 / (1.0 + used)
+            transitions = self.field.transition_index.get((shash, action), [])
+            if not transitions:
+                return novelty
+            successor_counts = Counter(t.state_after for t in transitions)
+            total = len(transitions)
+            entropy = -sum(
+                (count / total) * log2(count / total)
+                for count in successor_counts.values()
+            )
+            # 后继越不确定，动作越值得再次探测；权重限制在小范围，
+            # 避免不确定性压过未探索动作的基础优先级。
+            return novelty + min(0.25, 0.25 * entropy)
+
         # 若无历史，所有动作等权（随机试探）
         if len(self.field.transition_table) == 0:
             return 1.0
@@ -147,5 +162,24 @@ class ExplorationEngine:
 
     # ---------- 目标假设推断 ----------
     def infer_goal(self, win_callback) -> str:
-        """从外部 win 信号反推目标（占位接口，由 harness 注入反馈）。"""
-        return "unknown"
+        """把权威 WIN/level 反馈转为可审计目标假设。
+
+        ``win_callback`` 可返回 ``{description, state_hash, confidence, kind}``；
+        也可为 ``None``，此时使用 Field 已记录的 WIN 哈希。
+        """
+        feedback = win_callback(self.field) if callable(win_callback) else None
+        if isinstance(feedback, dict):
+            state_hash = str(feedback.get("state_hash") or self.field.current_hash())
+            description = str(feedback.get("description") or (f"win:{state_hash}" if state_hash else "unknown"))
+            confidence = max(0.0, min(1.0, float(feedback.get("confidence", 1.0))))
+            kind = str(feedback.get("kind") or "win")
+            if state_hash:
+                self.field.update_goal(description, confidence, state_hash=state_hash, kind=kind)
+            return description
+        if self.field.win_hashes:
+            state_hash = sorted(self.field.win_hashes)[-1]
+            description = f"win:{state_hash}"
+            self.field.update_goal(description, 1.0, state_hash=state_hash, kind="win")
+            return description
+        goals = sorted(self.field.goals, key=lambda goal: goal.confidence, reverse=True)
+        return goals[0].description if goals else "unknown"
