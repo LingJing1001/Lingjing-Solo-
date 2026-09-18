@@ -2,7 +2,9 @@ import json
 
 import numpy as np
 
+from lingjing_solo.core import Frame, SoloConfig
 from lingjing_solo.exploration.action_diff import analyze_recording
+from lingjing_solo.world_model.field import WorldModelField
 
 
 def write_jsonl(path, records):
@@ -32,6 +34,32 @@ def test_recording_reset_starts_a_new_baseline(tmp_path):
     assert [delta.action for delta in deltas] == ["ACTION1", "ACTION2"]
     assert deltas[1].player_before == (3.0, 1.0)
     assert deltas[1].levels_completed_after == 1
+
+
+def test_ls20_frame_data_schema_replays_into_r4_field():
+    grid0 = np.zeros((64, 64), dtype=np.int8)
+    grid1 = grid0.copy(); grid1[10, 10] = 1
+    grid2 = grid1.copy(); grid2[10, 11] = 1
+    frames = [
+        {"frame": grid0.tolist(), "state": "NOT_FINISHED", "levels_completed": 0},
+        {"frame": grid1.tolist(), "state": "NOT_FINISHED", "levels_completed": 0,
+         "requested_action": {"name": "ACTION3", "id": 3}},
+        {"frame": grid2.tolist(), "state": "WIN", "levels_completed": 1,
+         "requested_action": {"name": "ACTION4", "id": 4}},
+    ]
+    field = WorldModelField(SoloConfig())
+    previous = None
+    for tick, data in enumerate(frames):
+        current = Frame(np.asarray(data["frame"], dtype=np.int8), t=tick,
+                        state=data["state"], levels_completed=data["levels_completed"])
+        action = data.get("requested_action", {}).get("name") if data.get("requested_action") else None
+        field.update(current, previous, action)
+        previous = current
+
+    assert len(field.transition_table) == 2
+    assert field.levels == 1
+    assert field.env_state == "WIN"
+    assert field.win_hashes
 
 
 def test_recording_rejects_missing_action_after_baseline(tmp_path):

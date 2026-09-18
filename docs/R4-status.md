@@ -52,11 +52,11 @@
 - `ruff check lingjing_solo tests`：`All checks passed!`。
 - `git diff --check`：通过，exit 0。
 
-本轮未完成：真实 ft09 L3、重启接管、真实部署回滚和真实收益对比；这些需要官方 recording/action schema 或实际 harness，不能用 synthetic fixture 代替。
+本轮未完成：真实 ft09 L3、重启接管、真实部署回滚和真实收益对比；LS20 schema replay 已接入 R4 离线验证，但不替代未知游戏的真实探索证据。
 
 ## 当前证据等级
 
-`L1`：离线与 synthetic fixture 闭环通过；尚未宣称真实 ft09 L3。
+`L1`：离线、LS20 schema replay 与 synthetic fixture 闭环通过；尚未宣称真实 ft09 L3。
 
 ## 验收标准
 
@@ -77,7 +77,7 @@
 - `restart_adoption`：未验证。
 - `rollback`：feature flag 关闭时返回空 action plan；通过专项测试；真实部署回滚未验证。
 - `security_permissions`：未验证真实部署目录权限；测试只写入临时目录。
-- `integration`：真实 harness、recording、action payload 尚未接入；本轮只验证 Field/Learner context 的离线传递。
+- `integration`：LS20 FrameData/requested_action schema 已通过 replay 接入 Field；真实 harness、ft09 recording 和真实 action payload 仍未接入。
 
 ## 阻塞与未验证项
 
@@ -93,6 +93,9 @@
 3. 在真实环境仅开放 observe-only，再评估 click 动作；
 4. 补齐 hypothesis space / Φ 证据的真实 Field/Learner 消费端，并验证 ft09/r11l 共用候选 schema；
 5. 基线导入问题修复后运行全量测试，并补充重启接管、回滚和集成验证。
+
+- LS20 schema replay：`tests/test_r4_recording_boundaries.py::test_ls20_frame_data_schema_replays_into_r4_field` 通过；与 RESET/缺 action 边界合计 recording 定向测试 3 passed。
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q tests/test_r4_recording_boundaries.py tests/test_r4_explorer.py tests/test_r4_goal_inference.py`：10 passed，exit 0。
 
 ## 本轮验证记录
 
