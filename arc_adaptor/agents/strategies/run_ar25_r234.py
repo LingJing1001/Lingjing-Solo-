@@ -183,6 +183,131 @@ def _generate_actions(ax, ap, movable, combo, atype, ax_idx, sel0, n_sw):
     return actions
 
 # ═══════════════════════════════════════════════════════════
+# R3-A2: 双轴目标分解 (L6+ 的 h+v 双镜像轴关卡)
+# ═══════════════════════════════════════════════════════════
+
+def _dual_reflect_chain(cells, vx, hy, max_depth=12):
+    """双轴反射闭包: 与 ar25.py skqtojxvbv 相同的 BFS 级联 (深度≤12)。"""
+    seen = set(cells)
+    stack = [(x, y, 0) for x, y in cells]
+    while stack:
+        x, y, d = stack.pop()
+        if d >= max_depth:
+            continue
+        for nx, ny in ((2 * vx - x, y), (x, 2 * hy - y)):
+            if (nx, ny) not in seen:
+                seen.add((nx, ny))
+                stack.append((nx, ny, d + 1))
+    return seen
+
+def _dual_enum_positions(sprite, vx, hy, targets):
+    """枚举拼块平移位置, 返回 {覆盖集: (ox, oy, 距离)} 的去重字典。"""
+    cells = sprite["cells"]
+    sx, sy = sprite["x"], sprite["y"]
+    cand = {}
+    for tx, ty in targets:
+        for cx, cy in cells:
+            ox, oy = tx - cx, ty - cy
+            abs_cells = {(ox + dx, oy + dy) for dx, dy in cells}
+            cov = frozenset(_dual_reflect_chain(abs_cells, vx, hy) & targets)
+            if not cov:
+                continue
+            d = abs(ox - sx) + abs(oy - sy)
+            if cov not in cand or d < cand[cov][2]:
+                cand[cov] = (ox, oy, d)
+    return cand
+
+def solve_goal_decomp_dual(g, perc):
+    """R3 双轴目标分解: 枚举 (h_y, v_x) × 拼块位置, 找全覆盖组合。
+
+    覆盖判定与引擎 skqtojxvbv 的反射级联一致;
+    拼块拼接用按覆盖大小的贪心, 组合数超阈值时截断。
+    """
+    if perc["n_axes"] != 2:
+        return None
+    h_axis = next((a for a in perc["axes"] if a["type"] == 'h'), None)
+    v_axis = next((a for a in perc["axes"] if a["type"] == 'v'), None)
+    movable = perc["movable"]
+    if h_axis is None or v_axis is None or not movable:
+        return None
+    targets = perc["targets"]
+    h_idx = next((s["idx"] for s in perc["switch_order"] if s["is_axis"] and s["x"] == h_axis["x"] and s["y"] == h_axis["y"]), None)
+    v_idx = next((s["idx"] for s in perc["switch_order"] if s["is_axis"] and s["x"] == v_axis["x"] and s["y"] == v_axis["y"]), None)
+    n_sw = perc["n_switch"]
+    sel0 = perc["sel_idx"]
+    budget = perc["budget"]
+    print(f"  [R3 双轴分解] h@({h_axis['x']},{h_axis['y']}) v@({v_axis['x']},{v_axis['y']}) "
+          f"拼块数={len(movable)} 目标={len(targets)}")
+    best = None
+    for hy in range(BOARD):
+        for vx in range(BOARD):
+            cand_list = [_dual_enum_positions(s, vx, hy, targets) for s in movable]
+            if any(not c for c in cand_list):
+                continue
+            axis_cost = abs(hy - h_axis["y"]) + abs(vx - v_axis["x"])
+            # 贪心拼接: 每块选剩余覆盖最大的放置
+            uncovered = set(targets)
+            picked = []
+            spr_cost = 0
+            feasible = True
+            for s, cand in zip(movable, cand_list):
+                ranked = sorted(cand.items(), key=lambda kv: -len(kv[0] & uncovered))
+                cov, (ox, oy, d) = ranked[0]
+                uncovered -= cov
+                picked.append((s["idx"], ox, oy))
+                spr_cost += d
+            if uncovered:
+                continue
+            # 切换成本: 两轴 + 拼块按序
+            order = []
+            if h_idx is not None:
+                order.append(h_idx)
+            if v_idx is not None:
+                order.append(v_idx)
+            order.extend(p[0] for p in picked)
+            switch_cost = 0
+            cur = sel0
+            for idx in order:
+                switch_cost += (idx - cur) % n_sw
+                cur = idx
+            cost = axis_cost + spr_cost + switch_cost
+            if best is None or cost < best[0]:
+                best = (cost, hy, vx, picked, h_idx, v_idx)
+    if best is None:
+        return None
+    cost, hy, vx, picked, h_idx, v_idx = best
+    print(f"  [R3 双轴分解] ✓ 全覆盖! h_y→{hy} v_x→{vx} cost={cost} picks={picked}")
+    return _dual_generate_actions(h_axis, v_axis, hy, vx, picked, h_idx, v_idx,
+                                  perc, n_sw, sel0)
+
+def _dual_generate_actions(h_axis, v_axis, hy, vx, picked, h_idx, v_idx,
+                           perc, n_sw, sel0):
+    actions = []
+    cur = sel0
+    for idx, target_y, sprite in ((h_idx, hy, h_axis), (v_idx, vx, v_axis)):
+        if idx is None:
+            continue
+        for _ in range((idx - cur) % n_sw):
+            actions.append(5)
+        cur = idx
+        if sprite is h_axis:
+            dy = target_y - h_axis["y"]
+            actions.extend([2] * dy if dy > 0 else [1] * (-dy))
+        else:
+            dx = vx - v_axis["x"]
+            actions.extend([4] * dx if dx > 0 else [3] * (-dx))
+    by_idx = {s["idx"]: s for s in perc["movable"]}
+    for s_idx, ox, oy in picked:
+        for _ in range((s_idx - cur) % n_sw):
+            actions.append(5)
+        cur = s_idx
+        s = by_idx[s_idx]
+        dx, dy = ox - s["x"], oy - s["y"]
+        actions.extend([4] * dx if dx > 0 else [3] * (-dx))
+        actions.extend([2] * dy if dy > 0 else [1] * (-dy))
+    return actions
+
+# ═══════════════════════════════════════════════════════════
 # R3-B: 状态空间搜索
 # ═══════════════════════════════════════════════════════════
 
@@ -399,7 +524,7 @@ def r234_solve(env, t_limit=60, level_idx=0):
           f"覆盖={perc['covered']}/{perc['total_targets']} "
           f"预算={perc['budget']}")
 
-    # 1. R3 目标分解 (单轴关卡)
+    # 1a. R3 目标分解 (单轴关卡)
     if perc["n_axes"] == 1 and perc["atype"] != '?':
         path = solve_goal_decomp(g, perc)
         if path is not None:
@@ -412,6 +537,21 @@ def r234_solve(env, t_limit=60, level_idx=0):
                 print(f"  [R3-目标分解] 验证失败({len(path)}步未通关)")
             except Exception as e:
                 print(f"  [R3-目标分解] 执行异常: {e}")
+            _restore(g, snap)
+
+    # 1b. R3 双轴目标分解 (L6+ 的 h+v 关卡)
+    if perc["n_axes"] == 2:
+        path = solve_goal_decomp_dual(g, perc)
+        if path is not None:
+            snap = _snapshot(g)
+            try:
+                for a in path:
+                    g.perform_action(ActionInput(id=ACT_MAP[a], data={}, reasoning=None), raw=True)
+                if int(g._current_level_index) > li0 or is_won(g):
+                    return path, "R3-双轴分解"
+                print(f"  [R3-双轴分解] 验证失败({len(path)}步未通关)")
+            except Exception as e:
+                print(f"  [R3-双轴分解] 执行异常: {e}")
             _restore(g, snap)
 
     # 2. R3 arc_shadow (L6+)
