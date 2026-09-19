@@ -1,5 +1,6 @@
 from .search import SearchEngine, LightweightPlanner
 from .advisor import StrategicAdvisor, LLMPlanner
+from .ls20_solver import Ls20Solver, Ls20Solver as LS20Solver, looks_like_ls20
 
 # 搜索算法
 from .search import astar_search, bfs_search, dfs_search
@@ -19,7 +20,7 @@ from .simulator import AR25Simulator
 
 __all__ = [
     "LightweightPlanner", "LLMPlanner",
-    "SearchEngine", "StrategicAdvisor",
+    "SearchEngine", "StrategicAdvisor", "Ls20Solver", "LS20Solver", "looks_like_ls20",
     "astar_search", "bfs_search", "dfs_search",
     "AStarResult", "BFSResult", "DFSResult",
     "get_solution",

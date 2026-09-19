@@ -474,6 +474,12 @@ class Ls20Solver:
         self._layout_wait = 0
         self._script_mode = False
         self._script_stall = 0
+        self._plan: list[str] = []
+
+    def reset(self) -> None:
+        """Reset solver state before a new official episode."""
+        cfg, log = self.cfg, self.log
+        self.__init__(cfg, log)
 
     def _try_load_script(self) -> bool:
         """Inject offline BFS script for current level if available."""
@@ -802,6 +808,25 @@ class Ls20Solver:
                 continue
             self.queue.append(act)
             return
+
+    def set_plan(self, actions: list[str]) -> None:
+        """Install a bounded explicit route for adapter-driven replay."""
+        self._plan = [canonicalize(action) for action in actions if action]
+        self.queue.clear()
+        self.queue.extend(self._plan)
+        self.active = True
+        self._script_mode = True
+
+    def next_action(self, grid: np.ndarray, legal_actions: list[str]) -> Optional[str]:
+        """Compatibility boundary for the ARC strategy adapter."""
+        current = _as_grid(grid)
+        if current is None:
+            return None
+        if self._last_grid is None or not self.active:
+            self.reset_level(current)
+        else:
+            self.observe(self._last_grid, current, None, self.levels_seen)
+        return self.plan(legal_actions)
 
     def observe(
         self,
