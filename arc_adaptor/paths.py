@@ -4,7 +4,7 @@
     环境变量显式指定 > 由本文件位置推导的项目内相对路径 > 同级官方 ARC checkout。
 
 解析不到游戏环境时 **fail-closed 抛错**，绝不静默回退到某个成员的本地目录：
-以前 runner 里写死 ``F:/pro/...``，换一台机器（WSL 成员是
+以前 runner 里写死某个成员的 Windows 盘符绝对路径，换一台机器（WSL 成员是
 ``/srv/agent-platform/projects/...``）就直接 ImportError，而且失败点离真正原因很远。
 
 用法：
