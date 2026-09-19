@@ -92,6 +92,9 @@ class SoloConfig:
     enable_undo: bool = False
     # enable_mouse / enable_click_sweep 见上方「泡壁点击」
     seed: int = 42
+    # 名字→引擎枚举的开关，**只由边界 adapter 读取**（`harness/kaggle_adapter.MyAgent`）。
+    # planner（`agent.py:_emit`）现在恒返回 abstract action name：以前在这里翻转会使得
+    # 返回类型取决于 arcengine 是否可 import，且让规划层知道了引擎枚举（违反 §3.2 兼容要求）。
     return_game_action: bool = True
     agent_id: str = "lingjing-etherealrealm-solo"
 

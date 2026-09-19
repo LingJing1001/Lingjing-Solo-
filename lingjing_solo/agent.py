@@ -20,19 +20,6 @@ from .reflection import ReflectionTrigger
 from .transfer import TransferLayer
 
 
-def _try_game_action(name: str):
-    try:
-        from arcengine import GameAction
-        key = canonicalize(name)
-        if hasattr(GameAction, key):
-            return getattr(GameAction, key)
-        if hasattr(GameAction, "from_name"):
-            return GameAction.from_name(key)
-    except Exception:
-        pass
-    return name
-
-
 class LingjingSoloAgent:
     """ZovaX / 灵境 Solo 化身（统一信息场 Φ + 6 模块编排）。"""
 
@@ -372,11 +359,16 @@ class LingjingSoloAgent:
             self._prev_frame = curr
         return self._emit(action)
 
-    def _emit(self, action: str):
-        action = canonicalize(action)
-        if self.cfg.return_game_action:
-            return _try_game_action(action)
-        return action
+    def _emit(self, action: str) -> str:
+        """出口恒定是 abstract action name（团队规范 §3.2 兼容要求）。
+
+        名字→引擎枚举不在这里做：那是边界 adapter 的事（ARC `agents/templates/lingjing_solo_agent.py`、
+        CEAX `examples/*` 自带的 `_to_action`、Kaggle `harness/kaggle_adapter.MyAgent`）。
+        原来这里读 `cfg.return_game_action` 再 `from arcengine import GameAction`，结果是
+        **返回类型取决于 arcengine 这一刻装没装上**——装得上返回枚举、装不上返回字符串，
+        调用方拿到什么全看环境，planner 也顺带知道了引擎的存在。
+        """
+        return canonicalize(action)
 
     @staticmethod
     def _to_grid(frame):
