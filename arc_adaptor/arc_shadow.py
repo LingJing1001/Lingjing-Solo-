@@ -15,8 +15,6 @@ import threading
 import time
 import heapq
 
-os.environ.setdefault("ARC_API_KEY", "f1d9f364-5ac8-4486-a4e9-6b9286de351f")
-
 _lock = threading.RLock()
 _env = None
 _game = None
