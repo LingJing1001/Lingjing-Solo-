@@ -1,6 +1,7 @@
 """ls20 专用求解：5 像素在线 BFS + 旋转台/调色台 + 多目标导航。"""
 from __future__ import annotations
 
+import os
 from collections import deque
 from typing import Optional
 
@@ -8,6 +9,28 @@ import numpy as np
 
 from ..core import SoloConfig, Logger, canonicalize
 from .script_bank import script_for_level
+
+#: 显式路线注入口（对齐 AR25 的 `explicit_plan`，见 agents/strategies/ar25.py:69）。
+LS20_PLAN_ENV = "LINGJING_LS20_PLAN"
+
+
+def explicit_plan_from_env() -> Optional[list[str]]:
+    """从 `LINGJING_LS20_PLAN` 读显式路线；没设置就返回 None（**不是空列表**）。
+
+    返回 None 与返回 [] 必须能区分：None = 没有注入，走罐头；[] 是没意义输入，
+    直接当没设置，否则一次误设就把线上 LS20 变成"零动作"。
+    """
+    raw = os.environ.get(LS20_PLAN_ENV, "").strip()
+    if not raw:
+        return None
+    names = [item.strip().upper() for item in raw.split(",") if item.strip()]
+    return names or None
+
+
+def route_for_level(level_index: int) -> list[str]:
+    """该关的罐头路线（abstract name 列表，如 `["ACTION3", ...]`）；没有则空列表。"""
+    return [str(action) for action in (script_for_level(int(level_index), "ls20") or [])]
+
 
 STEP = 5
 PLATFORM_CYCLE = 8
@@ -560,6 +583,14 @@ class Ls20Solver:
         self.color_toggles = 0
         self.max_color_toggles = 4
         self.levels_seen = 0
+        # §7.1 门槛 4「可验证配置注入 plan」：`_plan` 是**当前生效路线**的镜像，
+        # 在 __init__ 就播种，保证解析不出网格（线上首帧/坏帧）时也有值可查。
+        # 注入了就以注入序列为镜像——否则外部读到的 `_plan` 会是"以为在用、其实没用"的罐头。
+        self.explicit_plan: Optional[list[str]] = explicit_plan_from_env()
+        self._plan: list[str] = (list(self.explicit_plan) if self.explicit_plan
+                                 else route_for_level(self.levels_seen))
+        self._explicit_used = False               # 注入序列是否已消费（见 _try_load_script）
+        self._plan_level: Optional[int] = None if self.explicit_plan else self.levels_seen
         self.stall = 0
         self.wait_steps = 0
         self.active = False
@@ -580,13 +611,40 @@ class Ls20Solver:
         self._script_stall = 0
 
     def _try_load_script(self) -> bool:
-        """Inject offline BFS script for current level if available."""
+        """注入当前关的离线罐头路线；`LINGJING_LS20_PLAN` 显式注入时优先于它。
+
+        与 ARC 侧 `AR25Strategy` 同语义（那里用 `seeded_level = 99` 表达）：**一旦注入，
+        本局就不再回到罐头路线**——注入序列用完之后交给在线规划，而不是"这关没注入就
+        继续用脚本"。否则 `LINGJING_LS20_PLAN` 的含义会随关卡号变化，线上想拿它复现一条
+        指定路线也做不到。
+        """
+        if self.explicit_plan:
+            if self._explicit_used:               # 注入序列已用完：交给在线规划
+                self._script_mode = False
+                self._plan = []
+                return False
+            self._explicit_used = True
+            self._plan = list(self.explicit_plan)
+            self._plan_level = self.levels_seen
+            self.queue.clear()
+            self.queue.extend(self._plan)
+            self._script_mode = True
+            self._script_stall = 0
+            self._phase = "script"
+            self.active = True
+            self.log.log("ls20", f"explicit plan L{self.levels_seen + 1}: {len(self._plan)} acts")
+            return True
+
         script = script_for_level(self.levels_seen, "ls20")
         if not script:
             self._script_mode = False
+            self._plan = []               # 镜像必须跟当关走，不能留着上一关的路线
+            self._plan_level = self.levels_seen
             return False
         self.queue.clear()
         self.queue.extend(script)
+        self._plan = [str(action) for action in script]
+        self._plan_level = self.levels_seen
         self._script_mode = True
         self._script_stall = 0
         self._phase = "script"
@@ -1196,6 +1254,7 @@ class Ls20Solver:
                 if self._script_stall >= 8:
                     # Script stuck — fall back to online BFS planner.
                     self._script_mode = False
+                    self._plan = []               # 镜像：路线已经放弃了
                     self.queue.clear()
                     self._script_stall = 0
                     self._phase = "pad" if self.mod_tasks else "goal"
@@ -1228,6 +1287,7 @@ class Ls20Solver:
                 self._prev_player_xy = self.player_xy
                 return
             self._script_mode = False
+            self._plan = []                       # 镜像：罐头跑完了，接下来是现算的
             # Script exhausted without level-up — resume heuristic planner.
             if not self.queue:
                 self._phase = "pad" if self.mod_task_idx < len(self.mod_tasks) else "goal"

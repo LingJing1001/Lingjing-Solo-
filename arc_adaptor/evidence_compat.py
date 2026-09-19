@@ -15,6 +15,32 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+try:                                        # plan 契约（§3.2 九字段）是纯 stdlib 模块
+    from lingjing_solo.planning.plan_contract import validate_plan
+except ImportError:                         # 装不到就只允许"不带 plan"的旧行通过
+    validate_plan = None                    # noqa: N816
+
+
+def _check_plan(tick: dict) -> dict:
+    """tick 自带 plan 时过一遍 §3.2 契约；不带（或 plan=None）放过，兼容既有 recording。
+
+    放在这里而不是让各运行器自觉调用：落盘即校验，才能防止"plan 写进 recording 但没人
+    检查过它的九个字段"——那等于给证据装了个空闸门。
+    """
+    plan = tick.get("plan")
+    if plan is None:
+        return tick
+    if validate_plan is None:
+        raise EvidenceValidationError(
+            "tick 带了 plan 但 lingjing_solo.planning.plan_contract 不可用，无法校验九字段")
+    try:
+        # 读取路径不查 planner 注册表：注册表由运行器 import 时填写，独立审计进程里没有它。
+        validate_plan(plan, require_registered_planner=False)
+    except Exception as exc:                # 契约异常类型两边一致地转成证据异常
+        raise EvidenceValidationError(f"tick plan 不符合 §3.2 契约: {exc}") from exc
+    return tick
+
+
 try:                                        # 合并后走这里
     from lingjing_solo.evidence.protocol import (  # noqa: F401
         EvidenceValidationError, ReplayResult, SCHEMA_VERSION, build_manifest,
@@ -22,6 +48,15 @@ try:                                        # 合并后走这里
         validate_manifest, validate_tick, validate_verification_report,
     )
     BACKEND = "lingjing_solo.evidence.protocol"
+
+    # protocol 版本还没长 plan 字段：这里包一层，合并后 `build_tick(plan=...)` 不会 TypeError。
+    _protocol_build_tick, _protocol_validate_tick = build_tick, validate_tick
+
+    def build_tick(*, plan: dict | None = None, **kwargs) -> dict:  # noqa: F811
+        return _check_plan({**_protocol_build_tick(**kwargs), "plan": plan})
+
+    def validate_tick(value: dict) -> dict:  # noqa: F811
+        return _check_plan(_protocol_validate_tick(value))
 except ImportError:                         # 合并前走这里（等价实现）
     BACKEND = "arc_adaptor.evidence_compat(fallback)"
 
@@ -68,6 +103,7 @@ except ImportError:                         # 合并前走这里（等价实现�
                    levels_completed: int, legal_actions: list, state_hash: str,
                    requested_action: dict | None = None, settled_frame: bool = True,
                    score: float | None = None, plan_id: str | None = None,
+                   plan: dict | None = None,
                    decision_id: str | None = None, reflection_id: str | None = None,
                    evidence_refs: list | None = None,
                    game_specific: dict | None = None) -> dict:
@@ -77,6 +113,9 @@ except ImportError:                         # 合并前走这里（等价实现�
             "settled_frame": settled_frame, "state": state,
             "levels_completed": levels_completed, "score": score,
             "legal_actions": legal_actions, "state_hash": state_hash, "plan_id": plan_id,
+            # plan 与 plan_id 并存：plan_id 是 join 键（旧行只有它），plan 是 §3.2 的九字段产物。
+            # plan.input_state_hash 应等于上一行的 state_hash——这正是"计划相对哪个局面"的闭环。
+            "plan": plan,
             "decision_id": decision_id, "reflection_id": reflection_id,
             "evidence_refs": evidence_refs or [], "game_specific": game_specific or {},
         })
@@ -123,6 +162,7 @@ except ImportError:                         # 合并前走这里（等价实现�
             raise EvidenceValidationError("legal_actions must be a list of non-empty strings")
         if not isinstance(value["game_specific"], dict) or not isinstance(value["evidence_refs"], list):
             raise EvidenceValidationError("tick extensions/evidence_refs have invalid types")
+        _check_plan(value)
         _json_safe(value, "tick")
         return value
 

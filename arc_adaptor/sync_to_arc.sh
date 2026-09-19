@@ -26,6 +26,9 @@ cp -R "$SCRIPT_DIR/agents/strategies/." agents/strategies/
 cp "$SCRIPT_DIR/tests/test_lingjing_solo_agent.py" tests/unit/test_lingjing_solo_agent.py
 cp "$SCRIPT_DIR/tests/test_action_recording.py" tests/unit/test_action_recording.py
 cp "$SCRIPT_DIR/tests/test_r11l_probe.py" tests/unit/test_r11l_probe.py
+# 统一 R3 plan 契约（§3.2 九字段）：只依赖 stdlib + editable 装的 lingjing_solo，
+# 在 ARC 里跑它才算"契约在线上包内可用"，在本仓库跑只证明它自己能 import。
+cp "$LINGJING_ROOT/tests/test_plan_contract.py" tests/unit/test_plan_contract.py
 cp "$SCRIPT_DIR/tools/ls20_single_action_probe.py" tools/ls20_single_action_probe.py
 cp "$SCRIPT_DIR/tools/r11l_single_action_probe.py" tools/r11l_single_action_probe.py
 
@@ -42,11 +45,15 @@ printf 'arc_commit=%s\n' "$(git rev-parse HEAD)"
 printf 'synced_files:\n'
 printf '%s\n' \
   agents/templates/lingjing_solo_agent.py \
-  agents/__init__.py \
+  agents/strategies/ \
   tests/unit/test_lingjing_solo_agent.py \
   tests/unit/test_action_recording.py \
   tests/unit/test_r11l_probe.py \
+  tests/unit/test_plan_contract.py \
   tools/ls20_single_action_probe.py \
   tools/r11l_single_action_probe.py
+# agents/__init__.py **不在**上面：规则 2 要求不覆盖 ARC 原生 exports，
+# 策略注册是 ARC checkout 里的手工步骤（改了要单独 git diff 复核，别当成同步产物）。
+printf 'agents/__init__.py=NOT_SYNCED (register strategies manually, see docs/ARC-AGI3-adapter-architecture.md)\n'
 
 git diff --check

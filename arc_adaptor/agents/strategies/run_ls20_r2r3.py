@@ -53,7 +53,17 @@ from arcengine import ActionInput, GameAction, GameState  # noqa: E402
 
 import evidence_compat as ev  # noqa: E402
 import r2_ls20 as r2  # noqa: E402
+from lingjing_solo.planning import plan_contract as pc  # noqa: E402
 from lingjing_solo.planning.ls20_solver import Ls20Solver, _walkable  # noqa: E402
+
+# 本运行器的 planner 分层（§7.1「引用 state hash」之外的另一半：统计口径不能各写各的）。
+# 名字必须与 plan() 里实际吐出的保持一致，validate_plan 会拒未登记的名字。
+pc.register_planner("r3_ls20_solver",
+                    "已验证的 Ls20Solver：_script_mode 下是离线 BFS 罐头回放，否则是在线单步重规划")
+pc.register_planner("r3_layout_wait", "换关布局渲染滞后：ACTION1 原地补一步，等当关布局出现")
+pc.register_planner("r3_position_astar", "位置 A*：三元组已被目标接受时直达目标格（r2_ls20 观测驱动）")
+pc.register_planner("r3_joint_bfs", "影子引擎上 位置×三元组 联合 BFS（reset+重放，最后兜底）")
+pc.register_planner("r3_none", "本 tick 所有 planner 都拿不出动作（决策失败，不是没跑）")
 
 sys.setrecursionlimit(10000)
 ACT_BY_NUM = {n: getattr(GameAction, f"ACTION{n}") for n in (1, 2, 3, 4)}
@@ -310,25 +320,35 @@ class R3Planner:
             if path:
                 planner = "r3_joint_bfs"
                 self.notes.append(f"{obs['observation_id']}: replay BFS 兜底接管")
-        plan = {
-            "plan_id": f"{obs['observation_id']}-{planner}",
-            "planner": planner,
-            "input_state_hash": obs["state_hash"],
-            "candidate_actions": [NAME_BY_NUM[n] for n in path],
-            "expected_goal": "reach_goal_cell",
-            "cost": len(path) if path else None,
-            "search_budget": self.budget,
-            "search_seconds": round(time.monotonic() - started, 2),
+        # validity 只声明能站得住的话：罐头解是离线跑出来的（`verified_offline`，附来源），
+        # 在线单步重规划和 A*/BFS 搜索结果只是「当场算出来的候选」，等 `_verify_and_return`
+        # 那种回放验证过了才升级——§10 禁止把没验过的说成验过。
+        replayed_from_script = planner == "r3_ls20_solver" and bool(self.solver._script_mode)
+        evidence_refs = [obs["observation_id"]]
+        if replayed_from_script:
+            evidence_refs.append(f"script_bank:ls20:L{self.solver.levels_seen}")
+        plan = pc.build_plan(
+            planner=planner,
+            input_state_hash=obs["state_hash"],
+            candidate_actions=[NAME_BY_NUM[n] for n in path],
+            legal_actions=obs["legal_actions"],
+            # 目标分解产物化（设计文档 §7.5 第二条缺口）：不再是常量占位，
+            # 而是"这 tick 还差什么"——剩余目标 + 当前修饰台任务。
+            expected_goal=(f"{planner}:remaining_goals={len(self.solver.goals) - self.solver.goal_idx}"
+                           f":mod_task={self.solver.mod_kind if self.solver.mod_tasks else 'none'}"),
+            cost=len(path) if path else None,
+            search_budget=self.budget,
             # 预算约束的现场：还剩几个动作、还剩几条命、搜索为此砍掉了多少分支
-            "budget_moves": r2.moves_left(obs),
-            "steps_left": spec.get("steps_left"),
-            "lives": spec.get("lives"),
-            "joint_pruned_branches": self.last_joint_stats.get("pruned"),
-            "validity": "verified_offline" if planner.startswith("r3_ls20_solver")
-            or planner == "r3_layout_wait" else ("candidate" if path else "none"),
-            "solver_phase": getattr(self.solver, "_phase", None),
-            "evidence_refs": [obs["observation_id"]],
-        }
+            validity="verified_offline" if replayed_from_script
+            else ("candidate" if path else "none"),
+            evidence_refs=evidence_refs,
+            search_seconds=round(time.monotonic() - started, 2),
+            budget_moves=r2.moves_left(obs),
+            steps_left=spec.get("steps_left"),
+            lives=spec.get("lives"),
+            joint_pruned_branches=self.last_joint_stats.get("pruned"),
+            solver_phase=getattr(self.solver, "_phase", None),
+        )
         return plan
 
 
@@ -438,15 +458,31 @@ def main() -> int:
     planner = R3Planner(arcade, gid, budget)
     planner.observe(grid, levels_seen)
     actions_legal = True
+    # §7.5「planner 是否真的接管」要能被机器读到：只写"跑通了几个关卡"看不出是哪层在决策。
+    plan_tally: dict[str, int] = {}
+    validity_tally: dict[str, int] = {}
+    hash_linked = True
     verdict = "FAIL"
     for tick in range(1, max_ticks + 1):
-        plan = planner.plan(prev_obs, grid)
+        try:
+            plan = planner.plan(prev_obs, grid)
+        except pc.PlanContractError as exc:
+            # 契约不满足 ≠ 可以继续跑：宁可 BLOCKED，也不写一份"plan 没自检过"的证据。
+            planner.notes.append(f"tick {tick}: plan 契约校验失败 -> {exc}")
+            print(f"{tick:>4} {'-':<9} {'契约失败':<19} {exc} → 停")
+            verdict = "BLOCKED"
+            break
         if not plan["candidate_actions"]:
             print(f"{tick:>4} {'-':<9} {plan['planner'] + ' 无解':<19} 计划失败 → 停")
             verdict = "BLOCKED"
             break
         num = NUM_BY_NAME[plan["candidate_actions"][0]]
         action_name = NAME_BY_NUM[num]
+        plan_tally[plan["planner"]] = plan_tally.get(plan["planner"], 0) + 1
+        validity_tally[plan["validity"]] = validity_tally.get(plan["validity"], 0) + 1
+        # 「引用 state hash」不能只靠字段存在：它必须就是上一 tick 真被记录过的那个状态哈希，
+        # 否则 plan 与观测之间没有任何绑定，九字段就成了自说自话。
+        hash_linked &= prev_obs["state_hash"] == plan["input_state_hash"]
         actions_legal &= action_name in prev_obs["legal_actions"]
         frame = env.step(ACT_BY_NUM[num], data=None)
         grid = r2.to_grid(frame)
@@ -463,7 +499,7 @@ def main() -> int:
             settled_frame=True, state=obs["state"],
             levels_completed=int(obs["levels_completed"]), score=None,
             legal_actions=obs["legal_actions"], state_hash=obs["state_hash"],
-            plan_id=plan["plan_id"], evidence_refs=[prev_obs["observation_id"]],
+            plan_id=plan["plan_id"], plan=plan, evidence_refs=[prev_obs["observation_id"]],
             game_specific={"triple_current": obs["game_specific"]["triple_current"],
                            "triple_required": obs["game_specific"]["triple_required"],
                            "steps_left": obs["game_specific"]["steps_left"],
@@ -504,18 +540,20 @@ def main() -> int:
                 schema_ok, schema_err = False, f"line {line_number}: {exc}"
                 break
 
-    if verdict in ("PASS", "FAIL") and not (replay_ok and schema_ok and actions_legal):
+    if verdict in ("PASS", "FAIL") and not (replay_ok and schema_ok and actions_legal and hash_linked):
         verdict = "BLOCKED"          # §10：证据不自洽就当没通过，不做替换
     report = ev.build_verification_report(
         run_id=run_id, tier="offline_engine", verdict=verdict,
         criteria={"schema_valid": schema_ok, "actions_legal": actions_legal,
                   "replay_complete": replay_ok,
+                  "plan_hash_linked": hash_linked,
                   "terminal_verified": verdict in ("PASS", "FAIL"),
                   "levels_completed": levels_seen},
         # 引擎的 _current_level_index 是「当前关卡下标」；最后一关通关时它不再 +1，
         # 所以 WIN 时的实际通关数 = levels_seen + 1，两个量都写清楚，别让读的人猜。
         metrics={"actions": actions_taken, "scripts_disabled": no_scripts,
                  "level_index": levels_seen,
+                 "plans_by_planner": plan_tally, "plans_by_validity": validity_tally,
                  "levels_cleared": levels_seen + 1 if verdict == "PASS" else levels_seen,
                  "levels_completed": levels_seen},
         evidence_refs=["recording.jsonl", "manifest.json"],
@@ -539,6 +577,8 @@ def main() -> int:
     (run_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
                                            encoding="utf-8")
     print(f"\nverdict={verdict} actions={actions_taken} levels={levels_seen}")
+    print(f"plans={dict(sorted(plan_tally.items()))} validity={dict(sorted(validity_tally.items()))} "
+          f"hash_linked={hash_linked}")
     print(f"RESULT_DIR={run_dir}")
     return 0 if verdict == "PASS" else 1
 
