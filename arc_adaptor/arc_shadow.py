@@ -430,4 +430,20 @@ def learn_solve_level(t_limit=120.0, max_configs=32):
         # 保存最优解
         _save_solution(level_idx0, result.path)
         return result.path
+
+    # 最小闭环的安全回退：几何 learner 只负责提出候选；
+    # 候选全部被 live engine 拒绝时，使用同一官方引擎做有界搜索。
+    # solve_level() 返回前会恢复搜索快照，随后由 replay() 重新执行并
+    # 验证关卡推进，因此不会把“找到路径”误报成“真实通关”。
+    with _lock:
+        try:
+            # learner 的每次 replay 都会改变 live game；搜索必须从同一
+            # 个关卡起点开始，否则搜索路径与随后 replay 的起点不一致。
+            _env.reset()
+        except Exception:
+            return None
+    fallback_path = solve_level(t_limit=t_limit, max_nodes=600000)
+    if fallback_path is not None and replay(fallback_path):
+        _save_solution(level_idx0, fallback_path)
+        return fallback_path
     return None
