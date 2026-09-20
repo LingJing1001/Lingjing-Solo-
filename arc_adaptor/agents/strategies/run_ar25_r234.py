@@ -18,23 +18,96 @@ R4 剪枝: 动作效果反馈 + 覆盖进度 + 反循环 (贪心回退)
   L6:    总900s (双轴+复杂, beam 300s + arc_shadow 600s)
   L7:    总900s (双轴+旋转块, 同上)
   L8:    总900s (最高难度)
+
+R3 出口（设计文档 §8.8 / 团队规范 §3.2）:
+  各 planner 一律返回 abstract action name（"ACTION1".."ACTION5"）序列，
+  name → GameAction/ActionInput 的转换只发生在下面的边界块；
+  `r234_solve` 返回 `(path, method, plan)`，plan 是当场过 `validate_plan` 的九字段产物，
+  每关一份，随 `result.json` 的 `levels[i]["plan"]` 落盘。
 """
-import sys, os, time, heapq, itertools, json
+import sys, os, time, heapq, itertools, json, hashlib
 os.environ.setdefault("MPLBACKEND", "Agg")
 sys.stdout.reconfigure(encoding='utf-8')
-sys.path.insert(0, r"F:/pro/Lingjing-Solo-/arc_adaptor")
-sys.path.insert(0, r"F:/pro/Lingjing-Solo-backup-20260916-125530/arc_adaptor")
+# 用自身位置推导 arc_adaptor，绝不写死成员本地 checkout 路径（§3.2）
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
+from paths import add_to_sys_path, environments_dir, state_dir, git_output  # noqa: E402
+
+add_to_sys_path()
 
 import numpy as np
 from arc_agi import Arcade, OperationMode
 from arcengine import GameAction, ActionInput, GameState
 from arc_shadow import _snapshot, _restore, _state_key, _heuristic, KNOWN_SOLUTIONS
+from lingjing_solo.planning import plan_contract as pc  # noqa: E402
 
+# ═══════════════════════════════════════════════════════════
+# §3.2 边界：planner 只认识 abstract action name（"ACTIONn" 字符串），
+# name → GameAction/ActionInput 的转换只发生在本块（团队规范 §3.2 兼容要求第一条 + 规则 5）。
+# `tests/test_abstract_action_boundary.py` 的 AST 闸门只扫 `lingjing_solo/**`，管不到本文件，
+# 所以这里的收口靠"除本块之外不得出现 ActionInput(...)"这一条约定 + 8.8 的回归测试。
+# ═══════════════════════════════════════════════════════════
+
+#: 仅供 arc_shadow 的 int 键 API（`_num2act` / `_act2num` / `_ACTS`）使用，新代码别拿它转枚举。
 ACT_MAP = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
-ACT_NAMES = {1:'UP↑',2:'DOWN↓',3:'LEFT←',4:'RIGHT→',5:'TOGGLE⟳'}
+NAME_BY_NUM = {n: "ACTION%d" % n for n in range(1, 8)}
+ENUM_BY_NAME = {NAME_BY_NUM[n]: ACT_MAP[n] for n in range(1, 8)}
+#: AR25 只用得到这五个，实测 `is_complex()` 全为 False（只有 ACTION6 复杂、需要 x/y payload），
+#: 所以设计文档 §8.4 那条"复杂动作的 payload 会不会被 plan 丢掉"在本游戏不适用。
+AR25_ACTION_NAMES = tuple(NAME_BY_NUM[n] for n in (1, 2, 3, 4, 5))
+#: name → 棋盘位移，供 R4 评分；ACTION5=TOGGLE 只切换选中对象、不平移，故位移为 0。
+ACTION_DELTA = {"ACTION1": (0, -1), "ACTION2": (0, 1), "ACTION3": (-1, 0),
+                "ACTION4": (1, 0), "ACTION5": (0, 0)}
+
+def to_enum(name):
+    """abstract name → `GameAction`：全模块唯一转换点，未知名字抛错而不是降级放行。"""
+    try:
+        return ENUM_BY_NAME[name]
+    except KeyError:
+        raise pc.PlanContractError(f"未知 abstract action name: {name!r}") from None
+
+def act_input(name):
+    """abstract name → `ActionInput`；所有 `perform_action` 调用都从这里出来。"""
+    return ActionInput(id=to_enum(name), data={}, reasoning=None)
+
+def run_names(g, names):
+    """在真引擎上按序执行 abstract name 序列。"""
+    for a in names:
+        g.perform_action(act_input(a), raw=True)
+
+def nums_to_names(seq):
+    """历史 int 序列（`KNOWN_SOLUTIONS`、`arc_shadow.solve_level` 的返回值）→ name 列表。"""
+    return [NAME_BY_NUM[int(n)] for n in seq]
+
 H_AXIS_TAG = "0002nuguepuujf"
 V_AXIS_TAG = "0054kgxrvfihgm"
 BOARD = 21
+#: 目标分解的组合数上限：单轴 = 固定轴位后拼块组合上限（超过则每块截断 top-30）；
+#: 双轴 = `_dual_exhaustive_pick` 的 max_combos。plan 里的 `search_budget` 报的就是这两个数。
+GOAL_DECOMB_COMBO_CAP = 500000
+DUAL_COMBO_CAP = 100000
+
+# 本运行器的 planner 分层。名字必须登记进注册表，`validate_plan` ⑤ 会拒未登记的名字
+# （§7.5 命名漂移条：各运行器自造 planner 名会让统计口径无法对账）。
+pc.register_planner("ar25_goal_decomp",
+                    "R3 单轴目标分解：枚举 轴位×各拼块平移位 组合，取全覆盖最小成本路径")
+pc.register_planner("ar25_goal_decomp_dual",
+                    "R3 双轴目标分解：枚举 (h_y,v_x)×拼块组合，覆盖判定按引擎反射级联闭包")
+pc.register_planner("ar25_shadow_state_search",
+                    "R3 arc_shadow 贪心最佳优先（L6+ 兜底；int 出口在调用点转 abstract name）")
+pc.register_planner("r4_greedy_step",
+                    "R4 贪心步进：动作效果反馈 + 覆盖进度 + 反循环，逐动作评分（最终回退）")
+
+#: 历史 method 串 → 注册表 planner 名。保留 method 串本身，是为了让既有
+#: `state/*/report.json` 的分布还能跟新数据对账（§8.6 风险三）。
+AR25_METHOD_TO_PLANNER = {
+    "R0-已知解法": "t0_known_solution",
+    "R3-目标分解": "ar25_goal_decomp",
+    "R3-双轴分解": "ar25_goal_decomp_dual",
+    "R3-beam": "beam",
+    "R3-arc_shadow": "ar25_shadow_state_search",
+    "R3-搜索": "state_search",
+    "R4-贪心": "r4_greedy_step",
+}
 
 def is_won(g):
     w = g.vplrhaovhr()
@@ -81,6 +154,90 @@ def r2_perceive(g):
         "level": int(g._current_level_index),
         "state_key": _state_key(g),
     }
+
+# ═══════════════════════════════════════════════════════════
+# §3.2 plan 出口：把 R3/R4 的产出包成九字段契约
+# ═══════════════════════════════════════════════════════════
+
+def ar25_state_hash(perc):
+    """输入状态哈希（§3.2 字段③：plan 必须说明"相对哪个局面成立"）。
+
+    临时实现：AR25 还没有独立的 R2 层，先对 `_state_key(g)` 的 repr 取 sha256 前 16 位。
+    没有复用 `r2_ls20.state_hash`——它只哈希 LS20 的 64×64 playfield，套到 21×21 的
+    AR25 棋盘上是假兼容（选中的拼块、轴位置、步数条都不在里面）。设计文档 §8.6：
+    ③ 统一内核落地时由真正的 AR25 R2 观测哈希替换掉这一处。
+    """
+    return hashlib.sha256(repr(perc["state_key"]).encode("utf-8")).hexdigest()[:16]
+
+def ar25_axis_types(perc):
+    """plan 里报的轴构成：直接从 `axes` 汇总。
+
+    没有用 `perc["atype"]`——那个字段按 R2 的老约定只在**单轴**关卡填，双轴关卡一律 '?'
+    （`r2_perceive` 里 `axes[0]["type"] if n_axes == 1 else '?'`）。② 是"只改出口不动 R2"，
+    所以这里自己算，避免 plan 的 `expected_goal` 写成 `axes=2(?)` 这种读起来像 bug 的串。
+    """
+    ts = sorted({a["type"] for a in perc["axes"]} - {'?'})
+    return "+".join(ts) if ts else '?'
+
+def ar25_expected_goal(perc):
+    """目标分解的产物，不是常量占位：这关要「全覆盖」，并带上输入态的进度与结构。"""
+    return (f"cover_all_targets:{perc['covered']}->{perc['total_targets']}"
+            f";axes={perc['n_axes']}({ar25_axis_types(perc)})"
+            f";movable={len(perc['movable'])}"
+            f";steps_left={perc['steps_left']}/{perc['budget']}")
+
+def ar25_subgoals(perc):
+    """把「全覆盖」拆成逐目标点：subgoals 是目标分解的中间产物，不是装饰字段。
+
+    输入态里已覆盖的目标不必再分解；极端情况下（全已覆盖）退回完整目标集，
+    保证 `subgoals` 不会因为关卡结构而变成空列表。
+    """
+    pts = perc["uncovered"] or sorted(perc["targets"])
+    return [f"cover({x},{y})" for x, y in sorted(pts)] + ["all_targets_covered"]
+
+def _pos_int(v):
+    """`search_budget` 的每一项都得是正整数（validate_plan ④）。
+
+    把 0/None 兜成 1 而不是删掉键：预算为 0 的 planner 等于没跑，报 1 是"至少给了界"，
+    真出现这个值说明上游算错了，应该从 plan 的其余字段里查而不是让校验放行。
+    """
+    try:
+        return max(1, int(v))
+    except (TypeError, ValueError):
+        return 1
+
+def ar25_plan(perc, method, path, search_budget, **extra):
+    """把一次成功的 planner 产出包成 §3.2 plan，并当场过 `validate_plan`。
+
+    `input_state_hash` / `expected_goal` / `subgoals` 全部取自分层的 `perc`——那是
+    `r234_solve` 在动任何动作**之前**采的观测，正是这份 plan 成立时的局面。
+
+    validity 口径与设计文档 §8.7（LS20 侧已采纳）一致：只有"离线算好、这轮原样重放又通过"
+    的罐头解配 `verified_offline`；搜索当场算出的路径一律 `candidate`——§10 禁止把没验过的
+    说成验过，而"搜索里引擎前进了一帧"不等于整条路径在落盘前被完整重放过。
+    """
+    planner = AR25_METHOD_TO_PLANNER[method]
+    canned = planner == "t0_known_solution"
+    state_hash = ar25_state_hash(perc)
+    return pc.build_plan(
+        planner=planner,
+        input_state_hash=state_hash,
+        candidate_actions=list(path),
+        legal_actions=list(AR25_ACTION_NAMES),
+        expected_goal=ar25_expected_goal(perc),
+        subgoals=ar25_subgoals(perc),
+        cost=len(path),
+        search_budget=search_budget,
+        validity="verified_offline" if canned else "candidate",
+        # 罐头解：给出可定位的来源（解法表在本仓库的位置 + 本轮实测回放）。
+        # 搜索产物：只给"这份 plan 是在哪一帧算出来的"的指针，不作任何验证声明。
+        evidence_refs=([f"arc_adaptor/arc_shadow.py:KNOWN_SOLUTIONS[{perc['level']}]",
+                        f"offline_engine:replay_win:L{perc['level'] + 1}"]
+                       if canned else [f"ar25:L{perc['level'] + 1}:input_state_hash={state_hash}"]),
+        ar25_method=method,
+        level=perc["level"] + 1,
+        **extra,
+    )
 
 # ═══════════════════════════════════════════════════════════
 # R3-A: 目标分解搜索
@@ -137,7 +294,7 @@ def solve_goal_decomp(g, perc):
         if total_combos == 0:
             continue
         lists = all_pos
-        if total_combos > 500000:
+        if total_combos > GOAL_DECOMB_COMBO_CAP:
             lists = [sorted(p, key=lambda x: -len(x[2]))[:30] for p in all_pos]
         for combo in itertools.product(*lists):
             all_cov = set()
@@ -189,7 +346,8 @@ def _generate_actions(ax, ap, movable, combo, atype, ax_idx, sel0, n_sw):
         dx, dy = ox - s["x"], oy - s["y"]
         actions.extend([4] * dx if dx > 0 else [3] * (-dx))
         actions.extend([2] * dy if dy > 0 else [1] * (-dy))
-    return actions
+    # §3.2：planner 出口只给 abstract name（内部仍按编号拼路径，出口统一转一次）
+    return nums_to_names(actions)
 
 # ═══════════════════════════════════════════════════════════
 # R3-A2: 双轴目标分解 (L6+ 的 h+v 双镜像轴关卡)
@@ -239,7 +397,7 @@ def _dual_greedy_pick(movable, cand_list, targets):
         spr_cost += d
     return uncovered, picked, spr_cost
 
-def _dual_exhaustive_pick(movable, cand_list, targets, max_combos=100000):
+def _dual_exhaustive_pick(movable, cand_list, targets, max_combos=DUAL_COMBO_CAP):
     """穷举拼接: 枚举所有拼块位置组合, 找全覆盖最小成本。
 
     仅在拼块数≤4且组合数≤max_combos时启用, 否则回退贪心。
@@ -353,7 +511,7 @@ def _dual_generate_actions(h_axis, v_axis, hy, vx, picked, h_idx, v_idx,
         dx, dy = ox - s["x"], oy - s["y"]
         actions.extend([4] * dx if dx > 0 else [3] * (-dx))
         actions.extend([2] * dy if dy > 0 else [1] * (-dy))
-    return actions
+    return nums_to_names(actions)          # §3.2：出口只给 abstract name
 
 # ═══════════════════════════════════════════════════════════
 # R3-B: 状态空间搜索
@@ -381,10 +539,10 @@ def r3_state_search(env, t_limit=60, max_nodes=200000):
             mx = int(g.lelsvjlwneo.ilqnjlrnkk) - 1
             if len(path) >= mx:
                 continue
-            for a in [1, 2, 3, 4, 5]:
+            for a in AR25_ACTION_NAMES:      # §3.2：搜索树里的路径全程是 name 列表
                 _restore(g, snap)
                 try:
-                    g.perform_action(ActionInput(id=ACT_MAP[a], data={}, reasoning=None), raw=True)
+                    g.perform_action(act_input(a), raw=True)
                 except:
                     continue
                 if int(g._current_level_index) > li0 or is_won(g):
@@ -436,10 +594,10 @@ def r3_beam_search(env, t_limit=300, max_nodes=3000000, beam_width=8):
                 f, depth, _, snap, path = heapq.heappop(beam)
                 if depth >= max_steps or depth >= best_len:
                     continue
-                for a in [1, 2, 3, 4, 5]:
+                for a in AR25_ACTION_NAMES:      # §3.2：beam 的路径同样是 name 列表
                     _restore(g, snap)
                     try:
-                        g.perform_action(ActionInput(id=ACT_MAP[a], data={}, reasoning=None), raw=True)
+                        g.perform_action(act_input(a), raw=True)
                     except:
                         continue
                     if int(g._current_level_index) > li0 or is_won(g):
@@ -477,7 +635,7 @@ def r3_beam_search(env, t_limit=300, max_nodes=3000000, beam_width=8):
 
 class R4Scorer:
     def __init__(self):
-        self.stats = {a: {"uses": 0, "eff": 0, "ineff": 0} for a in [1, 2, 3, 4, 5]}
+        self.stats = {a: {"uses": 0, "eff": 0, "ineff": 0} for a in AR25_ACTION_NAMES}
         self.visited = set()
         self.recent = []
 
@@ -497,11 +655,7 @@ class R4Scorer:
                 targets = list(perc["targets"])
                 cx = sum(t[0] for t in targets) / len(targets)
                 cy = sum(t[1] for t in targets) / len(targets)
-                dx, dy = 0, 0
-                if action == 1: dy = -1
-                elif action == 2: dy = 1
-                elif action == 3: dx = -1
-                elif action == 4: dx = 1
+                dx, dy = ACTION_DELTA[action]   # §3.2：动作语义按 name 查表，不再比裸编号
                 old_d = abs(sx - cx) + abs(sy - cy)
                 new_d = abs(sx + dx - cx) + abs(sy + dy - cy)
                 goal_prox = (old_d - new_d) * 0.3
@@ -510,7 +664,7 @@ class R4Scorer:
         return 2.0 * success_rate + cov_gain + goal_prox - loop + 0.3 * explore
 
     def choose(self, perc, prev_perc):
-        cands = [(a, self.score(a, perc, prev_perc)) for a in [1, 2, 3, 4, 5]]
+        cands = [(a, self.score(a, perc, prev_perc)) for a in AR25_ACTION_NAMES]
         cands.sort(key=lambda x: -x[1])
         return cands[0][0]
 
@@ -543,7 +697,7 @@ def r4_greedy_play(env, t_limit=60, max_steps=200):
             return path
         action = scorer.choose(perc, prev)
         try:
-            g.perform_action(ActionInput(id=ACT_MAP[action], data={}, reasoning=None), raw=True)
+            g.perform_action(act_input(action), raw=True)
         except:
             continue
         path.append(action)
@@ -562,17 +716,16 @@ def r4_greedy_play(env, t_limit=60, max_steps=200):
 # ═══════════════════════════════════════════════════════════
 
 def try_known_solution(g, level_idx):
-    """尝试 arc_shadow 中已验证的解法, 秒级返回。"""
+    """尝试 arc_shadow 中已验证的解法, 秒级返回。返回 abstract name 列表（§3.2）。"""
     if level_idx not in KNOWN_SOLUTIONS:
         return None
-    sol = KNOWN_SOLUTIONS[level_idx]
+    sol = nums_to_names(KNOWN_SOLUTIONS[level_idx])   # 解法表存的是编号，出口转成 name
     if not sol:
         return None
     snap = _snapshot(g)
     li0 = int(g._current_level_index)
     try:
-        for a in sol:
-            g.perform_action(ActionInput(id=ACT_MAP[a], data={}, reasoning=None), raw=True)
+        run_names(g, sol)
         if int(g._current_level_index) > li0 or is_won(g):
             print(f"  [R0-已知解法] ✓ {len(sol)}步直接通关")
             return sol
@@ -587,12 +740,11 @@ def try_known_solution(g, level_idx):
 # ═══════════════════════════════════════════════════════════
 
 def _verify_and_return(g, path, method_name):
-    """执行动作序列, 验证通关后返回, 失败则恢复原状态。"""
+    """执行 abstract name 序列, 验证通关后返回, 失败则恢复原状态。"""
     snap = _snapshot(g)
     li0 = int(g._current_level_index)
     try:
-        for a in path:
-            g.perform_action(ActionInput(id=ACT_MAP[a], data={}, reasoning=None), raw=True)
+        run_names(g, path)
         if int(g._current_level_index) > li0 or is_won(g):
             return path, method_name
         print(f"  [{method_name}] 验证失败({len(path)}步未通关)")
@@ -606,10 +758,21 @@ def _verify_and_return(g, path, method_name):
 # ═══════════════════════════════════════════════════════════
 
 def r234_solve(env, t_limit=900, level_idx=0):
+    """R2 感知 → R3 分层搜索 → R4 贪心。返回 `(path, method, plan)`。
+
+    - `path`: §3.2 的 abstract action name 列表；失败时为 `None`。
+    - `method`: 历史分层串（写进 report.json 的 `method`），② 之后它只是"哪一层出的解"的标签；
+      planner 名由 `AR25_METHOD_TO_PLANNER` 映射，plan 里用 `ar25_method` 同时留住两者。
+    - `plan`: 该层产出、并已当场过 `validate_plan` 的九字段 plan；失败时为 `None`（决策失败
+      就记没有 plan，不编一个 `validity=none` 的壳出来冒充出口）。
+
+    `plan.input_state_hash` 取的是本函数进门、还没执行任何动作时的 `perc`。搜索失败的那些层
+    会把引擎 `_restore` 回这一帧，所以后面成功的层仍然对得上这份哈希。
+    """
     g = env._game
     li0 = int(g._current_level_index)
 
-    # R2 感知
+    # R2 感知（同时是 plan 的 input_state_hash / expected_goal / subgoals 的来源）
     perc = r2_perceive(g)
     is_hard = level_idx >= 5
     print(f"  [R2] L{level_idx+1} 轴={perc['n_axes']}({perc['atype']}) "
@@ -620,7 +783,10 @@ def r234_solve(env, t_limit=900, level_idx=0):
     # 0. 已知解法优先 (秒级)
     known = try_known_solution(g, level_idx)
     if known is not None:
-        return known, "R0-已知解法"
+        method = "R0-已知解法"
+        # 罐头回放不做搜索：界 = 重放 len(path) 步、不展开任何分支节点
+        budget = {"max_nodes": 1, "max_depth": _pos_int(len(known))}
+        return known, method, ar25_plan(perc, method, known, budget)
 
     # 1a. R3 目标分解 (单轴关卡)
     if perc["n_axes"] == 1 and perc["atype"] != '?':
@@ -628,7 +794,10 @@ def r234_solve(env, t_limit=900, level_idx=0):
         if path is not None:
             result, method = _verify_and_return(g, path, "R3-目标分解")
             if result is not None:
-                return result, method
+                # max_nodes 是「每个轴位下」的组合上限，max_depth 是枚举的轴位数 (0..20)
+                budget = {"time_ms": _pos_int(t_limit * 1000),
+                          "max_nodes": GOAL_DECOMB_COMBO_CAP, "max_depth": BOARD}
+                return result, method, ar25_plan(perc, method, result, budget)
 
     # 1b. R3 双轴目标分解 (双轴关卡)
     if perc["n_axes"] == 2:
@@ -636,7 +805,10 @@ def r234_solve(env, t_limit=900, level_idx=0):
         if path is not None:
             result, method = _verify_and_return(g, path, "R3-双轴分解")
             if result is not None:
-                return result, method
+                # 外层枚举 (h_y, v_x) 共 BOARD² 组，每组内拼块组合上限 DUAL_COMBO_CAP
+                budget = {"time_ms": _pos_int(t_limit * 1000),
+                          "max_nodes": DUAL_COMBO_CAP, "max_depth": BOARD * BOARD}
+                return result, method, ar25_plan(perc, method, result, budget)
 
     # 2. R3 beam search (L6+: 更宽beam更长预算)
     beam_w = 16 if is_hard else 8
@@ -645,7 +817,10 @@ def r234_solve(env, t_limit=900, level_idx=0):
     print(f"  [R3-beam] 开始 (t_limit={beam_t}s, beam={beam_w}, max_nodes={beam_nodes})")
     path = r3_beam_search(env, t_limit=beam_t, beam_width=beam_w, max_nodes=beam_nodes)
     if path is not None:
-        return path, "R3-beam"
+        method = "R3-beam"
+        budget = {"time_ms": _pos_int(beam_t * 1000), "max_nodes": beam_nodes,
+                  "max_depth": _pos_int(perc["steps_left"]), "beam_width": _pos_int(beam_w)}
+        return path, method, ar25_plan(perc, method, path, budget)
 
     # 3. R3 arc_shadow (L6+: 600s/2M节点)
     if is_hard:
@@ -653,6 +828,8 @@ def r234_solve(env, t_limit=900, level_idx=0):
         arc_shadow._env = env
         arc_shadow._game = g
         arc_shadow._valid = True
+        # arc_shadow 是老 API：它的 _num2act/_act2num/_ACTS 都以 int 为键、内部按编号搜索，
+        # 所以这里仍然交回 int 表，只在它**返回**的那一刻转成 abstract name（§3.2 边界）。
         arc_shadow._num2act = ACT_MAP
         arc_shadow._act2num = {v: k for k, v in ACT_MAP.items()}
         arc_shadow._ActionInput = ActionInput
@@ -661,9 +838,12 @@ def r234_solve(env, t_limit=900, level_idx=0):
         shadow_t = min(600, t_limit)
         shadow_nodes = 2000000
         print(f"  [R3-arc_shadow] L{level_idx+1} (t_limit={shadow_t}s, max_nodes={shadow_nodes})")
-        path = arc_shadow.solve_level(t_limit=shadow_t, max_nodes=shadow_nodes)
-        if path is not None:
-            return path, "R3-arc_shadow"
+        int_path = arc_shadow.solve_level(t_limit=shadow_t, max_nodes=shadow_nodes)
+        if int_path is not None:
+            method = "R3-arc_shadow"
+            path = nums_to_names(int_path)      # int 出口 → §3.2 abstract name
+            budget = {"time_ms": _pos_int(shadow_t * 1000), "max_nodes": shadow_nodes}
+            return path, method, ar25_plan(perc, method, path, budget)
 
     # 4. R3 状态搜索 (加长预算)
     search_t = min(120 if is_hard else 30, t_limit)
@@ -671,7 +851,9 @@ def r234_solve(env, t_limit=900, level_idx=0):
     print(f"  [R3-搜索] 开始 (t_limit={search_t}s, max_nodes={search_nodes})")
     path = r3_state_search(env, t_limit=search_t, max_nodes=search_nodes)
     if path is not None:
-        return path, "R3-搜索"
+        method = "R3-搜索"
+        budget = {"time_ms": _pos_int(search_t * 1000), "max_nodes": search_nodes}
+        return path, method, ar25_plan(perc, method, path, budget)
 
     # 5. R4 贪心步进 (最终回退, 加长预算)
     r4_t = min(120 if is_hard else 30, t_limit)
@@ -679,9 +861,12 @@ def r234_solve(env, t_limit=900, level_idx=0):
     print(f"  [R4-贪心] 开始 (t_limit={r4_t}s, max_steps={r4_steps})")
     path = r4_greedy_play(env, t_limit=r4_t, max_steps=r4_steps)
     if path is not None:
-        return path, "R4-贪心"
+        method = "R4-贪心"
+        budget = {"time_ms": _pos_int(r4_t * 1000), "max_nodes": r4_steps,
+                  "max_depth": r4_steps}
+        return path, method, ar25_plan(perc, method, path, budget)
 
-    return None, "失败"
+    return None, "失败", None
 
 # ═══════════════════════════════════════════════════════════
 # 主循环
@@ -690,7 +875,7 @@ def r234_solve(env, t_limit=900, level_idx=0):
 def main():
     MAX_LEVELS = int(sys.argv[1]) if len(sys.argv) > 1 else 8
     START_LEVEL = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-    arcade = Arcade(environments_dir=r"F:/pro/Lingjing-Solo-/environment_files",
+    arcade = Arcade(environments_dir=environments_dir("ar25"),
                     operation_mode=OperationMode.OFFLINE)
     gid = [e.game_id for e in arcade.get_environments() if e.game_id.startswith("ar25")][0]
     print(f"game_id = {gid}")
@@ -699,9 +884,12 @@ def main():
     g = env._game
 
     print(f"\nAR25 R2+R3+R4 组合闯关 (r234 flow v5)")
+    import arc_shadow as _as
+    print(f"  arc_shadow 来源: {_as.__file__}")
     print(f"  搜索预算: L1-L5=60s / L6+=900s (beam 300s + arc_shadow 600s)")
     print(f"  总预算: 500 steps / 900.0s")
-    print(f"  关 方法             步数   预算     搜索耗时      节点 结果")
+    print(f"  R3 出口: {pc.PLAN_SCHEMA}（每关一份九字段 plan，validity 分 candidate/verified_offline）")
+    print(f"  关 方法             步数   预算     搜索耗时      节点 结果            plan")
     print(f"-----------------------------------------------------------------")
 
     total_steps = 0
@@ -720,31 +908,35 @@ def main():
         is_hard = level >= 5
         t_limit = 900 if is_hard else 60
         t0 = time.time()
-        result, method = r234_solve(env, t_limit=t_limit, level_idx=level)
+        result, method, plan = r234_solve(env, t_limit=t_limit, level_idx=level)
         elapsed = time.time() - t0
 
         if result is None:
             budget = int(g.lelsvjlwneo.ilqnjlrnkk)
             print(f"{level+1:3d} {method:<18} {'-':>4} {budget:>4}   {elapsed:7.1f}s         ✗未通关")
             won_all = False
+            # 失败就没有 plan：不拿 validity=none 的空壳冒充"出口已套契约"（§7.1 R3 门槛）
             levels_info.append({"level": level+1, "method": method, "steps": None,
-                                "ok": False, "elapsed": elapsed})
+                                "ok": False, "elapsed": elapsed, "plan": None})
             break
 
-        # 执行动作序列 (r234_solve 已验证通关, 但需确保引擎状态正确)
-        li0 = int(g._current_level_index)
-        if not (int(g._current_level_index) > li0 or is_won(g)):
-            for a in result:
-                g.perform_action(ActionInput(id=ACT_MAP[a], data={}, reasoning=None), raw=True)
+        # 目标分解 / 已知解法这两条分支在 _verify_and_return 里就已经把动作打在真引擎上了，
+        # 所以这里一般是空转；beam 与 状态搜索 的 finally 会 _restore 回入口帧，
+        # R4 贪心成功时不回滚——即"引擎停在当前关"的补放分支主要服务 beam/搜索这两层。
+        if not (int(g._current_level_index) > level or is_won(g)):
+            print(f"  [校验] 引擎仍停在 L{level+1}，补放 {len(result)} 步解法")
+            run_names(g, result)
 
         ok = int(g._current_level_index) > level or is_won(g)
         total_steps += len(result)
         total_search += elapsed
         budget = int(g.lelsvjlwneo.ilqnjlrnkk)
-        step_str = f"{len(result):>4} ✓通关 {len(result)}步" if ok else f"{len(result):>4} ✗未通关"
-        print(f"{level+1:3d} {method:<18} {len(result):>4} {budget:>4}   {elapsed:7.1f}s         {'✓通关' if ok else '✗未通关'} {len(result)}步")
+        plan_tag = f"{plan['planner']}/{plan['validity']}" if plan else "无plan"
+        print(f"{level+1:3d} {method:<18} {len(result):>4} {budget:>4}   {elapsed:7.1f}s         {'✓通关' if ok else '✗未通关'} {len(result)}步  plan={plan_tag}")
         levels_info.append({"level": level+1, "method": method, "steps": len(result),
-                            "ok": ok, "elapsed": round(elapsed, 1)})
+                            "ok": ok, "elapsed": round(elapsed, 1),
+                            "planner": plan["planner"], "plan_id": plan["plan_id"],
+                            "plan_validity": plan["validity"], "plan": plan})
         if not ok:
             won_all = False
             break
@@ -755,9 +947,38 @@ def main():
     print(f"结果: L{final_level+1}, state={g._state}, won={won_all}")
 
     # 保存结果到 JSON
+    commit = git_output("rev-parse", "HEAD")
+    branch = git_output("branch", "--show-current")
+    run_id = f"{time.strftime('%Y-%m-%dT%H:%M:%S')}-ar25-l{final_level}"
     result_data = {
+        # 证据基线（§5.1）：缺 branch/commit/evidence_tier 的跑测无法复现，也无法定级
+        "schema_version": "lingjing-evidence-v1",
+        "run_id": run_id,
+        "agent_build": f"git:{commit}",
+        "project_branch": branch,
+        "module_versions": {"r2": "r234-v5", "r3": "r234-v5+plan_contract",
+                            "r4": "r234-v5", "evidence": "lingjing-evidence-v1"},
+        # 本地 arc_agi OFFLINE 引擎 = offline_engine，不等于 live_scorecard
+        "evidence_tier": "offline_engine",
+        "mode": "execute",
+        "limits": {"max_steps": 500, "timeout_s": 900},
+        "status": "pass" if won_all else "fail",
+        "environments_dir": arcade.environments_dir if hasattr(arcade, "environments_dir") else None,
+        # 本脚本目前只采到每关汇总，没有逐 tick 帧；按 §7.3 这种证据判不了 replay_complete
+        "per_tick_recording": None,
+        "limitations": ["每关汇总, 无 tick JSONL ⇒ replay_complete/schema_valid 未证",
+                        "offline 引擎, 非 live Scorecard",
+                        "plan 是「每关一份、整条路径」的粒度，不是逐 tick：能证目标分解与预算，"
+                        "不能当逐帧决策链证据"],
+        # §3.2 R3 出口：每关一份 plan（levels[i]["plan"]），字段齐九个，落盘前已过 validate_plan
+        "plan_schema": pc.PLAN_SCHEMA,
+        "plans_emitted": sum(1 for x in levels_info if x.get("plan")),
+        "planner_distribution": {p: sum(1 for x in levels_info if x.get("planner") == p)
+                                 for p in sorted({x["planner"] for x in levels_info
+                                                  if x.get("planner")})},
+        # 兼容既有读取方
         "game": gid,
-        "mode": "OFFLINE",
+        "mode_legacy": "OFFLINE",
         "flow": "r234-v5",
         "levels_completed": final_level,
         "won": won_all,
@@ -767,7 +988,7 @@ def main():
         "levels": levels_info,
     }
     ts = time.strftime("%Y%m%d_%H%M%S_")
-    result_dir = os.path.join(r"F:\pro\Lingjing-Solo-\state", f"ar25_r234_{ts}{os.getpid()}")
+    result_dir = str(state_dir() / f"ar25_r234_{ts}{os.getpid()}")
     os.makedirs(result_dir, exist_ok=True)
     result_path = os.path.join(result_dir, "result.json")
     with open(result_path, "w", encoding="utf-8") as f:

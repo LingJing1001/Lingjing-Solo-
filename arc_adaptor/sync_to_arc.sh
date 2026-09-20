@@ -29,6 +29,12 @@ cp "$SCRIPT_DIR/tests/test_r11l_probe.py" tests/unit/test_r11l_probe.py
 # 统一 R3 plan 契约（§3.2 九字段）：只依赖 stdlib + editable 装的 lingjing_solo，
 # 在 ARC 里跑它才算"契约在线上包内可用"，在本仓库跑只证明它自己能 import。
 cp "$LINGJING_ROOT/tests/test_plan_contract.py" tests/unit/test_plan_contract.py
+# AR25 运行器的 §3.2 出口回归（设计文档 §8.8）。**在 ARC 里它是 skip 不是 assert**：被测的
+# run_ar25_r234.py 被下面的 cp -R 带进了 agents/strategies/，但它 import 依赖 arc_adaptor/paths.py，
+# ARC checkout 没有那个目录，于是 fixture 如实 skip 并打出异常。带过去仍值得：① 它证明这份测试
+# 进生产 checkout 不会 error 掉别人的 tests/unit，② skip 原因里写明了"runner 在 ARC 不可 import"，
+# 这本身就是规则 ①（cp -R 把离线诊断脚本推进生产包）的可复现证据。
+cp "$LINGJING_ROOT/tests/test_ar25_plan_contract.py" tests/unit/test_ar25_plan_contract.py
 cp "$SCRIPT_DIR/tools/ls20_single_action_probe.py" tools/ls20_single_action_probe.py
 cp "$SCRIPT_DIR/tools/r11l_single_action_probe.py" tools/r11l_single_action_probe.py
 
@@ -50,6 +56,7 @@ printf '%s\n' \
   tests/unit/test_action_recording.py \
   tests/unit/test_r11l_probe.py \
   tests/unit/test_plan_contract.py \
+  tests/unit/test_ar25_plan_contract.py \
   tools/ls20_single_action_probe.py \
   tools/r11l_single_action_probe.py
 # agents/__init__.py **不在**上面：规则 2 要求不覆盖 ARC 原生 exports，

@@ -14,6 +14,11 @@ This directory contains the versioned files needed to reproduce the Lingjing-Sol
 - `agents/`: required ARC boundary adapter, strategy registry, game strategies, and registration.
 - `agents/strategies/`: `GameStrategy` protocol, generic fallback, and the isolated LS20 route strategy.
 - `tests/`: adaptor tests; `test_action_recording.py` requires the optional recording patch.
+- Two tests shared from the Lingjing repo root `tests/` (not from this directory), synced to `tests/unit/`:
+  `test_plan_contract.py` (the §3.2 nine-field contract itself) and `test_ar25_plan_contract.py`
+  (the AR25 runner's plan exit). The latter skips inside an ARC checkout: its subject,
+  `agents/strategies/run_ar25_r234.py`, imports `arc_adaptor/paths.py`, which does not exist
+  there. The skip reports that import error rather than passing silently.
 - `tools/`: optional online single-action probes for LS20 and R11L.
 - `patches/arc-agent-recording.patch`: optional ARC `Agent` recording enhancement. Apply only when recording requested actions is needed.
 - `sync_to_arc.sh`: copies the bundle into an existing ARC checkout and can apply the optional patch.
@@ -32,7 +37,10 @@ To also apply the optional recording patch:
 bash ../Lingjing-Solo-/arc_adaptor/sync_to_arc.sh . --with-recording-patch
 ```
 
-The script never copies `.env`, `.venv`, recordings, `__pycache__`, or API keys.
+The script never copies `.env`, `.venv`, recordings, or API keys. It does copy `__pycache__/`
+today: `sync_to_arc.sh` copies `agents/strategies/` with `cp -R`, so compiled caches from that
+directory arrive in the ARC checkout as a known, declared gap (fixing the copy mode is a code
+change, still gated on the maintainer's decision).
 
 ## Expected LS20 plan
 
