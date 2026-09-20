@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -41,6 +42,22 @@ def _check_plan(tick: dict) -> dict:
     return tick
 
 
+def _evidence_pkg_on_disk() -> bool:
+    """`lingjing_solo/evidence/` 在不在盘上——**只看这份文件在不在，不看 import 成不成功**。
+
+    上一版是按异常 `exc.name` 分家的，那是错的：`import lingjing_solo.evidence.protocol` 得先执行
+    父包，链路 `lingjing_solo/__init__.py:5 → core/__init__.py:2 → core/types.py:11` 要 numpy，
+    于是在没装 numpy 的解释器里**合并前**也抛 `ModuleNotFoundError(name='numpy')`——名字不在那条
+    三级链里，就被认成"分支已合但坏了"，兜底整条被堵死（本轮 `py -3.13` 实测过这个假硬崩）。
+    "合没合"的证据只能是文件在不在：在 → 已合，导入炸就抛出去；不在 → 真没合（或父包缺依赖），
+    兜底照常可用。
+    """
+    candidates = [Path(__file__).resolve().parents[1] / "lingjing_solo"]
+    candidates += [Path(p) for p in
+                   getattr(sys.modules.get("lingjing_solo"), "__path__", ()) or ()]
+    return any((root / "evidence" / "__init__.py").is_file() for root in candidates)
+
+
 try:                                        # 合并后走这里
     from lingjing_solo.evidence.protocol import (  # noqa: F401
         EvidenceValidationError, ReplayResult, SCHEMA_VERSION, build_manifest,
@@ -57,7 +74,15 @@ try:                                        # 合并后走这里
 
     def validate_tick(value: dict) -> dict:  # noqa: F811
         return _check_plan(_protocol_validate_tick(value))
-except ImportError:                         # 合并前走这里（等价实现）
+except ImportError as exc:                        # 只有"该分支还没合进来"才允许走等价实现
+    # 裸 except ImportError 会连"包已经在了、但它自己 import 失败"一起吞掉：那样
+    # report.json 的 protocol_backend 会**谎报 fallback**，而 #9 的验收恰恰就是这个字段。
+    # 判据用 _evidence_pkg_on_disk()（为什么不用异常名字，那里写了实测理由）。
+    if _evidence_pkg_on_disk():
+        raise ImportError(
+            "lingjing_solo/evidence/ 已在盘上（该分支已合并）但导入失败，"
+            "拒绝静默退回本地实现"
+            f"（{type(exc).__name__}: name={getattr(exc, 'name', None)!r} {exc}）") from exc
     BACKEND = "arc_adaptor.evidence_compat(fallback)"
 
     SCHEMA_VERSION = "lingjing-evidence-v1"
