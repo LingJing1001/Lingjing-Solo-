@@ -7,6 +7,9 @@
 2. 每份 plan 九字段齐全、能独立重放校验（`require_registered_planner=False` 的审计口径）；
 3. `validity` 不越级：只有罐头解能声明 `verified_offline`，搜索当场算出来的一律 `candidate`
    （团队规范 §10 禁止把没验过的说成验过）。
+4. ③ 之后 `input_state_hash` 是 **正式 R2 状态哈希**（`r2_ar25.state_hash`），不再是
+   `sha256(repr(_state_key(g)))` 那个搜索去重键；`tick_trail`/`r2_ar25` 自身的逐 tick 行为
+   在只依赖 stdlib 的 `tests/test_ar25_recording.py` 里测，本文件仍受"要真引擎"的限制。
 
 被测模块 import 时要真引擎（`arc_agi`/`arcengine`），拿不到就 skip——本仓库的 CI 与
 ARC checkout 的 `tests/unit/` 环境不同，规则 7 要求复制过去也不能炸。
@@ -74,19 +77,39 @@ def run():
         sys.stdout = captured
 
 
+class _StubEngine:
+    """`r2_ar25.enrich` 只读这几个字段：给个最小替身，让单测不依赖真引擎也能出正式哈希。"""
+
+    _state = "PLAYING"
+    ovoizfolxfq: dict = {}
+    ouurgkpbbjj: list = []
+    hsiusrsrdkswnt = 0
+    qehjebksqcm = False
+    hujpxmlafgh = False
+    xukxeewuexo = False
+    xjwpeqpcxav = False
+
+
 @pytest.fixture
-def perc():
-    """一份最小可用的 R2 观测：单 h 轴 + 2 拼块 + 4 目标，字段与 `r2_perceive` 一致。"""
+def perc(run):
+    """一份最小可用的 R2 观测：单 h 轴 + 2 拼块 + 4 目标，字段与 `r2_perceive` 一致。
+
+    末尾过一遍 `r2_ar25.enrich`：③ 起 `input_state_hash` 是正式的状态哈希，它要求观测里带上
+    只有引擎句柄读得到的三个字段（`state`/`rotation_distances`/`engine_flags`）。缺这些时
+    `state_hash` 抛错而不是算个更粗的哈希，所以伪造观测也得按同一契约装配。
+    """
     axis = {"x": -6, "y": 3, "type": "h", "cells": [(0, 0)]}
     moves = [{"idx": 1, "is_axis": False, "x": 0, "y": 0, "cells": [(0, 0)]},
              {"idx": 2, "is_axis": False, "x": 1, "y": 0, "cells": [(0, 0)]}]
-    return {
+    obs = {
         "axes": [axis], "switch_order": [dict(axis, idx=0, is_axis=True, cells=None), *moves],
         "sel_idx": 0, "targets": {(3, 4), (3, 5), (4, 4), (4, 5)}, "budget": 128,
         "steps_left": 128, "n_switch": 3, "movable": moves, "n_axes": 1, "atype": "h",
         "covered": 1, "total_targets": 4, "uncovered": [(3, 4), (3, 5), (4, 4)],
         "won": False, "level": 3, "state_key": ("k", 1, b"\x00"),
     }
+    run.r2_ar25.enrich(_StubEngine(), obs)
+    return obs
 
 
 # ── 边界：只有这里能把 name 变成引擎枚举 ─────────────────────
@@ -160,6 +183,20 @@ def test_search_plan_has_nine_fields_and_validates(run, perc):
     assert pc.validate_plan(plan, require_registered_planner=False) is plan
 
 
+def test_input_state_hash_is_the_formal_r2_hash_not_the_search_key(run, perc):
+    """③ 的替换要防"改回临时实现"：plan 的哈希 = `r2_ar25.state_hash`，不再是 `_state_key` 的 repr。
+
+    旧实现是**搜索去重键**，`arc_shadow._snapshot` 里可变的旋转距离/标志位它没全收，所以两者
+    一般不同值；这里同时钉住"等于正式哈希"和"不等于占位哈希"，退回 ② 会立刻红。
+    """
+    import hashlib
+
+    plan = run.ar25_plan(perc, "R3-目标分解", ["ACTION5", "ACTION2"], {"max_nodes": 8})
+    placeholder = hashlib.sha256(repr(perc["state_key"]).encode("utf-8")).hexdigest()[:16]
+    assert plan["input_state_hash"] == run.r2_ar25.state_hash(perc)
+    assert plan["input_state_hash"] != placeholder
+
+
 def test_goal_and_subgoals_are_decomposition_products(run, perc):
     """`expected_goal` 不得是常量占位；`subgoals` 要把「全覆盖」拆到逐目标点。"""
     goal = run.ar25_expected_goal(perc)
@@ -178,14 +215,20 @@ def test_dual_axis_goal_reports_real_axis_types_not_legacy_placeholder(run):
 
 
 def _perc_dual(run):
-    """双轴观测（h+v 各一根，类型标签都解析出来了，但 atype 按老约定是 '?'）。"""
+    """双轴观测（h+v 各一根，类型标签都解析出来了，但 atype 按老约定是 '?'）。
+
+    和 `perc` fixture 同一套装配契约：③ 起 `ar25_plan` 要算正式 `input_state_hash`，
+    未 enrich 的观测会被 `state_hash` 拒掉，所以这里也过一遍 stub 引擎。
+    """
     axes = [{"x": 0, "y": 5, "type": "h", "cells": [(0, 0)]},
             {"x": 3, "y": 0, "type": "v", "cells": [(0, 0)]}]
     move = {"idx": 2, "is_axis": False, "x": 0, "y": 0, "cells": [(0, 0)]}
-    return {"axes": axes, "switch_order": [], "sel_idx": 0, "targets": {(1, 2)},
-            "budget": 320, "steps_left": 320, "n_switch": 3, "movable": [move],
-            "n_axes": 2, "atype": "?", "covered": 0, "total_targets": 1,
-            "uncovered": [(1, 2)], "won": False, "level": 5, "state_key": ("k", 5, b"")}
+    obs = {"axes": axes, "switch_order": [], "sel_idx": 0, "targets": {(1, 2)},
+           "budget": 320, "steps_left": 320, "n_switch": 3, "movable": [move],
+           "n_axes": 2, "atype": "?", "covered": 0, "total_targets": 1,
+           "uncovered": [(1, 2)], "won": False, "level": 5, "state_key": ("k", 5, b"")}
+    run.r2_ar25.enrich(_StubEngine(), obs)
+    return obs
 
 
 def test_canned_plan_is_the_only_layer_may_claim_verified_offline(run, perc):

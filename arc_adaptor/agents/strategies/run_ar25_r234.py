@@ -25,12 +25,13 @@ R3 出口（设计文档 §8.8 / 团队规范 §3.2）:
   `r234_solve` 返回 `(path, method, plan)`，plan 是当场过 `validate_plan` 的九字段产物，
   每关一份，随 `result.json` 的 `levels[i]["plan"]` 落盘。
 """
-import sys, os, time, heapq, itertools, json, hashlib
+import sys, os, time, heapq, itertools, json, hashlib, pathlib, contextlib
 os.environ.setdefault("MPLBACKEND", "Agg")
 sys.stdout.reconfigure(encoding='utf-8')
 # 用自身位置推导 arc_adaptor，绝不写死成员本地 checkout 路径（§3.2）
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
-from paths import add_to_sys_path, environments_dir, state_dir, git_output  # noqa: E402
+from paths import (PROJECT_ROOT, add_to_sys_path, environments_dir,  # noqa: E402
+                   state_dir, git_output)
 
 add_to_sys_path()
 
@@ -39,6 +40,9 @@ from arc_agi import Arcade, OperationMode
 from arcengine import GameAction, ActionInput, GameState
 from arc_shadow import _snapshot, _restore, _state_key, _heuristic, KNOWN_SOLUTIONS
 from lingjing_solo.planning import plan_contract as pc  # noqa: E402
+import evidence_compat as ev                            # noqa: E402  §5.1/§5.2/§5.3 schema
+import r2_ar25                                          # noqa: E402  §3.1 观测 + 正式状态哈希
+from tick_trail import TickTrail                        # noqa: E402  §5.2 逐 tick 写入器
 
 # ═══════════════════════════════════════════════════════════
 # §3.2 边界：planner 只认识 abstract action name（"ACTIONn" 字符串），
@@ -69,14 +73,103 @@ def act_input(name):
     """abstract name → `ActionInput`；所有 `perform_action` 调用都从这里出来。"""
     return ActionInput(id=to_enum(name), data={}, reasoning=None)
 
-def run_names(g, names):
-    """在真引擎上按序执行 abstract name 序列。"""
+def run_names(g, names, at=None):
+    """在真引擎上按序执行 abstract name 序列。
+
+    给了 `at`（一个 `_attempt()` 段）就逐动作登记成 §5.2 证据；不给则是纯回放。
+    """
     for a in names:
-        g.perform_action(act_input(a), raw=True)
+        if at is None:
+            g.perform_action(act_input(a), raw=True)
+        else:
+            at.step(g, a)
 
 def nums_to_names(seq):
     """历史 int 序列（`KNOWN_SOLUTIONS`、`arc_shadow.solve_level` 的返回值）→ name 列表。"""
     return [NAME_BY_NUM[int(n)] for n in seq]
+
+# ═══════════════════════════════════════════════════════════
+# §5.2 逐 tick 证据：只有"真留在引擎上的动作"才写行
+# ═══════════════════════════════════════════════════════════
+#
+# AR25 的引擎推进分散在四处（罐头解法、目标分解校验、R4 贪心、主循环补放），另外三层
+# （beam / 状态搜索 / arc_shadow）在 finally 里 `_restore` 回入口帧。前者才是"环境发生过"，
+# 后者只是"搜索尝试过"——按 §10 不能混写，所以证据只在 `_Attempt` 提交后落盘。
+
+#: 逐 tick 写入器；None = 只跑关不采证（被 import 当库用、单测直接点 planner 时的默认）。
+_TRAIL: TickTrail | None = None
+#: 本轮 run 的身份，`main()` 建 trail 时一并设好，供 observation / evidence_refs 引用。
+_RUN_ID = ""
+_EPISODE_ID = ""
+
+def _engine_frame(g):
+    """§5.2 每行的 `frame`：现读引擎 21×21 渲染网格。拿不到就抛错，绝不填占位帧。"""
+    return g.naxbskjmlg().tolist()
+
+def _observe(g, perc=None, *, tick=None):
+    """感知 → `r2_ar25.enrich` → §3.1 observation；`tick` 缺省用 trail 的下一个行号。"""
+    if perc is None:
+        perc = r2_perceive(g)
+    r2_ar25.enrich(g, perc)
+    if tick is None:
+        tick = _TRAIL.next_tick if _TRAIL is not None else 0
+    return r2_ar25.observe(perc, tick=tick, frame=_engine_frame(g), run_id=_RUN_ID,
+                           episode_id=_EPISODE_ID, legal_actions=list(AR25_ACTION_NAMES))
+
+class _Attempt:
+    """一段"打上去、可能要整段回滚"的引擎推进：commit 才进 recording，abort 一行不留。"""
+
+    def __init__(self):
+        self.active = _TRAIL is not None
+        self.done = not self.active          # 不采证时视为已结清，contextmanager 不用收尾
+        if self.active:
+            _TRAIL.begin_attempt()
+
+    def step(self, g, name):
+        """执行一个动作；采证时 before 取 trail 的当前终态，after 从动作后的引擎重采。"""
+        before = _TRAIL.last_obs if self.active else None
+        g.perform_action(act_input(name), raw=True)
+        if self.active:
+            _TRAIL.record(before, name, _observe(g), _engine_frame(g))
+
+    def commit(self):
+        """引擎确实前进到了这里（关卡被解开/动作没回滚）：整段转入本关缓冲。"""
+        if self.active:
+            _TRAIL.commit_attempt()
+        self.done = True
+
+    def abort(self):
+        """引擎已 `_restore` 回入口帧：整段丢弃，`last_obs` 跟着回到尝试之前。"""
+        if self.active:
+            _TRAIL.abort_attempt()
+        self.done = True
+
+@contextlib.contextmanager
+def _attempt():
+    """`with _attempt() as at:` —— 出口没 settle 就按 abort 处理（宁可少写，不虚报）。"""
+    at = _Attempt()
+    try:
+        yield at
+    finally:
+        if not at.done:
+            at.abort()
+
+def _flush_level(plan):
+    """本关已提交的转移连同"整关一份"的 plan 落盘；不采证时是空操作。"""
+    if _TRAIL is None:
+        return 0
+    _TRAIL.attach_plan(plan)
+    return _TRAIL.flush_level()
+
+def _rel_to_repo(target):
+    """证据文件会被提交：能相对仓库根表示就不写机器绝对路径（同 `run_ls20_r2r3.py:37`）。"""
+    t = pathlib.Path(target)
+    for base in (pathlib.Path(PROJECT_ROOT), pathlib.Path(PROJECT_ROOT).parent):
+        try:
+            return str(t.relative_to(base))
+        except ValueError:
+            continue
+    return str(t)
 
 H_AXIS_TAG = "0002nuguepuujf"
 V_AXIS_TAG = "0054kgxrvfihgm"
@@ -162,12 +255,16 @@ def r2_perceive(g):
 def ar25_state_hash(perc):
     """输入状态哈希（§3.2 字段③：plan 必须说明"相对哪个局面成立"）。
 
-    临时实现：AR25 还没有独立的 R2 层，先对 `_state_key(g)` 的 repr 取 sha256 前 16 位。
-    没有复用 `r2_ls20.state_hash`——它只哈希 LS20 的 64×64 playfield，套到 21×21 的
-    AR25 棋盘上是假兼容（选中的拼块、轴位置、步数条都不在里面）。设计文档 §8.6：
-    ③ 统一内核落地时由真正的 AR25 R2 观测哈希替换掉这一处。
+    ② 的临时实现是 `sha256(repr(_state_key(g)))` 前 16 位——那是**搜索去重键**，不是状态身份：
+    `arc_shadow._snapshot` 把旋转距离和三个标志位当可变全局状态保存，`_state_key` 却没收它们。
+    ③ 起改用 `r2_ar25.state_hash`：逐字段命名、排序确定、不含步数条（理由见该模块 docstring）。
+    旧搜索键哈希只留在观测的 `game_specific.engine_key_hash` 里作**对照**，由 `tick_trail`
+    在真实跑测里双向审计「新哈希是否比搜索键粗」，结论进 `report.json`。
+
+    `perc` 必须经 `r2_ar25.enrich(g, perc)`：没 enrich 时 `state_hash` 抛 `R2PerceptionError`，
+    而不是静默算出一个少收了一类可变状态的哈希。
     """
-    return hashlib.sha256(repr(perc["state_key"]).encode("utf-8")).hexdigest()[:16]
+    return r2_ar25.state_hash(perc)
 
 def ar25_axis_types(perc):
     """plan 里报的轴构成：直接从 `axes` 汇总。
@@ -681,7 +778,11 @@ class R4Scorer:
         self.visited.add(new_perc["state_key"])
 
 def r4_greedy_play(env, t_limit=60, max_steps=200):
-    """R4 贪心步进: 逐动作评分选择, 直到通关或超时。失败时恢复原状态。"""
+    """R4 贪心步进: 逐动作评分选择, 直到通关或超时。失败时恢复原状态。
+
+    成功退出时引擎**保留**这段步进（与 beam/状态搜索相反），所以整段要 commit 进 recording；
+    回滚那条路径 abort，一行都不留。
+    """
     g = env._game
     if is_won(g):
         return []
@@ -691,24 +792,27 @@ def r4_greedy_play(env, t_limit=60, max_steps=200):
     prev = r2_perceive(g)
     path = []
     t0 = time.time()
-    while time.time() - t0 < t_limit and len(path) < max_steps:
-        perc = r2_perceive(g)
-        if perc["won"] or int(g._current_level_index) > li0:
-            return path
-        action = scorer.choose(perc, prev)
-        try:
-            g.perform_action(act_input(action), raw=True)
-        except:
-            continue
-        path.append(action)
-        new_perc = r2_perceive(g)
-        scorer.update(action, prev, new_perc)
-        prev = new_perc
-        if new_perc["won"] or int(g._current_level_index) > li0:
-            return path
-        if g._state == GameState.GAME_OVER:
-            break
-    _restore(g, snap0)
+    with _attempt() as at:
+        while time.time() - t0 < t_limit and len(path) < max_steps:
+            perc = r2_perceive(g)
+            if perc["won"] or int(g._current_level_index) > li0:
+                at.commit()
+                return path
+            action = scorer.choose(perc, prev)
+            try:
+                at.step(g, action)
+            except:
+                continue
+            path.append(action)
+            new_perc = r2_perceive(g)
+            scorer.update(action, prev, new_perc)
+            prev = new_perc
+            if new_perc["won"] or int(g._current_level_index) > li0:
+                at.commit()
+                return path
+            if g._state == GameState.GAME_OVER:
+                break
+        _restore(g, snap0)
     return None
 
 # ═══════════════════════════════════════════════════════════
@@ -716,7 +820,10 @@ def r4_greedy_play(env, t_limit=60, max_steps=200):
 # ═══════════════════════════════════════════════════════════
 
 def try_known_solution(g, level_idx):
-    """尝试 arc_shadow 中已验证的解法, 秒级返回。返回 abstract name 列表（§3.2）。"""
+    """尝试 arc_shadow 中已验证的解法, 秒级返回。返回 abstract name 列表（§3.2）。
+
+    回放成功时这段动作留在引擎上 → commit 进 recording；验证失败会 `_restore` → abort。
+    """
     if level_idx not in KNOWN_SOLUTIONS:
         return None
     sol = nums_to_names(KNOWN_SOLUTIONS[level_idx])   # 解法表存的是编号，出口转成 name
@@ -724,15 +831,17 @@ def try_known_solution(g, level_idx):
         return None
     snap = _snapshot(g)
     li0 = int(g._current_level_index)
-    try:
-        run_names(g, sol)
-        if int(g._current_level_index) > li0 or is_won(g):
-            print(f"  [R0-已知解法] ✓ {len(sol)}步直接通关")
-            return sol
-        print(f"  [R0-已知解法] 验证失败({len(sol)}步未通关, 可能关卡状态不匹配)")
-    except Exception as e:
-        print(f"  [R0-已知解法] 执行异常: {e}")
-    _restore(g, snap)
+    with _attempt() as at:
+        try:
+            run_names(g, sol, at=at)
+            if int(g._current_level_index) > li0 or is_won(g):
+                at.commit()
+                print(f"  [R0-已知解法] ✓ {len(sol)}步直接通关")
+                return sol
+            print(f"  [R0-已知解法] 验证失败({len(sol)}步未通关, 可能关卡状态不匹配)")
+        except Exception as e:
+            print(f"  [R0-已知解法] 执行异常: {e}")
+        _restore(g, snap)
     return None
 
 # ═══════════════════════════════════════════════════════════
@@ -740,17 +849,23 @@ def try_known_solution(g, level_idx):
 # ═══════════════════════════════════════════════════════════
 
 def _verify_and_return(g, path, method_name):
-    """执行 abstract name 序列, 验证通关后返回, 失败则恢复原状态。"""
+    """执行 abstract name 序列, 验证通关后返回, 失败则恢复原状态。
+
+    与 `try_known_solution` 同一套证据口径：通关成立 → 整段 commit；随后 `_restore` 回滚 →
+    整段 abort，不留"搜索尝试过"的帧。
+    """
     snap = _snapshot(g)
     li0 = int(g._current_level_index)
-    try:
-        run_names(g, path)
-        if int(g._current_level_index) > li0 or is_won(g):
-            return path, method_name
-        print(f"  [{method_name}] 验证失败({len(path)}步未通关)")
-    except Exception as e:
-        print(f"  [{method_name}] 执行异常: {e}")
-    _restore(g, snap)
+    with _attempt() as at:
+        try:
+            run_names(g, path, at=at)
+            if int(g._current_level_index) > li0 or is_won(g):
+                at.commit()
+                return path, method_name
+            print(f"  [{method_name}] 验证失败({len(path)}步未通关)")
+        except Exception as e:
+            print(f"  [{method_name}] 执行异常: {e}")
+        _restore(g, snap)
     return None, None
 
 # ═══════════════════════════════════════════════════════════
@@ -774,6 +889,12 @@ def r234_solve(env, t_limit=900, level_idx=0):
 
     # R2 感知（同时是 plan 的 input_state_hash / expected_goal / subgoals 的来源）
     perc = r2_perceive(g)
+    r2_ar25.enrich(g, perc)            # 正式哈希要读引擎；不 enrich 则 state_hash 直接抛错
+    if _TRAIL is not None:
+        # 本关入口态必须就是上一条证据的终态。对不上不在这里抛异常——那属于记账缺陷，
+        # 该以 `audit.chain_breaks` 的形式进 report.json 并把 verdict 判成 BLOCKED，
+        # 而不是让一次真跑通因为记账中断（抛在这里等于把 FAIL 变成"没跑完"）。
+        _TRAIL.check_continuity(ar25_state_hash(perc))
     is_hard = level_idx >= 5
     print(f"  [R2] L{level_idx+1} 轴={perc['n_axes']}({perc['atype']}) "
           f"拼块={len(perc['movable'])} 目标={perc['total_targets']} "
@@ -873,6 +994,13 @@ def r234_solve(env, t_limit=900, level_idx=0):
 # ═══════════════════════════════════════════════════════════
 
 def main():
+    """跑关 + 出 §5 的三份产物：`manifest.json` / `recording.jsonl` / `report.json`。
+
+    证据写入器在建好后、第一个动作之前就必须写下基线行（§5.2 第 1 行是 RESET 态）；
+    跑测结束时用 `evidence_compat.replay_recording` **回读自己写的 recording** 来定判据，
+    判据不手填 True（同 `run_ls20_r2r3.py:522` 的自证段）。
+    """
+    global _TRAIL, _RUN_ID, _EPISODE_ID
     MAX_LEVELS = int(sys.argv[1]) if len(sys.argv) > 1 else 8
     START_LEVEL = int(sys.argv[2]) if len(sys.argv) > 2 else 0
     arcade = Arcade(environments_dir=environments_dir("ar25"),
@@ -883,12 +1011,26 @@ def main():
     env.reset()
     g = env._game
 
+    # 证据目录与 run 身份必须在第一个动作之前就位；plan/观测都要引用同一个 run_id。
+    commit, branch = git_output("rev-parse", "HEAD"), git_output("branch", "--show-current")
+    _RUN_ID = f"{time.strftime('%Y-%m-%dT%H:%M:%S')}-ar25-r234"
+    _EPISODE_ID = gid
+    run_dir = pathlib.Path(str(state_dir() / f"ar25_r234_{time.strftime('%Y%m%d_%H%M%S_')}{os.getpid()}"))
+    run_dir.mkdir(parents=True, exist_ok=True)
+    recording_path = run_dir / "recording.jsonl"
+    _TRAIL = TickTrail(recording_path, run_id=_RUN_ID, episode_id=_EPISODE_ID,
+                       legal_actions=list(AR25_ACTION_NAMES))
+    _TRAIL.baseline(_observe(g, tick=0), _engine_frame(g))
+
     print(f"\nAR25 R2+R3+R4 组合闯关 (r234 flow v5)")
     import arc_shadow as _as
     print(f"  arc_shadow 来源: {_as.__file__}")
     print(f"  搜索预算: L1-L5=60s / L6+=900s (beam 300s + arc_shadow 600s)")
     print(f"  总预算: 500 steps / 900.0s")
     print(f"  R3 出口: {pc.PLAN_SCHEMA}（每关一份九字段 plan，validity 分 candidate/verified_offline）")
+    print(f"  R2 观测: {r2_ar25.OBSERVATION_SCHEMA}（input_state_hash = 语义态 sha256[:16]，"
+          f"字段表见 r2_ar25.AR25_STATE_FIELDS）")
+    print(f"  逐 tick 证据: {_rel_to_repo(recording_path)}（回滚的搜索帧不入证）")
     print(f"  关 方法             步数   预算     搜索耗时      节点 结果            plan")
     print(f"-----------------------------------------------------------------")
 
@@ -896,11 +1038,13 @@ def main():
     total_search = 0.0
     levels_info = []
     won_all = True
+    levels_solved = 0            # 出过 plan 的关数：plan_hash_linked 的分母
 
     for level in range(MAX_LEVELS):
         if int(g._current_level_index) < level:
             print(f"{level+1:3d} 未能进入")
             won_all = False
+            _flush_level(None)
             break
         if level < START_LEVEL:
             continue
@@ -918,6 +1062,7 @@ def main():
             # 失败就没有 plan：不拿 validity=none 的空壳冒充"出口已套契约"（§7.1 R3 门槛）
             levels_info.append({"level": level+1, "method": method, "steps": None,
                                 "ok": False, "elapsed": elapsed, "plan": None})
+            _flush_level(None)
             break
 
         # 目标分解 / 已知解法这两条分支在 _verify_and_return 里就已经把动作打在真引擎上了，
@@ -925,11 +1070,19 @@ def main():
         # R4 贪心成功时不回滚——即"引擎停在当前关"的补放分支主要服务 beam/搜索这两层。
         if not (int(g._current_level_index) > level or is_won(g)):
             print(f"  [校验] 引擎仍停在 L{level+1}，补放 {len(result)} 步解法")
-            run_names(g, result)
+            with _attempt() as at:
+                try:
+                    run_names(g, result, at=at)
+                except Exception as e:
+                    print(f"  [校验] 补放中断: {e}")
+                finally:
+                    # 补放没有回滚点：已经执行掉的动作就是真发生在引擎上，必须留在证据里
+                    at.commit()
 
         ok = int(g._current_level_index) > level or is_won(g)
         total_steps += len(result)
         total_search += elapsed
+        levels_solved += 1
         budget = int(g.lelsvjlwneo.ilqnjlrnkk)
         plan_tag = f"{plan['planner']}/{plan['validity']}" if plan else "无plan"
         print(f"{level+1:3d} {method:<18} {len(result):>4} {budget:>4}   {elapsed:7.1f}s         {'✓通关' if ok else '✗未通关'} {len(result)}步  plan={plan_tag}")
@@ -937,6 +1090,7 @@ def main():
                             "ok": ok, "elapsed": round(elapsed, 1),
                             "planner": plan["planner"], "plan_id": plan["plan_id"],
                             "plan_validity": plan["validity"], "plan": plan})
+        _flush_level(plan)
         if not ok:
             won_all = False
             break
@@ -946,36 +1100,162 @@ def main():
     print(f"总计: {total_steps}步, {total_search:.1f}s搜索")
     print(f"结果: L{final_level+1}, state={g._state}, won={won_all}")
 
+    trail_summary = _TRAIL.close()
+    audit = trail_summary["hash_audit"]
+    recorded = trail_summary["actions"]
+
+    # ── 自证：回读刚写的 recording，判据由协议层给出，不手填 ──────────────
+    replay_info, replay_ok = {}, False
+    try:
+        res = ev.replay_recording(recording_path, legal_actions=list(AR25_ACTION_NAMES))
+        replay_ok = len(res.transitions) == recorded
+        replay_info = {"transitions": len(res.transitions), "reset_count": res.reset_count,
+                       "final_state": res.final_state,
+                       "levels_completed": res.levels_completed}
+    except ev.EvidenceValidationError as exc:
+        replay_info = {"error": str(exc)}
+
+    schema_ok, actions_legal, scan_err = True, True, ""
+    with recording_path.open(encoding="utf-8") as fh:
+        for line_number, line in enumerate(fh, 1):
+            try:
+                row = ev.validate_tick(json.loads(line)["data"])
+            except (ev.EvidenceValidationError, KeyError, json.JSONDecodeError) as exc:
+                schema_ok, scan_err = False, f"line {line_number}: {exc}"
+                break
+            name = (row.get("requested_action") or {}).get("name")
+            if name != "RESET" and name not in AR25_ACTION_NAMES:
+                actions_legal, scan_err = False, f"line {line_number}: 非法动作 {name}"
+
+    link = audit["plan_link"]
+    criteria = {
+        "schema_valid": schema_ok,
+        "actions_legal": actions_legal,
+        "replay_complete": replay_ok,
+        # 每份 plan 的 input_state_hash 都得是本关首行的入口态，且**每个成功关**都出过 plan
+        "plan_hash_linked": _TRAIL.plan_hash_linked and link["plans"] == levels_solved,
+        # 引擎当前位置 == 最后一条证据的终态：有动作没记进 recording 就在这里现形
+        "chain_continuous": audit["chain_breaks"] == 0,
+        # 反向分歧 >0 = 正式哈希漏收了搜索键能区分的状态，那它不配当状态身份（§3.2 字段③）
+        "state_hash_not_coarser_than_search_key": audit["hash_split_engine_key_only"] == 0,
+        "terminal_verified": won_all or str(g._state) == str(GameState.GAME_OVER),
+    }
+    # 除 terminal_verified 之外的六条都是"这份证据自不自洽"的判据；全过才允许保留 PASS/FAIL。
+    evidence_ok = all([schema_ok, actions_legal, replay_ok,
+                       criteria["plan_hash_linked"], criteria["chain_continuous"],
+                       criteria["state_hash_not_coarser_than_search_key"]])
+    verdict = "PASS" if won_all else "FAIL"
+    if not evidence_ok:
+        verdict = "BLOCKED"        # §10：证据不自洽就当没通过，不做替换
+    print(f"verdict={verdict} 记录 {trail_summary['ticks']} 行 / {recorded} 动作 "
+          f"(丢弃回滚帧 {trail_summary['discarded_rows']} 行) "
+          f"chain_breaks={audit['chain_breaks']} plan_link={link['linked']}/{link['plans']}")
+
+    planner_tally, validity_tally = {}, {}
+    for x in levels_info:
+        if x.get("planner"):
+            planner_tally[x["planner"]] = planner_tally.get(x["planner"], 0) + 1
+            validity_tally[x["plan_validity"]] = validity_tally.get(x["plan_validity"], 0) + 1
+
+    unproven_fields = [k for k, v in r2_ar25.AR25_STATE_FIELDS.items() if "未证实" in v]
+    limitations = [
+        "offline 引擎, 非 live Scorecard",
+        "plan 是「每关一份、整条路径」的粒度：完整 plan 只盖在本关第一行，其余行只带 plan_id"
+        "（join 键）；能证目标分解与预算，不能当逐帧决策链证据",
+        "步数条不进 state_hash（同 r2_ls20 的 HUD 教训），逐 tick 记在 game_specific.steps_left",
+        f"beam/状态搜索/arc_shadow 的回滚帧不入证：本轮丢弃 {trail_summary['discarded_rows']} 行",
+        "R2 字段表里这些引擎字段语义未证实、但按 arc_shadow._snapshot 的可变性收进哈希: "
+        + ", ".join(unproven_fields),
+        f"哈希双向审计：语义变/搜索键没变 {audit['hash_split_semantic_only']} 次（新哈希更细），"
+        f"反向 {audit['hash_split_engine_key_only']} 次；只扣一步不动几何 {audit['steps_only']} 次",
+    ] + ([] if schema_ok else [f"tick schema: {scan_err}"]) \
+        + ([] if actions_legal else [f"动作合法性: {scan_err}"]) \
+        + ([] if replay_ok else [f"replay 不自洽: {replay_info}"]) \
+        + ([] if criteria["chain_continuous"]
+           else [f"{audit['chain_breaks']} 处引擎位置与最后一条证据的终态不符：有动作没进 "
+                 "recording，样本见 report.game_specific.hash_audit.examples"]) \
+        + ([] if criteria["state_hash_not_coarser_than_search_key"]
+           else [f"{audit['hash_split_engine_key_only']} 次「搜索键变了、语义哈希没变」："
+                 "state_hash 欠收了一类可变状态，样本见 hash_audit.examples"]) \
+        + ([] if criteria["plan_hash_linked"]
+           else [f"{link['plans'] - link['linked']} 份 plan 的 input_state_hash 对不上本关入口态，"
+                 "样本见 report.game_specific.plan_link.examples"])
+    report = ev.build_verification_report(
+        run_id=_RUN_ID, tier="offline_engine", verdict=verdict, criteria=criteria,
+        metrics={"actions": total_steps, "recorded_actions": recorded,
+                 "recorded_ticks": trail_summary["ticks"],
+                 "levels_completed": final_level,
+                 # 引擎的 _current_level_index 是「当前关卡下标」，最后一关通关时不再 +1
+                 "levels_cleared": final_level + 1 if won_all else final_level,
+                 "total_search_seconds": round(total_search, 1),
+                 "plans_by_planner": planner_tally, "plans_by_validity": validity_tally,
+                 "steps_by_level": {x["level"]: x.get("steps") for x in levels_info}},
+        evidence_refs=["recording.jsonl", "manifest.json", "result.json"],
+        limitations=limitations,
+        game_specific={"r2_schema": r2_ar25.OBSERVATION_SCHEMA, "plan_schema": pc.PLAN_SCHEMA,
+                       "protocol_backend": ev.BACKEND, "replay": replay_info,
+                       "hash_audit": {k: v for k, v in audit.items() if k != "plan_link"},
+                       "plan_link": link,
+                       "final_state_hash": trail_summary["final_state_hash"]},
+    )
+    (run_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2),
+                                          encoding="utf-8")
+
+    manifest = ev.build_manifest(
+        run_id=_RUN_ID, game_id=gid, branch=branch, commit=commit,
+        module_versions={"r2": r2_ar25.OBSERVATION_SCHEMA,
+                         "r3": "r234-v5+plan_contract", "r4": "r234-v5",
+                         "evidence": ev.SCHEMA_VERSION},
+        evidence_tier="offline_engine", mode="execute", seed=None,
+        limits={"max_steps": 500, "timeout_s": 900, "max_levels": MAX_LEVELS},
+        source_recording=None,
+        # 证据文件会被提交，里面只存相对仓库根的路径，不存机器绝对路径
+        game_specific={"environments_dir": _rel_to_repo(environments_dir("ar25")),
+                       "protocol_backend": ev.BACKEND,
+                       # 正式 input_state_hash 覆盖哪些字段、每个字段是什么语义（§3.2 字段③
+                       # 要能被第三方审计：只给一个 16 位哈希等于让人猜）。
+                       "state_hash_fields": list(r2_ar25.SEMANTIC_STATE_FIELDS),
+                       "state_hash_requires": list(r2_ar25.ENRICHED_KEYS),
+                       "engine_field_semantics": r2_ar25.AR25_STATE_FIELDS,
+                       "start_level": START_LEVEL},
+    )
+    manifest["artifacts"] = ["recording.jsonl", "report.json", "result.json", "manifest.json"]
+    manifest["per_tick_recording"] = {"path": "recording.jsonl",
+                                       "ticks": trail_summary["ticks"],
+                                       "format": trail_summary["format"],
+                                       "backend": trail_summary["backend"]}
+    manifest["status"] = {"PASS": "completed", "FAIL": "completed",
+                          "BLOCKED": "blocked"}[verdict]
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
+                                           encoding="utf-8")
+
     # 保存结果到 JSON
-    commit = git_output("rev-parse", "HEAD")
-    branch = git_output("branch", "--show-current")
-    run_id = f"{time.strftime('%Y-%m-%dT%H:%M:%S')}-ar25-l{final_level}"
     result_data = {
         # 证据基线（§5.1）：缺 branch/commit/evidence_tier 的跑测无法复现，也无法定级
-        "schema_version": "lingjing-evidence-v1",
-        "run_id": run_id,
+        "schema_version": ev.SCHEMA_VERSION,
+        "run_id": _RUN_ID,
         "agent_build": f"git:{commit}",
         "project_branch": branch,
-        "module_versions": {"r2": "r234-v5", "r3": "r234-v5+plan_contract",
-                            "r4": "r234-v5", "evidence": "lingjing-evidence-v1"},
-        # 本地 arc_agi OFFLINE 引擎 = offline_engine，不等于 live_scorecard
+        "module_versions": manifest["module_versions"],
+        # 本地 arc_agi OFFLINE 引擎 = offline_engine，不等于 live Scorecard
         "evidence_tier": "offline_engine",
         "mode": "execute",
         "limits": {"max_steps": 500, "timeout_s": 900},
-        "status": "pass" if won_all else "fail",
-        "environments_dir": arcade.environments_dir if hasattr(arcade, "environments_dir") else None,
-        # 本脚本目前只采到每关汇总，没有逐 tick 帧；按 §7.3 这种证据判不了 replay_complete
-        "per_tick_recording": None,
-        "limitations": ["每关汇总, 无 tick JSONL ⇒ replay_complete/schema_valid 未证",
-                        "offline 引擎, 非 live Scorecard",
-                        "plan 是「每关一份、整条路径」的粒度，不是逐 tick：能证目标分解与预算，"
-                        "不能当逐帧决策链证据"],
+        "status": {"PASS": "pass", "FAIL": "fail", "BLOCKED": "blocked"}[verdict],
+        "verdict": verdict,
+        "verification_criteria": criteria,
+        "environments_dir": _rel_to_repo(environments_dir("ar25")),
+        # ③ 落地：逐 tick 帧真的写出来了，判据来自协议层回读，不是"未证"
+        "per_tick_recording": {"path": "recording.jsonl", "ticks": trail_summary["ticks"],
+                               "actions": recorded, "format": trail_summary["format"],
+                               "backend": trail_summary["backend"],
+                               "final_state_hash": trail_summary["final_state_hash"],
+                               "hash_audit": audit},
+        "limitations": limitations,
         # §3.2 R3 出口：每关一份 plan（levels[i]["plan"]），字段齐九个，落盘前已过 validate_plan
         "plan_schema": pc.PLAN_SCHEMA,
         "plans_emitted": sum(1 for x in levels_info if x.get("plan")),
-        "planner_distribution": {p: sum(1 for x in levels_info if x.get("planner") == p)
-                                 for p in sorted({x["planner"] for x in levels_info
-                                                  if x.get("planner")})},
+        "planner_distribution": planner_tally,
         # 兼容既有读取方
         "game": gid,
         "mode_legacy": "OFFLINE",
@@ -987,12 +1267,9 @@ def main():
         "total_search_seconds": round(total_search, 1),
         "levels": levels_info,
     }
-    ts = time.strftime("%Y%m%d_%H%M%S_")
-    result_dir = str(state_dir() / f"ar25_r234_{ts}{os.getpid()}")
-    os.makedirs(result_dir, exist_ok=True)
-    result_path = os.path.join(result_dir, "result.json")
-    with open(result_path, "w", encoding="utf-8") as f:
-        json.dump(result_data, f, indent=2, ensure_ascii=False)
+    result_path = run_dir / "result.json"
+    result_path.write_text(json.dumps(result_data, indent=2, ensure_ascii=False),
+                           encoding="utf-8")
     print(f"RESULT_FILE={result_path}")
 
 if __name__ == '__main__':

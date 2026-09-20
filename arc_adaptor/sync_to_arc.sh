@@ -35,6 +35,11 @@ cp "$LINGJING_ROOT/tests/test_plan_contract.py" tests/unit/test_plan_contract.py
 # 进生产 checkout 不会 error 掉别人的 tests/unit，② skip 原因里写明了"runner 在 ARC 不可 import"，
 # 这本身就是规则 ①（cp -R 把离线诊断脚本推进生产包）的可复现证据。
 cp "$LINGJING_ROOT/tests/test_ar25_plan_contract.py" tests/unit/test_ar25_plan_contract.py
+# AR25 逐 tick 证据层（设计文档 §8 ③：r2_ar25 哈希 + tick_trail 写入器）。它在 ARC 里是
+# **模块级 skip**：被测的 r2_ar25.py / tick_trail.py 在 arc_adaptor/ 根，不在同步白名单里
+# （引擎后端不得上线，规则 ①），而 skip 判断就写在那两个 import 之前，所以带过去不会
+# error 掉别人的 tests/unit——这也正是带它过去的价值：skip 而不是崩，是可复现的边界证据。
+cp "$LINGJING_ROOT/tests/test_ar25_recording.py" tests/unit/test_ar25_recording.py
 cp "$SCRIPT_DIR/tools/ls20_single_action_probe.py" tools/ls20_single_action_probe.py
 cp "$SCRIPT_DIR/tools/r11l_single_action_probe.py" tools/r11l_single_action_probe.py
 
@@ -57,6 +62,7 @@ printf '%s\n' \
   tests/unit/test_r11l_probe.py \
   tests/unit/test_plan_contract.py \
   tests/unit/test_ar25_plan_contract.py \
+  tests/unit/test_ar25_recording.py \
   tools/ls20_single_action_probe.py \
   tools/r11l_single_action_probe.py
 # agents/__init__.py **不在**上面：规则 2 要求不覆盖 ARC 原生 exports，
