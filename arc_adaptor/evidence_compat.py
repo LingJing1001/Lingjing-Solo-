@@ -1,0 +1,274 @@
+"""lingjing-evidence-v1 的本地兼容层。
+
+优先使用 feat/ar25-minimal-closed-loop 带来的 `lingjing_solo.evidence.protocol`；
+它还没合进来时，用这里逐字段等价的实现 —— 字段名、必填校验、回放语义都照该分支
+`lingjing_solo/evidence/protocol.py` 抄（build_manifest/build_tick/
+build_verification_report/validate_*/replay_recording）。
+
+合并之后本模块会自动走到 protocol 那份，跑测脚本一行都不用改。
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable
+
+try:                                        # plan 契约（§3.2 九字段）是纯 stdlib 模块
+    from lingjing_solo.planning.plan_contract import validate_plan
+except ImportError:                         # 装不到就只允许"不带 plan"的旧行通过
+    validate_plan = None                    # noqa: N816
+
+
+def _check_plan(tick: dict) -> dict:
+    """tick 自带 plan 时过一遍 §3.2 契约；不带（或 plan=None）放过，兼容既有 recording。
+
+    放在这里而不是让各运行器自觉调用：落盘即校验，才能防止"plan 写进 recording 但没人
+    检查过它的九个字段"——那等于给证据装了个空闸门。
+    """
+    plan = tick.get("plan")
+    if plan is None:
+        return tick
+    if validate_plan is None:
+        raise EvidenceValidationError(
+            "tick 带了 plan 但 lingjing_solo.planning.plan_contract 不可用，无法校验九字段")
+    try:
+        # 读取路径不查 planner 注册表：注册表由运行器 import 时填写，独立审计进程里没有它。
+        validate_plan(plan, require_registered_planner=False)
+    except Exception as exc:                # 契约异常类型两边一致地转成证据异常
+        raise EvidenceValidationError(f"tick plan 不符合 §3.2 契约: {exc}") from exc
+    return tick
+
+
+def _evidence_pkg_on_disk() -> bool:
+    """`lingjing_solo/evidence/` 在不在盘上——**只看这份文件在不在，不看 import 成不成功**。
+
+    上一版是按异常 `exc.name` 分家的，那是错的：`import lingjing_solo.evidence.protocol` 得先执行
+    父包，链路 `lingjing_solo/__init__.py:5 → core/__init__.py:2 → core/types.py:11` 要 numpy，
+    于是在没装 numpy 的解释器里**合并前**也抛 `ModuleNotFoundError(name='numpy')`——名字不在那条
+    三级链里，就被认成"分支已合但坏了"，兜底整条被堵死（本轮 `py -3.13` 实测过这个假硬崩）。
+    "合没合"的证据只能是文件在不在：在 → 已合，导入炸就抛出去；不在 → 真没合（或父包缺依赖），
+    兜底照常可用。
+    """
+    candidates = [Path(__file__).resolve().parents[1] / "lingjing_solo"]
+    candidates += [Path(p) for p in
+                   getattr(sys.modules.get("lingjing_solo"), "__path__", ()) or ()]
+    return any((root / "evidence" / "__init__.py").is_file() for root in candidates)
+
+
+try:                                        # 合并后走这里
+    from lingjing_solo.evidence.protocol import (  # noqa: F401
+        EvidenceValidationError, ReplayResult, SCHEMA_VERSION, build_manifest,
+        build_tick, build_verification_report, replay_recording,
+        validate_manifest, validate_tick, validate_verification_report,
+    )
+    BACKEND = "lingjing_solo.evidence.protocol"
+
+    # protocol 版本还没长 plan 字段：这里包一层，合并后 `build_tick(plan=...)` 不会 TypeError。
+    _protocol_build_tick, _protocol_validate_tick = build_tick, validate_tick
+
+    def build_tick(*, plan: dict | None = None, **kwargs) -> dict:  # noqa: F811
+        return _check_plan({**_protocol_build_tick(**kwargs), "plan": plan})
+
+    def validate_tick(value: dict) -> dict:  # noqa: F811
+        return _check_plan(_protocol_validate_tick(value))
+except ImportError as exc:                        # 只有"该分支还没合进来"才允许走等价实现
+    # 裸 except ImportError 会连"包已经在了、但它自己 import 失败"一起吞掉：那样
+    # report.json 的 protocol_backend 会**谎报 fallback**，而 #9 的验收恰恰就是这个字段。
+    # 判据用 _evidence_pkg_on_disk()（为什么不用异常名字，那里写了实测理由）。
+    if _evidence_pkg_on_disk():
+        raise ImportError(
+            "lingjing_solo/evidence/ 已在盘上（该分支已合并）但导入失败，"
+            "拒绝静默退回本地实现"
+            f"（{type(exc).__name__}: name={getattr(exc, 'name', None)!r} {exc}）") from exc
+    BACKEND = "arc_adaptor.evidence_compat(fallback)"
+
+    SCHEMA_VERSION = "lingjing-evidence-v1"
+
+    class EvidenceValidationError(ValueError):
+        """证据不合法或不可回放时抛出（fail-closed）。"""
+
+    @dataclass(frozen=True)
+    class ReplayResult:
+        transitions: tuple
+        final_state: str | None
+        levels_completed: int
+        reset_count: int
+
+    def _require(mapping: dict, fields: Iterable[str], label: str) -> None:
+        missing = [f for f in fields if f not in mapping]
+        if missing:
+            raise EvidenceValidationError(f"{label} missing required fields: {', '.join(missing)}")
+
+    def _json_safe(value: Any, label: str) -> Any:
+        try:
+            json.dumps(value, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise EvidenceValidationError(f"{label} must be JSON-safe") from exc
+        return value
+
+    def build_manifest(*, run_id: str, game_id: str, branch: str, commit: str,
+                       module_versions: dict, evidence_tier: str, mode: str,
+                       game_specific: dict | None = None, seed: Any = None,
+                       limits: dict | None = None,
+                       source_recording: str | None = None) -> dict:
+        return validate_manifest({
+            "schema_version": SCHEMA_VERSION, "run_id": run_id, "game_id": game_id,
+            "agent_build": f"git:{commit}", "project_branch": branch,
+            "module_versions": dict(module_versions), "evidence_tier": evidence_tier,
+            "mode": mode, "seed": seed,
+            "limits": limits or {"max_steps": 64, "max_nodes": 128000, "timeout_s": 30},
+            "source_recording": source_recording, "status": "running", "artifacts": [],
+            "game_specific": game_specific or {},
+        })
+
+    def build_tick(*, run_id: str, episode_id: str, tick: int, frame: Any, state: str,
+                   levels_completed: int, legal_actions: list, state_hash: str,
+                   requested_action: dict | None = None, settled_frame: bool = True,
+                   score: float | None = None, plan_id: str | None = None,
+                   plan: dict | None = None,
+                   decision_id: str | None = None, reflection_id: str | None = None,
+                   evidence_refs: list | None = None,
+                   game_specific: dict | None = None) -> dict:
+        return validate_tick({
+            "schema_version": SCHEMA_VERSION, "run_id": run_id, "episode_id": episode_id,
+            "tick": tick, "frame": frame, "requested_action": requested_action,
+            "settled_frame": settled_frame, "state": state,
+            "levels_completed": levels_completed, "score": score,
+            "legal_actions": legal_actions, "state_hash": state_hash, "plan_id": plan_id,
+            # plan 与 plan_id 并存：plan_id 是 join 键（旧行只有它），plan 是 §3.2 的九字段产物。
+            # plan.input_state_hash 应等于上一行的 state_hash——这正是"计划相对哪个局面"的闭环。
+            "plan": plan,
+            "decision_id": decision_id, "reflection_id": reflection_id,
+            "evidence_refs": evidence_refs or [], "game_specific": game_specific or {},
+        })
+
+    def build_verification_report(*, run_id: str, tier: str, verdict: str,
+                                  criteria: dict, metrics: dict, evidence_refs: list,
+                                  limitations: list | None = None,
+                                  game_specific: dict | None = None) -> dict:
+        return validate_verification_report({
+            "schema_version": SCHEMA_VERSION, "run_id": run_id, "verdict": verdict,
+            "tier": tier, "criteria": criteria, "metrics": metrics,
+            "evidence_refs": evidence_refs, "limitations": limitations or [],
+            "game_specific": game_specific or {},
+        })
+
+    def validate_manifest(value: dict) -> dict:
+        if not isinstance(value, dict):
+            raise EvidenceValidationError("manifest must be an object")
+        _require(value, ("schema_version", "run_id", "game_id", "agent_build", "project_branch",
+                         "module_versions", "evidence_tier", "mode", "limits", "status",
+                         "artifacts", "game_specific"), "manifest")
+        if value["schema_version"] != SCHEMA_VERSION:
+            raise EvidenceValidationError("unsupported schema_version")
+        if not all(value.get(k) for k in ("run_id", "game_id", "agent_build", "project_branch")):
+            raise EvidenceValidationError("manifest identity fields must be non-empty")
+        if not isinstance(value["module_versions"], dict) or not isinstance(value["game_specific"], dict):
+            raise EvidenceValidationError("manifest module_versions/game_specific must be objects")
+        _json_safe(value, "manifest")
+        return value
+
+    def validate_tick(value: dict) -> dict:
+        if not isinstance(value, dict):
+            raise EvidenceValidationError("tick must be an object")
+        _require(value, ("schema_version", "run_id", "episode_id", "tick", "frame",
+                         "requested_action", "settled_frame", "state", "levels_completed",
+                         "score", "legal_actions", "state_hash", "evidence_refs",
+                         "game_specific"), "tick")
+        if value["schema_version"] != SCHEMA_VERSION:
+            raise EvidenceValidationError("unsupported schema_version")
+        if not isinstance(value["tick"], int) or value["tick"] < 0:
+            raise EvidenceValidationError("tick must be a non-negative integer")
+        if not isinstance(value["legal_actions"], list) or \
+                not all(isinstance(x, str) and x for x in value["legal_actions"]):
+            raise EvidenceValidationError("legal_actions must be a list of non-empty strings")
+        if not isinstance(value["game_specific"], dict) or not isinstance(value["evidence_refs"], list):
+            raise EvidenceValidationError("tick extensions/evidence_refs have invalid types")
+        _check_plan(value)
+        _json_safe(value, "tick")
+        return value
+
+    def validate_verification_report(value: dict) -> dict:
+        if not isinstance(value, dict):
+            raise EvidenceValidationError("verification report must be an object")
+        _require(value, ("schema_version", "run_id", "verdict", "tier", "criteria", "metrics",
+                         "evidence_refs", "limitations", "game_specific"), "verification report")
+        if value["schema_version"] != SCHEMA_VERSION or \
+                value["verdict"] not in {"PASS", "FAIL", "BLOCKED"}:
+            raise EvidenceValidationError("invalid report schema_version or verdict")
+        if not isinstance(value["criteria"], dict) or not isinstance(value["metrics"], dict):
+            raise EvidenceValidationError("report criteria/metrics must be objects")
+        if not isinstance(value["evidence_refs"], list) or not isinstance(value["limitations"], list):
+            raise EvidenceValidationError("report evidence_refs/limitations must be lists")
+        _json_safe(value, "verification report")
+        return value
+
+    def _frame_hash(frame: Any) -> str:
+        encoded = json.dumps(frame, sort_keys=True, separators=(",", ":"),
+                             allow_nan=False).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _action(value: Any) -> dict:
+        if isinstance(value, str):
+            return {"name": value}
+        if not isinstance(value, dict) or not isinstance(value.get("name"), str) or not value["name"]:
+            raise EvidenceValidationError("requested_action must contain a non-empty name")
+        payload = value.get("payload", {})
+        if not isinstance(payload, dict):
+            raise EvidenceValidationError("action payload must be an object")
+        for axis in ("x", "y"):
+            if axis in payload and (not isinstance(payload[axis], int)
+                                    or not 0 <= payload[axis] <= 63):
+                raise EvidenceValidationError(f"payload {axis} must be an integer in 0..63")
+        _json_safe(value, "action")
+        return value
+
+    def replay_recording(path: str | Path, *, legal_actions: list) -> ReplayResult:
+        """把 JSONL 逐行读成可审计的转移序列；不合法就抛错，不改源文件。"""
+        if not legal_actions:
+            raise EvidenceValidationError("legal_actions must not be empty")
+        previous: dict | None = None
+        transitions: list[dict] = []
+        reset_count = 0
+        final_state: str | None = None
+        levels_completed = 0
+        with Path(path).open(encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, 1):
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise EvidenceValidationError(f"invalid JSON at line {line_number}") from exc
+                data = record.get("data", record)
+                if not isinstance(data, dict) or "frame" not in data:
+                    continue
+                action_value = data.get("requested_action")
+                state = str(data.get("state") or "")
+                final_state = state or final_state
+                levels_completed = int(data.get("levels_completed") or 0)
+                if previous is None:
+                    if action_value is not None and _action(action_value)["name"].upper() != "RESET":
+                        raise EvidenceValidationError("recording has no baseline")
+                    previous = data
+                    continue
+                action = _action(action_value)
+                if action["name"].upper() == "RESET" or state.upper() == "RESET":
+                    previous = data
+                    reset_count += 1
+                    continue
+                if action["name"] not in legal_actions:
+                    raise EvidenceValidationError(f"illegal action: {action['name']}")
+                transitions.append({
+                    "before_frame": previous["frame"], "action": action,
+                    "after_frame": data["frame"], "before_hash": _frame_hash(previous["frame"]),
+                    "after_hash": _frame_hash(data["frame"]), "state": state,
+                    "levels_completed": levels_completed,
+                })
+                previous = data
+        if previous is None:
+            raise EvidenceValidationError("recording has no baseline")
+        if not transitions and reset_count == 0:
+            raise EvidenceValidationError("recording has no action transition")
+        return ReplayResult(tuple(transitions), final_state, levels_completed, reset_count)
