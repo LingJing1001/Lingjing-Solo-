@@ -1,11 +1,14 @@
 """LS20 L1: env.step + reset/重放 BFS (可靠但慢)。"""
 import sys, os, time, collections
 sys.stdout.reconfigure(encoding='utf-8')
-sys.path.insert(0, r"F:/pro/ARC-AGI-3-Agents")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))  # arc_adaptor
+from paths import add_to_sys_path, environments_dir  # noqa: E402
+
+add_to_sys_path()
 from arc_agi import Arcade, OperationMode
 from arcengine import GameAction, ActionInput, GameState
 
-arcade = Arcade(environments_dir=r"F:/pro/ARC-AGI-3-Agents/environment_files", operation_mode=OperationMode.OFFLINE)
+arcade = Arcade(environments_dir=environments_dir("ls20"), operation_mode=OperationMode.OFFLINE)
 gid = [e.game_id for e in arcade.get_environments() if e.game_id.startswith("ls20")][0]
 env = arcade.make(gid)
 

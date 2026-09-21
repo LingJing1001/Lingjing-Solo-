@@ -1,13 +1,15 @@
 """探查 LS20 内部状态结构, 为 R2+R3+R4 适配做准备。"""
 import sys, os
 sys.stdout.reconfigure(encoding='utf-8')
-sys.path.insert(0, r"F:/pro/Lingjing-Solo-/arc_adaptor")
-sys.path.insert(0, r"F:/pro/Lingjing-Solo-backup-20260916-125530/arc_adaptor")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))  # arc_adaptor
+from paths import add_to_sys_path, environments_dir  # noqa: E402
+
+add_to_sys_path()
 import numpy as np
 from arc_agi import Arcade, OperationMode
 from arcengine import GameAction, ActionInput, GameState
 
-arcade = Arcade(environments_dir=r"F:/pro/ARC-AGI-3-Agents/environment_files", operation_mode=OperationMode.OFFLINE)
+arcade = Arcade(environments_dir=environments_dir("ls20"), operation_mode=OperationMode.OFFLINE)
 gid = [e.game_id for e in arcade.get_environments() if e.game_id.startswith("ls20")][0]
 env = arcade.make(gid)
 env.reset()

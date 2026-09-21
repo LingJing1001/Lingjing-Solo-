@@ -10,7 +10,10 @@ from collections import deque
 
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, r"F:/pro/Lingjing-Solo-/arc_adaptor")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
+from paths import add_to_sys_path, environments_dir  # noqa: E402
+
+add_to_sys_path()
 
 import numpy as np
 from arc_agi import Arcade, OperationMode
@@ -172,7 +175,8 @@ def get_grid(frame):
 
 def main():
     STEPS = int(sys.argv[1]) if len(sys.argv) > 1 else 40
-    arcade = Arcade()
+    arcade = Arcade(environments_dir=environments_dir("ls20"),
+                    operation_mode=OperationMode.OFFLINE)
     gid = [e.game_id for e in arcade.get_environments() if e.game_id.startswith("ls20")][0]
     print(f"game_id = {gid}")
     env = arcade.make(gid)
