@@ -351,28 +351,61 @@ class MyAgent(Agent):
         ):
             if self.action_counter < 3:
                 try:
-                    from lingjing_solo.planning.search.generic_shadow import r3_generic_search
+                    from lingjing_solo.planning.search.generic_shadow import (
+                        r3_generic_search,
+                        support_reason,
+                    )
                     env_ref = getattr(self, "_env_ref", None)
-                    if env_ref is not None:
-                        found = r3_generic_search(
-                            env_ref,
-                            t_limit=12.0,
-                            max_nodes=15000,
-                            act_map={
-                                n: getattr(GameAction, "ACTION%d" % n)
-                                for n in range(1, 8)
-                            },
-                            make_action=_r3_action_input,
-                            game_over_state=GameState.GAME_OVER,
+                    if env_ref is None:
+                        print(
+                            f"[{BUILD_TAG}] r3-skip gid={gid} "
+                            f"reason=no _env_ref (offline-only hook never set)",
+                            flush=True,
                         )
-                        if found:
-                            self._r3_path = list(found)
+                    else:
+                        act_map = {
+                            n: getattr(GameAction, "ACTION%d" % n)
+                            for n in range(1, 8)
+                        }
+                        why = support_reason(
+                            env_ref._game,
+                            act_map,
+                            _r3_action_input,
+                            GameState.GAME_OVER,
+                            GameState.WIN,
+                        )
+                        if why is not None:
                             print(
-                                f"[{BUILD_TAG}] r3-search gid={gid} L={levels} "
-                                f"path_len={len(found)}", flush=True,
+                                f"[{BUILD_TAG}] r3-skip gid={gid} reason={why}",
+                                flush=True,
                             )
-                except Exception:
-                    pass
+                        else:
+                            found = r3_generic_search(
+                                env_ref,
+                                t_limit=12.0,
+                                max_nodes=15000,
+                                act_map=act_map,
+                                make_action=_r3_action_input,
+                                game_over_state=GameState.GAME_OVER,
+                                win_state=GameState.WIN,
+                            )
+                            if found:
+                                self._r3_path = list(found)
+                                print(
+                                    f"[{BUILD_TAG}] r3-search gid={gid} L={levels} "
+                                    f"path_len={len(found)}", flush=True,
+                                )
+                            else:
+                                print(
+                                    f"[{BUILD_TAG}] r3-none gid={gid} L={levels} "
+                                    f"(budget exhausted, no level advance)",
+                                    flush=True,
+                                )
+                except Exception as exc:
+                    print(
+                        f"[{BUILD_TAG}] r3-error gid={gid} "
+                        f"{type(exc).__name__}: {exc}", flush=True,
+                    )
 
         if hasattr(self, "_r3_path") and self._r3_path:
             act_num = self._r3_path.pop(0)
