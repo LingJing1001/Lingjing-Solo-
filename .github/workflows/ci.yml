@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    # 与开发环境同 OS（Windows）：paths.py 的路径解析与测试闸门都按这套行为验证过
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: 安装项目与测试依赖
+        run: |
+          pip install -e .
+          pip install pytest
+
+      - name: 跑测试闸门（pytest）
+        run: python -m pytest tests/ -v
