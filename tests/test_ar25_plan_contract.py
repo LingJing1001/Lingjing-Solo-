@@ -26,8 +26,9 @@ from lingjing_solo.planning import plan_contract as pc
 
 _RUNNER_NAME = "run_ar25_r234.py"
 #: 运行器在两种 checkout 里的落点：本仓库走 `arc_adaptor/agents/strategies/`，
-#: ARC checkout 里没有 `arc_adaptor/`，它是被 `sync_to_arc.sh:25` 的 `cp -R` 放进
-#: `agents/strategies/`（规则 ① 已知的那处越界，登记在 §7.3，本轮不改同步脚本的复制方式）。
+#: ARC checkout 里没有 `arc_adaptor/`，它是被 `sync_to_arc.sh` 按声明清单（`SYNC_PAIRS`，
+#: 逐文件复制，已不再有 `cp -R`）放进 `agents/strategies/` 的。规则 ① 那处越界仍登记在
+#: §7.3：清单目前把整个 strategies 目录展开了，缩到线上真正需要的那几份归用户定。
 _LAYOUTS = (("arc_adaptor", "agents", "strategies"), ("agents", "strategies"))
 
 
