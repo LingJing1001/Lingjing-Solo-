@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 源码 zip 快照不进仓库
+/lingjing_solo.zip
