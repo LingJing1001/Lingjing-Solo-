@@ -52,6 +52,10 @@ def build_tick(*, run_id: str, episode_id: str, tick: int, frame: Any, state: st
                requested_action: dict[str, Any] | None = None, settled_frame: bool = True,
                score: int | float | None = None, plan_id: str | None = None,
                decision_id: str | None = None, reflection_id: str | None = None,
+               reflection_reasons: list[str] | None = None,
+               hypotheses: list[dict[str, Any]] | None = None,
+               skill_context: dict[str, Any] | None = None,
+               reflection_accepted: bool | None = None,
                evidence_refs: list[str] | None = None,
                game_specific: dict[str, Any] | None = None) -> dict[str, Any]:
     return validate_tick({
@@ -60,6 +64,8 @@ def build_tick(*, run_id: str, episode_id: str, tick: int, frame: Any, state: st
         "settled_frame": settled_frame, "state": state, "levels_completed": levels_completed,
         "score": score, "legal_actions": legal_actions, "state_hash": state_hash,
         "plan_id": plan_id, "decision_id": decision_id, "reflection_id": reflection_id,
+        "reflection_reasons": reflection_reasons or [], "hypotheses": hypotheses or [],
+        "skill_context": skill_context or {}, "reflection_accepted": reflection_accepted,
         "evidence_refs": evidence_refs or [], "game_specific": game_specific or {},
     })
 
@@ -104,6 +110,18 @@ def validate_tick(value: dict[str, Any]) -> dict[str, Any]:
         raise EvidenceValidationError("tick must be a non-negative integer")
     if not isinstance(value["legal_actions"], list) or not all(isinstance(x, str) and x for x in value["legal_actions"]):
         raise EvidenceValidationError("legal_actions must be a list of non-empty strings")
+    reasons = value.get("reflection_reasons", [])
+    hypotheses = value.get("hypotheses", [])
+    skill_context = value.get("skill_context", {})
+    accepted = value.get("reflection_accepted")
+    if not isinstance(reasons, list) or not all(isinstance(x, str) and x for x in reasons):
+        raise EvidenceValidationError("reflection_reasons must be a list of non-empty strings")
+    if not isinstance(hypotheses, list) or not all(isinstance(x, dict) for x in hypotheses):
+        raise EvidenceValidationError("hypotheses must be a list of objects")
+    if not isinstance(skill_context, dict):
+        raise EvidenceValidationError("skill_context must be an object")
+    if accepted is not None and not isinstance(accepted, bool):
+        raise EvidenceValidationError("reflection_accepted must be a boolean or null")
     if not isinstance(value["game_specific"], dict) or not isinstance(value["evidence_refs"], list):
         raise EvidenceValidationError("tick extensions/evidence_refs have invalid types")
     _json_safe(value, "tick")

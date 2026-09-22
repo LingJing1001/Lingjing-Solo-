@@ -107,3 +107,51 @@ def test_validators_fail_closed_on_missing_required_fields():
         validate_tick({"run_id": "x"})
     with pytest.raises(EvidenceValidationError):
         validate_verification_report({"run_id": "x", "verdict": "PASS"})
+
+
+def test_tick_records_r5_decision_context_and_acceptance():
+    tick = build_tick(
+        run_id="run-r5",
+        episode_id="ep-1",
+        tick=3,
+        frame=frame(1),
+        state="NOT_FINISHED",
+        levels_completed=0,
+        legal_actions=["ACTION1"],
+        state_hash="h3",
+        reflection_id="reflection-3",
+        reflection_reasons=["loop_trapped", "budget_warning"],
+        hypotheses=[{"id": "h-1", "text": "ACTION1 changes the marker", "confidence": 0.8}],
+        skill_context={"family": "click", "candidates": ["marker_click"]},
+        reflection_accepted=False,
+    )
+
+    assert tick["reflection_id"] == "reflection-3"
+    assert tick["reflection_reasons"] == ["loop_trapped", "budget_warning"]
+    assert tick["hypotheses"][0]["id"] == "h-1"
+    assert tick["skill_context"]["family"] == "click"
+    assert tick["reflection_accepted"] is False
+    assert validate_tick(tick) == tick
+
+
+def test_tick_rejects_invalid_r5_evidence_types():
+    base = build_tick(
+        run_id="run-r5",
+        episode_id="ep-1",
+        tick=3,
+        frame=frame(1),
+        state="NOT_FINISHED",
+        levels_completed=0,
+        legal_actions=["ACTION1"],
+        state_hash="h3",
+    )
+    for field, value in (
+        ("reflection_reasons", "loop_trapped"),
+        ("hypotheses", {"id": "h-1"}),
+        ("skill_context", ["not-an-object"]),
+        ("reflection_accepted", "false"),
+    ):
+        invalid = dict(base)
+        invalid[field] = value
+        with pytest.raises(EvidenceValidationError, match=field):
+            validate_tick(invalid)

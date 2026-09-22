@@ -7,9 +7,16 @@ from pathlib import Path
 from typing import Any
 
 from .protocol import build_manifest, build_tick, build_verification_report, replay_recording
+from ..profiles import AR25_PROFILE
 
-_ACTION_NAMES = {1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5"}
-_LEGAL_ACTIONS = list(_ACTION_NAMES.values())
+_LEGAL_ACTIONS = AR25_PROFILE.legal_action_names
+_NO_REFLECTION_EVIDENCE = {
+    "reflection_id": None,
+    "reflection_reasons": [],
+    "hypotheses": [],
+    "skill_context": {},
+    "reflection_accepted": None,
+}
 
 
 def _git_value(root: Path, *args: str) -> str:
@@ -36,24 +43,30 @@ def run_ar25_level(*, level: int, output_dir: str | Path, strategy: str = "auto"
     simulator = AR25Simulator(level_data)
     records: list[dict[str, Any]] = []
     frame = simulator.snapshot()
-    records.append(build_tick(
+    initial = build_tick(
         run_id=run_id, episode_id=f"level-{level}", tick=0, frame=frame,
-        requested_action={"name": "RESET"}, settled_frame=True, state="RESET",
+        requested_action={"name": AR25_PROFILE.reset_name}, settled_frame=True, state="RESET",
         levels_completed=0, legal_actions=_LEGAL_ACTIONS,
-        state_hash="offline-initial", game_specific={"level": level},
-    ))
+        state_hash="offline-initial", game_specific={"level": level, "profile": AR25_PROFILE.profile_id},
+        **_NO_REFLECTION_EVIDENCE,
+    )
+    AR25_PROFILE.validate_tick(initial)
+    records.append(initial)
     for tick, action_id in enumerate(actions, 1):
-        if action_id not in _ACTION_NAMES:
-            raise ValueError(f"unsupported AR25 action id: {action_id}")
+        action = AR25_PROFILE.action_payload(action_id)
         simulator.step(action_id)
         state = "WON" if simulator.won else "LOST" if simulator.lost else "RUNNING"
-        records.append(build_tick(
+        record = build_tick(
             run_id=run_id, episode_id=f"level-{level}", tick=tick,
-            frame=simulator.snapshot(), requested_action={"name": _ACTION_NAMES[action_id], "payload": {"id": action_id}},
+            frame=simulator.snapshot(), requested_action=action,
             settled_frame=True, state=state, levels_completed=1 if simulator.won else 0,
             legal_actions=_LEGAL_ACTIONS, state_hash=f"offline-{tick}",
-            game_specific={"level": level, "action_id": action_id},
-        ))
+            game_specific={"level": level, "action_id": action_id, "profile": AR25_PROFILE.profile_id},
+            **_NO_REFLECTION_EVIDENCE,
+        )
+        AR25_PROFILE.validate_tick(record)
+        records.append(record)
+
     with recording.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
