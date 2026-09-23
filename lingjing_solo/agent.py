@@ -18,9 +18,9 @@ from .planning.discrete_nav import DiscreteNavPlanner
 from .planning.ls20_solver import Ls20Solver, looks_like_ls20
 from .reflection import ReflectionTrigger
 from .transfer import TransferLayer
-from .sica import (CandidateModification, CandidateRegistry, Evidence, EvolutionController,
-                   PerformanceMonitor, RollbackManager, RuleRegistry, SnapshotStore,
-                   TabuStore, WriterCapability)
+from .sica import (CandidateModification, CandidateRegistry, CrossGameValidator, Evidence,
+                   EvolutionController, PerformanceMonitor, RollbackManager, RuleRegistry,
+                   RuleScope, SICAMonitor, SnapshotStore, TabuStore, WriterCapability)
 
 
 class LingjingSoloAgent:
@@ -32,7 +32,8 @@ class LingjingSoloAgent:
                  rule_registry: RuleRegistry | None = None,
                  snapshot_store: SnapshotStore | None = None,
                  performance_monitor: PerformanceMonitor | None = None,
-                 evolution_controller: EvolutionController | None = None):
+                 evolution_controller: EvolutionController | None = None,
+                 sica_monitor: SICAMonitor | None = None):
         self.cfg = cfg or SoloConfig()
         self.log = logger or Logger()
         self.step = 0
@@ -53,6 +54,8 @@ class LingjingSoloAgent:
             controls=evolution_controller, snapshot_store=snapshot_store
         )
         self.rule_registry = rule_registry or RuleRegistry()
+        self.cross_game_validator = CrossGameValidator()
+        self.sica_monitor = sica_monitor or SICAMonitor()
         self.rollback_manager = (
             RollbackManager(snapshot_store, performance_monitor)
             if snapshot_store is not None and performance_monitor is not None else None
@@ -367,8 +370,32 @@ class LingjingSoloAgent:
             snapshot, baseline, candidate, restore=restore
         )
 
-    def propose_rule(self, rule_id: str, content: dict, *, budget=None):
-        return self.rule_registry.propose(rule_id, content, budget=budget)
+    def propose_rule(self, rule_id: str, content: dict, *, budget=None,
+                     scope: RuleScope | str = RuleScope.GENERAL,
+                     game_family: str | None = None, category: str = "uncategorized"):
+        return self.rule_registry.propose(
+            rule_id, content, budget=budget, scope=scope,
+            game_family=game_family, category=category,
+        )
+
+    def validate_rule_across_families(self, rule_id: str, observed_families):
+        rule = self.rule_registry.get(rule_id)
+        return self.cross_game_validator.validate(
+            rule_id=rule.rule_id, scope=rule.scope, declared_family=rule.game_family,
+            observed_families=observed_families,
+        )
+
+    def record_sica_monitoring(self, *, potential: float, performance: float,
+                               complexity: float):
+        return self.sica_monitor.record_system(
+            tick=self.step, potential=potential, performance=performance,
+            complexity=complexity, rule_registry=self.rule_registry,
+            candidate_registry=self.candidate_registry,
+            rollback_manager=self.rollback_manager,
+        )
+
+    def monitoring_display(self):
+        return self.sica_monitor.display()
 
     def record_rule_evidence(self, evidence: Evidence):
         return self.rule_registry.add_evidence(evidence)

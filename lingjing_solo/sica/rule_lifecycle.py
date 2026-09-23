@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Iterable, Mapping
 
+from .observability import RuleScope
 
 class RuleState(StrEnum):
     HYPOTHESIS = "hypothesis"
@@ -84,6 +85,9 @@ class Evidence:
 class RuleRecord:
     rule_id: str
     content: dict[str, Any]
+    scope: RuleScope = RuleScope.GENERAL
+    game_family: str | None = None
+    category: str = "uncategorized"
     state: RuleState = RuleState.HYPOTHESIS
     evidence: dict[str, Evidence] = field(default_factory=dict)
     usage_count: int = 0
@@ -135,13 +139,23 @@ class RuleRegistry:
     def active_rules(self) -> tuple[RuleRecord, ...]:
         return tuple(r for r in self._rules.values() if r.state == RuleState.ACTIVE)
 
-    def propose(self, rule_id: str, content: Mapping[str, Any], *, budget: ComplexityBudget | None = None) -> RuleRecord:
+    def propose(self, rule_id: str, content: Mapping[str, Any], *, budget: ComplexityBudget | None = None,
+                scope: RuleScope | str = RuleScope.GENERAL, game_family: str | None = None,
+                category: str = "uncategorized") -> RuleRecord:
         if not rule_id or rule_id in self._rules:
             raise ValueError("rule_id must be unique and non-empty")
+        scope = RuleScope(scope)
+        if scope is RuleScope.GENERAL and game_family is not None:
+            raise ValueError("general rules cannot be bound to one game family")
+        if scope is RuleScope.SPECIALIZED and not game_family:
+            raise ValueError("specialized rules require a game_family")
+        if not category:
+            raise ValueError("rule category must be non-empty")
         profile = measure_complexity(dict(content))
         if budget is not None and not budget.accept(profile):
             raise PermissionError(f"complexity budget rejected {rule_id}: cost={profile.cost}")
-        record = RuleRecord(rule_id, dict(content), decayed_score=profile.cost)
+        record = RuleRecord(rule_id, dict(content), scope=scope, game_family=game_family,
+                            category=category, decayed_score=profile.cost)
         self._rules[rule_id] = record
         return record
 
@@ -213,6 +227,9 @@ class RuleRegistry:
 
     def get(self, rule_id: str) -> RuleRecord:
         return self._rules[rule_id]
+
+    def all(self) -> tuple[RuleRecord, ...]:
+        return tuple(self._rules.values())
 
     def _get_active(self, rule_id: str) -> RuleRecord:
         rule = self._rules[rule_id]

@@ -95,6 +95,7 @@ class RollbackManager:
         self.monitor = monitor
         self.last_decision: PerformanceDecision | None = None
         self.last_restored_snapshot: str | None = None
+        self.rollback_count = 0
 
     def evaluate_and_rollback(self, snapshot: VersionSnapshot, baseline: float, candidate: float,
                               *, restore: Callable[[dict[str, Any]], None]) -> PerformanceDecision:
@@ -104,6 +105,7 @@ class RollbackManager:
             state = self.store.restore(snapshot)
             restore(state)
             self.last_restored_snapshot = snapshot.snapshot_id
+            self.rollback_count += 1
         return decision
 
 

@@ -47,24 +47,31 @@ class CandidateRegistry:
         self.gate = gate or SafetyGate()
         self.controls = controls or EvolutionController(max_meta_depth=self.gate.max_recursion_depth)
         self.snapshot_store = snapshot_store
+        self.rejected_count = 0
+        self.rejection_reasons: list[str] = []
         self._accepted: dict[str, CandidateModification] = {}
 
     def submit(self, candidate: CandidateModification, *, tick: int = 0,
                is_exploration: bool = False) -> CandidateModification:
-        self.controls.admit(tick=tick, recursion_depth=candidate.recursion_depth,
-                            is_exploration=is_exploration)
-        self.gate.require(candidate)
-        if candidate.candidate_id in self._accepted:
-            raise ValueError(f"candidate already submitted: {candidate.candidate_id}")
-        if self.snapshot_store is not None:
-            self.snapshot_store.create(
-                candidate.candidate_id,
-                {"accepted": [asdict(item) for item in self._accepted.values()]},
-                metadata={"event": "before_candidate_merge", "candidate_id": candidate.candidate_id},
-            )
-        self._accepted[candidate.candidate_id] = candidate
-        self.controls.commit(tick=tick, is_exploration=is_exploration)
-        return candidate
+        try:
+            self.controls.admit(tick=tick, recursion_depth=candidate.recursion_depth,
+                                is_exploration=is_exploration)
+            self.gate.require(candidate)
+            if candidate.candidate_id in self._accepted:
+                raise ValueError(f"candidate already submitted: {candidate.candidate_id}")
+            if self.snapshot_store is not None:
+                self.snapshot_store.create(
+                    candidate.candidate_id,
+                    {"accepted": [asdict(item) for item in self._accepted.values()]},
+                    metadata={"event": "before_candidate_merge", "candidate_id": candidate.candidate_id},
+                )
+            self._accepted[candidate.candidate_id] = candidate
+            self.controls.commit(tick=tick, is_exploration=is_exploration)
+            return candidate
+        except (PermissionError, ValueError, KeyError, ImmutablePathError) as exc:
+            self.rejected_count += 1
+            self.rejection_reasons.append(str(exc))
+            raise
 
     def get(self, candidate_id: str) -> CandidateModification | None:
         return self._accepted.get(candidate_id)
