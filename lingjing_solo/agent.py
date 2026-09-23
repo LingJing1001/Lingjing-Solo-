@@ -18,12 +18,21 @@ from .planning.discrete_nav import DiscreteNavPlanner
 from .planning.ls20_solver import Ls20Solver, looks_like_ls20
 from .reflection import ReflectionTrigger
 from .transfer import TransferLayer
+from .sica import (CandidateModification, CandidateRegistry, Evidence, EvolutionController,
+                   PerformanceMonitor, RollbackManager, RuleRegistry, SnapshotStore,
+                   TabuStore, WriterCapability)
 
 
 class LingjingSoloAgent:
     """ZovaX / 灵境 Solo 化身（统一信息场 Φ + 6 模块编排）。"""
 
-    def __init__(self, cfg: SoloConfig = None, logger: Logger = None, llm_fn=None):
+    def __init__(self, cfg: SoloConfig = None, logger: Logger = None, llm_fn=None,
+                 tabu_store: TabuStore | None = None, env_signature: str | None = None,
+                 candidate_registry: CandidateRegistry | None = None,
+                 rule_registry: RuleRegistry | None = None,
+                 snapshot_store: SnapshotStore | None = None,
+                 performance_monitor: PerformanceMonitor | None = None,
+                 evolution_controller: EvolutionController | None = None):
         self.cfg = cfg or SoloConfig()
         self.log = logger or Logger()
         self.step = 0
@@ -34,6 +43,21 @@ class LingjingSoloAgent:
         self.last_rationale = ""
         self.last_click = None
         self._last_was_click = False
+        self.tabu_store = tabu_store
+        self._tabu_writer: WriterCapability | None = None
+        if tabu_store is not None:
+            if not env_signature:
+                raise ValueError("env_signature is required when tabu_store is enabled")
+            self._tabu_writer = tabu_store.register_writer(signature=env_signature)
+        self.candidate_registry = candidate_registry or CandidateRegistry(
+            controls=evolution_controller, snapshot_store=snapshot_store
+        )
+        self.rule_registry = rule_registry or RuleRegistry()
+        self.rollback_manager = (
+            RollbackManager(snapshot_store, performance_monitor)
+            if snapshot_store is not None and performance_monitor is not None else None
+        )
+        self._last_recorded_version = 0
 
         self.encoder = PerceptionEncoder(self.cfg, self.log)
         self.field = WorldModelField(self.cfg, self.log)
@@ -86,6 +110,7 @@ class LingjingSoloAgent:
         self.last_rationale = ""
         self.last_click = None
         self._last_was_click = False
+        self._last_recorded_version = 0
         self.log.log("Agent", "reset · new game field version=0")
 
     def _parse_frame(self, latest_frame) -> Frame | None:
@@ -170,6 +195,7 @@ class LingjingSoloAgent:
             )
 
         self.field.update(curr, self._prev_frame, self._last_action)
+        self._record_tabu_transition(curr)
 
         delta_px = 0
         progressed = curr.levels_completed > self._levels_seen
@@ -326,6 +352,66 @@ class LingjingSoloAgent:
             action = valid[0]
 
         return self._commit(action, curr, rationale=rationale, click_xy=click_xy)
+
+    def submit_candidate(self, candidate: CandidateModification, *, tick: int | None = None,
+                         is_exploration: bool = False) -> CandidateModification:
+        """Route candidate through R4 controls, safety gate and optional R7 snapshot."""
+        return self.candidate_registry.submit(
+            candidate, tick=self.step if tick is None else tick, is_exploration=is_exploration
+        )
+
+    def evaluate_candidate_performance(self, snapshot, baseline: float, candidate: float, *, restore):
+        if self.rollback_manager is None:
+            raise RuntimeError("R8 rollback requires snapshot_store and performance_monitor")
+        return self.rollback_manager.evaluate_and_rollback(
+            snapshot, baseline, candidate, restore=restore
+        )
+
+    def propose_rule(self, rule_id: str, content: dict, *, budget=None):
+        return self.rule_registry.propose(rule_id, content, budget=budget)
+
+    def record_rule_evidence(self, evidence: Evidence):
+        return self.rule_registry.add_evidence(evidence)
+
+    def use_rule(self, rule_id: str, *, tick: int | None = None):
+        return self.rule_registry.use(rule_id, tick=self.step if tick is None else tick)
+
+    def report_rule_outcome(self, rule_id: str, *, success: bool, tick: int | None = None):
+        return self.rule_registry.report_outcome(
+            rule_id, success=success, tick=self.step if tick is None else tick
+        )
+
+    def decay_rules(self, *, current_tick: int | None = None):
+        return self.rule_registry.decay(current_tick=self.step if current_tick is None else current_tick)
+
+    def _record_tabu_transition(self, curr: Frame) -> None:
+        """Persist only environment-observed transitions; model proposals never write tabu."""
+        if self.tabu_store is None or self._tabu_writer is None:
+            return
+        if not self.field.transition_table:
+            return
+        transition = self.field.transition_table[-1]
+        if transition.version <= self._last_recorded_version:
+            return
+        game_id = getattr(self.transfer, "game_id", None) or "unknown"
+        entry = {
+            "game_id": str(game_id),
+            "level": int(curr.levels_completed),
+            "action_sequence": [transition.action],
+            "env_feedback": {
+                "state": str(curr.state),
+                "progressed": bool(transition.progressed),
+                "delta_pixels": int(transition.delta_pixels),
+            },
+            "counter_delta": int(curr.levels_completed - self._levels_seen),
+            "frame_hash_before": transition.state_before,
+            "frame_hash_after": transition.state_after,
+            "timestamp": int(curr.t),
+            "source": "env_executor",
+            "env_signature": self._tabu_writer.signature,
+        }
+        self.tabu_store.write(entry, capability=self._tabu_writer)
+        self._last_recorded_version = transition.version
 
     def _valid(self, curr: Frame, valid_actions):
         if valid_actions:

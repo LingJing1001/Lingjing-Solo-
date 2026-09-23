@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping, Sequence
 
+from ..sica.rule_lifecycle import ComplexityBudget, measure_complexity
 PLAN_SCHEMA = "lingjing-r3-plan-v1"
 
 #: 团队规范 §3.2 `:121-132` 要求的九个字段，一个都不能少。
@@ -80,6 +81,8 @@ def build_plan(*, planner: str, input_state_hash: str, candidate_actions: Sequen
                validity: str, evidence_refs: Iterable[Any] | None = None,
                plan_id: str | None = None, subgoals: Sequence[str] | None = None,
                legal_actions: Sequence[str] | None = None,
+               complexity_budget: Mapping[str, Any] | None = None,
+               complexity_cost: float | None = None,
                **extra: Any) -> dict[str, Any]:
     """组装并校验一份 plan。`extra` 供各游戏挂自己的诊断字段（如 `solver_phase`）。
 
@@ -105,6 +108,10 @@ def build_plan(*, planner: str, input_state_hash: str, candidate_actions: Sequen
         plan["legal_actions"] = list(legal_actions)
     if subgoals is not None:
         plan["subgoals"] = list(subgoals)
+    if complexity_budget is not None:
+        plan["complexity_budget"] = dict(complexity_budget)
+    if complexity_cost is not None:
+        plan["complexity_cost"] = float(complexity_cost)
     plan.update(extra)
     return validate_plan(plan, legal_actions=plan.get("legal_actions"))
 
@@ -176,5 +183,24 @@ def validate_plan(plan: Any, *, legal_actions: Sequence[str] | None = None,
     if plan["cost"] is not None and (not isinstance(plan["cost"], int)
                                      or isinstance(plan["cost"], bool) or plan["cost"] < 0):
         raise PlanContractError(f"cost 必须是非空 int 或 None，收到 {plan['cost']!r}")
+
+    # R3：复杂度由结构计算，不能只相信 planner 自报的数字。
+    profile = measure_complexity({"candidate_actions": actions, "expected_goal": plan["expected_goal"],
+                                  "subgoals": plan.get("subgoals", [])})
+    supplied_cost = plan.get("complexity_cost")
+    if supplied_cost is not None and abs(float(supplied_cost) - profile.cost) > 1e-9:
+        raise PlanContractError(f"complexity_cost 与结构度量不一致: {supplied_cost} != {profile.cost}")
+    plan["complexity_cost"] = profile.cost
+    raw_budget = plan.get("complexity_budget")
+    if raw_budget is not None:
+        if not isinstance(raw_budget, dict) or "max_cost" not in raw_budget:
+            raise PlanContractError("complexity_budget 必须包含 max_cost")
+        try:
+            budget = ComplexityBudget(float(raw_budget["max_cost"]),
+                                      int(raw_budget["max_depth"]) if "max_depth" in raw_budget else None)
+        except (TypeError, ValueError) as exc:
+            raise PlanContractError("complexity_budget 数值非法") from exc
+        if not budget.accept(profile):
+            raise PlanContractError(f"复杂度超过预算: cost={profile.cost}, budget={raw_budget}")
 
     return plan
