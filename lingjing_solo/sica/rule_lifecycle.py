@@ -75,10 +75,22 @@ class Evidence:
     episode_id: str
     success: bool
     tick: int
+    initial_state_hash: str | None = None
+    level: int | None = None
+    game_family: str | None = None
+    tabu_entry_hash: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.evidence_id or not self.rule_id or not self.game_id or not self.episode_id:
+            raise ValueError("evidence identity fields must be non-empty")
+        if self.level is not None and self.level < 0:
+            raise ValueError("evidence level must be non-negative")
+        if self.tabu_entry_hash is not None and len(self.tabu_entry_hash) != 64:
+            raise ValueError("tabu_entry_hash must be a sha256 hex digest")
 
     @property
-    def independence_key(self) -> tuple[str, str, str]:
-        return self.source_id, self.game_id, self.episode_id
+    def independence_key(self) -> tuple[str, str, str, str | None, int | None]:
+        return self.source_id, self.game_id, self.episode_id, self.initial_state_hash, self.level
 
 
 @dataclass

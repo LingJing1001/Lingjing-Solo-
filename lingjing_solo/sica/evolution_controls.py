@@ -59,7 +59,18 @@ class SnapshotStore:
         payload = json.loads(resolved.read_text(encoding="utf-8"))
         if not isinstance(payload, dict) or not isinstance(payload.get("state"), dict):
             raise ValueError("invalid snapshot payload")
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        if isinstance(snapshot, VersionSnapshot) and hashlib.sha256(encoded).hexdigest() != snapshot.state_hash:
+            raise ValueError("snapshot content hash mismatch")
         return payload["state"]
+
+    def manifest(self) -> tuple[VersionSnapshot, ...]:
+        if not self.manifest_path.exists():
+            return ()
+        return tuple(
+            VersionSnapshot(item["snapshot_id"], item["path"], item["state_hash"], item["metadata"])
+            for item in (json.loads(line) for line in self.manifest_path.read_text(encoding="utf-8").splitlines())
+        )
 
 
 @dataclass(frozen=True)
@@ -90,15 +101,22 @@ class PerformanceMonitor:
 
 
 class RollbackManager:
-    def __init__(self, store: SnapshotStore, monitor: PerformanceMonitor) -> None:
+    def __init__(self, store: SnapshotStore, monitor: PerformanceMonitor, *, window_size: int = 5,
+                 cooldown_ticks: int = 0) -> None:
         self.store = store
         self.monitor = monitor
         self.last_decision: PerformanceDecision | None = None
         self.last_restored_snapshot: str | None = None
         self.rollback_count = 0
+        if window_size < 2 or cooldown_ticks < 0:
+            raise ValueError("window_size must be >= 2 and cooldown_ticks non-negative")
+        self.window_size = window_size
+        self.cooldown_ticks = cooldown_ticks
+        self.performance_window: list[float] = []
+        self.cooldown_until: int | None = None
 
     def evaluate_and_rollback(self, snapshot: VersionSnapshot, baseline: float, candidate: float,
-                              *, restore: Callable[[dict[str, Any]], None]) -> PerformanceDecision:
+                              *, restore: Callable[[dict[str, Any]], None], tick: int = 0) -> PerformanceDecision:
         decision = self.monitor.evaluate(baseline, candidate)
         self.last_decision = decision
         if decision.degraded:
@@ -106,7 +124,17 @@ class RollbackManager:
             restore(state)
             self.last_restored_snapshot = snapshot.snapshot_id
             self.rollback_count += 1
+            self.cooldown_until = tick + self.cooldown_ticks
         return decision
+
+    def observe_window(self, performance: float, *, tick: int) -> bool:
+        """Detect a strictly declining performance window; caller performs restore."""
+        if self.cooldown_until is not None and tick < self.cooldown_until:
+            return False
+        self.performance_window.append(float(performance))
+        self.performance_window = self.performance_window[-self.window_size:]
+        return (len(self.performance_window) == self.window_size
+                and all(a > b for a, b in zip(self.performance_window, self.performance_window[1:])))
 
 
 @dataclass
@@ -149,3 +177,26 @@ class EvolutionController:
         if self.exploration_quota is None:
             return None
         return max(0, self.exploration_quota - self._exploration_used)
+
+
+@dataclass
+class ActionExplorationPolicy:
+    """Bounded action-level exploration, separate from candidate-merge quota."""
+    ratio: float = 0.05
+    min_remaining_budget: int = 1
+    _exploration_steps: int = 0
+    _total_steps: int = 0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.ratio <= 1.0 or self.min_remaining_budget < 0:
+            raise ValueError("invalid action exploration policy")
+
+    def should_explore(self, *, remaining_budget: int) -> bool:
+        if remaining_budget < self.min_remaining_budget:
+            return False
+        self._total_steps += 1
+        target = self.ratio * self._total_steps
+        decision = self._exploration_steps < target
+        if decision:
+            self._exploration_steps += 1
+        return decision

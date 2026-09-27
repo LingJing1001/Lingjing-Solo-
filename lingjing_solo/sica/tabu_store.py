@@ -61,6 +61,7 @@ class TabuStore:
                 except json.JSONDecodeError as exc:
                     raise TabuEntryError(f"invalid JSON at line {line_number}") from exc
                 self._validate_entry(value)
+                self._verify_entry_hash(value)
                 if filter is None or filter(value):
                     entries.append(value)
         return entries
@@ -84,7 +85,22 @@ class TabuStore:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, ensure_ascii=False, allow_nan=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
         return payload
+
+    @staticmethod
+    def _verify_entry_hash(entry: dict[str, Any]) -> None:
+        recorded = entry.get("entry_hash")
+        if not isinstance(recorded, str) or len(recorded) != 64:
+            raise TabuEntryError("tabu entry is missing a valid entry_hash")
+        payload = dict(entry)
+        payload.pop("entry_hash", None)
+        expected = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        ).hexdigest()
+        if recorded != expected:
+            raise TabuEntryError("tabu entry hash mismatch")
 
     @staticmethod
     def _validate_entry(entry: dict[str, Any]) -> None:

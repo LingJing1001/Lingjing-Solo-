@@ -19,16 +19,20 @@ class HoldoutResult:
     cases: int
     metric: str
     reason: str = ""
+    candidate_id: str | None = None
+    details: dict[str, Any] | None = None
 
 
 class HoldoutGate:
-    def __init__(self, *, metric: str = "score", tolerance: float = 0.0) -> None:
+    def __init__(self, *, metric: str = "score", tolerance: float = 0.0,
+                 min_delta: float = 0.0) -> None:
         if not metric:
             raise ValueError("metric must be non-empty")
-        if tolerance < 0:
-            raise ValueError("tolerance must be non-negative")
+        if tolerance < 0 or min_delta < 0:
+            raise ValueError("tolerance and min_delta must be non-negative")
         self.metric = metric
         self.tolerance = float(tolerance)
+        self.min_delta = float(min_delta)
 
     def evaluate(
         self,
@@ -54,9 +58,18 @@ class HoldoutGate:
         base_score = sum(baseline_values) / len(baseline_values)
         candidate_score = sum(candidate_values) / len(candidate_values)
         delta = candidate_score - base_score
-        passed = candidate_score + self.tolerance >= base_score
-        reason = "candidate is non-regressing" if passed else "candidate regresses holdout metric"
+        passed = delta >= self.min_delta - self.tolerance
+        reason = ("candidate meets holdout delta threshold" if passed
+                  else "candidate regresses holdout metric: delta threshold not met")
         return HoldoutResult(passed, base_score, candidate_score, delta, len(case_list), self.metric, reason)
+
+    def report(self, candidate_id: str, result: HoldoutResult, *, details: Mapping[str, Any] | None = None) -> HoldoutResult:
+        if not candidate_id:
+            raise ValueError("candidate_id must be non-empty")
+        return HoldoutResult(
+            result.passed, result.baseline_score, result.candidate_score, result.delta,
+            result.cases, result.metric, result.reason, candidate_id, dict(details or {}),
+        )
 
     def require(self, result: HoldoutResult) -> HoldoutResult:
         if not result.passed:

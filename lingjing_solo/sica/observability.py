@@ -25,17 +25,23 @@ class CrossGameValidator:
 
     def validate(self, *, rule_id: str, scope: RuleScope | str,
                  declared_family: str | None, observed_families: Iterable[str],
-                 minimum_families: int = 2) -> CrossGameValidation:
+                 minimum_families: int = 2, positive_families: Iterable[str] | None = None,
+                 episodes_per_family: int = 1) -> CrossGameValidation:
         scope = RuleScope(scope)
         families = tuple(sorted({str(item) for item in observed_families if item}))
-        if minimum_families < 1:
-            raise ValueError("minimum_families must be positive")
+        if minimum_families < 1 or episodes_per_family < 1:
+            raise ValueError("minimum_families and episodes_per_family must be positive")
+        positive = None if positive_families is None else {str(item) for item in positive_families if item}
+        has_positive = positive is None or bool(positive.intersection(families))
         if scope is RuleScope.GENERAL:
-            passed = declared_family is None and len(families) >= minimum_families
+            passed = (declared_family is None and len(families) >= minimum_families
+                      and has_positive)
             reason = ("general rule validated across game families"
                       if passed else "general rule requires no family binding and cross-family evidence")
         else:
-            passed = bool(declared_family) and all(item == declared_family for item in families)
+            passed = (bool(declared_family) and bool(families)
+                      and all(item == declared_family for item in families)
+                      and has_positive)
             reason = ("specialized rule contained to declared family"
                       if passed else "specialized rule has missing or cross-family evidence")
         return CrossGameValidation(passed, rule_id, scope, families, reason)
