@@ -21,6 +21,7 @@ cnn = [
 ]
 dev = [
   "pytest>=8",
+  "pytest-timeout>=2.3",
   "ruff>=0.8",
 ]
 
@@ -30,6 +31,10 @@ packages = ["lingjing_solo"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+# 单用例 120s 硬顶：test_evidence_backend 的桩+子进程在慢盘/冷缓存下也只有秒级，
+# 真挂住（如子进程等 stdin）就让它红，而不是卡死整个套件。thread 法全平台可用。
+timeout = 120
+timeout_method = "thread"
 
 [tool.ruff]
 line-length = 100
