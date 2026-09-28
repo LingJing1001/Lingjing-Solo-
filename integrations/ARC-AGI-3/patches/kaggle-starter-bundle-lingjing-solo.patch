@@ -1,0 +1,229 @@
+diff --git a/scripts/build_notebook.py b/scripts/build_notebook.py
+index e5c13e8..9926459 100644
+--- a/scripts/build_notebook.py
++++ b/scripts/build_notebook.py
+@@ -5,17 +5,26 @@ The notebook follows the exact pattern used by Kaggle's official sample
+ 
+   Cell 1: install the `arc-agi` wheel from the offline competition dataset.
+   Cell 2: write `my_agent.py` to /kaggle/working/ — its body is THIS file.
+-  Cell 3: if running inside the Kaggle competition rerun, wait for the
++  Cell 3: unpack an inlined copy of `lingjing_solo/` into /tmp/. Kaggle runs
++          with internet disabled, so a local package the agent imports at
++          module level can't be pip-installed — it has to travel inside the
++          notebook as a deterministic base64 zip.
++  Cell 4: if running inside the Kaggle competition rerun, wait for the
+           gateway sidecar, copy the framework into /kaggle/working/, register
+-          MyAgent, and run `python main.py --agent myagent`.
+-  Cell 4: otherwise (during commit / save-and-run-all), write a dummy
++          MyAgent, and run `python main.py --agent myagent` with
++          `PYTHONPATH=/tmp` so `import lingjing_solo` resolves.
++  Cell 5: otherwise (during commit / save-and-run-all), write a dummy
+           submission.parquet so Kaggle accepts the commit.
+ 
+ You don't normally need to call this directly — `make submit` runs it for you.
+ """
+ from __future__ import annotations
+ 
++import base64
++import hashlib
++import io
+ import json
++import zipfile
+ from pathlib import Path
+ from textwrap import dedent
+ 
+@@ -40,6 +49,15 @@ _ACCELERATORS = {
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ AGENT_SRC = ROOT / "agent" / "my_agent.py"
++# Local package the agent imports. It is inlined below (base64 zip) because the
++# Kaggle competition session has no network and only the notebook travels.
++PKG_SRC = ROOT / "lingjing_solo"
++PKG_IMPORT_ROOT = "/tmp"          # Phase B PYTHONPATH; package lands at /tmp/lingjing_solo
++PKG_EXTS = {".py", ".md", ".json"}  # source only — never __pycache__ / .pyc
++B64_LINE_WIDTH = 96
++# Fixed DOS timestamp so an unchanged tree always yields the same payload hash.
++_ZIP_DATE_TIME = (1980, 1, 1, 0, 0, 0)
++
+ NOTEBOOK_PATH = ROOT / "notebooks" / "submission.ipynb"
+ METADATA_PATH = ROOT / "notebooks" / "kernel-metadata.json"
+ 
+@@ -58,10 +76,88 @@ def markdown_cell(source: str) -> dict:
+     return {"cell_type": "markdown", "metadata": {}, "source": source}
+ 
+ 
++def package_files() -> list[Path]:
++    """Source files of `PKG_SRC`, sorted and cache-free (deterministic order)."""
++    if not PKG_SRC.is_dir():
++        return []
++    return sorted(
++        p for p in PKG_SRC.rglob("*")
++        if p.is_file()
++        and "__pycache__" not in p.parts
++        and p.suffix.lower() in PKG_EXTS
++    )
++
++
++def build_package_payload() -> tuple[str, str, int]:
++    """Zip + base64 `PKG_SRC`. Returns (line-wrapped base64, sha256, file count).
++
++    Entries are stored with fixed timestamps and permissions so the payload hash
++    only changes when the source tree actually changes — that keeps the printed
++    `[bundle] sha256=...` line usable as a Phase B fingerprint.
++    """
++    files = package_files()
++    buf = io.BytesIO()
++    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
++        for path in files:
++            info = zipfile.ZipInfo(
++                path.relative_to(PKG_SRC.parent).as_posix(), date_time=_ZIP_DATE_TIME
++            )
++            info.compress_type = zipfile.ZIP_DEFLATED
++            info.external_attr = 0o644 << 16
++            zf.writestr(info, path.read_bytes())
++    blob = buf.getvalue()
++    b64 = base64.b64encode(blob).decode("ascii")
++    wrapped = "\n".join(
++        b64[i:i + B64_LINE_WIDTH] for i in range(0, len(b64), B64_LINE_WIDTH)
++    )
++    return wrapped, hashlib.sha256(blob).hexdigest(), len(files)
++
++
++def unpack_package_cell(blob_b64: str, blob_sha: str, n_files: int) -> dict:
++    """Cell body: decode the inlined zip and stage it at `/tmp/lingjing_solo`."""
++    source = (
++        "import base64, hashlib, io, shutil, zipfile\n"
++        "from pathlib import Path\n"
++        "\n"
++        f"PKG_SHA256 = {blob_sha!r}\n"
++        f"PKG_FILES = {n_files}\n"
++        "PKG_B64 = (\n"
++        + "".join(f"    {line!r}\n" for line in blob_b64.split("\n"))
++        + ")\n"
++        "\n"
++        "zip_bytes = base64.b64decode(\"\".join(PKG_B64.split()))\n"
++        "actual_sha = hashlib.sha256(zip_bytes).hexdigest()\n"
++        "assert actual_sha == PKG_SHA256, (\n"
++        "    f\"lingjing_solo payload corrupt: {actual_sha} != {blob_sha}\"\n"
++        ")\n"
++        f"dest = Path({PKG_IMPORT_ROOT!r}) / 'lingjing_solo'\n"
++        "shutil.rmtree(dest, ignore_errors=True)\n"
++        f"zipfile.ZipFile(io.BytesIO(zip_bytes)).extractall({PKG_IMPORT_ROOT!r})\n"
++        "files = sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file())\n"
++        "assert len(files) == PKG_FILES, f'unpacked {len(files)} files, expected {PKG_FILES}'\n"
++        "assert (dest / '__init__.py').is_file(), f'unpack failed: no {dest}/__init__.py'\n"
++        "print(f'[bundle] lingjing_solo -> {dest} files={len(files)} '\n"
++        "      f'sha256={actual_sha[:12]}')\n"
++    )
++    return code_cell(source)
++
++
+ def build() -> dict:
+     if not AGENT_SRC.exists():
+         raise SystemExit(f"Could not find {AGENT_SRC}")
+-    agent_body = AGENT_SRC.read_text()
++    # Explicit UTF-8: on a Chinese Windows the default codepage is cp936, which
++    # can't decode the em-dashes/Chinese in the agent source (and would silently
++    # mojibake anything it does map).
++    agent_body = AGENT_SRC.read_text(encoding="utf-8")
++
++    # The agent only needs the bundle if it actually imports the local package.
++    needs_pkg = "lingjing_solo" in agent_body
++    if needs_pkg and not PKG_SRC.is_dir():
++        raise SystemExit(
++            f"{PKG_SRC} is missing, but agent/my_agent.py imports `lingjing_solo`.\n"
++            f"Sync it into this Starter first (e.g. the SmartRouter package's\n"
++            f"`scripts/sync_into_starter.ps1`), then re-run this build."
++        )
+ 
+     install_cell = code_cell(
+         "!pip install --no-index --find-links \\\n"
+@@ -126,12 +222,21 @@ def build() -> dict:
+         \"\"\")
+ 
+             # Run it. The gateway records every action and emits submission.parquet.
++            # PYTHONPATH=/tmp exposes the lingjing_solo copy staged by the cell
++            # above; it stays out of /kaggle/working/ so it can't be mistaken
++            # for a submission artefact.
+             !cd /kaggle/working/ARC-AGI-3-Agents && \\
+-                MPLBACKEND=agg \\
++                MPLBACKEND=agg PYTHONPATH=/tmp \\
+                 python main.py --agent myagent
+         """
+     )
+     run_cell = code_cell(run_cell_source)
++    if needs_pkg:
++        # The run cell hardcodes the env var; keep it tied to PKG_IMPORT_ROOT.
++        assert f"PYTHONPATH={PKG_IMPORT_ROOT}" in run_cell_source, (
++            f"run cell must expose {PKG_IMPORT_ROOT} on PYTHONPATH or the bundled "
++            f"lingjing_solo cannot be imported during Phase B"
++        )
+ 
+     dummy_submission_cell = code_cell(
+         dedent(
+@@ -158,6 +263,24 @@ def build() -> dict:
+         )
+     accel = _ACCELERATORS[ACCELERATOR]
+ 
++    cells = [
++        markdown_cell(
++            "# ARC Prize 2026 — ARC-AGI-3 Submission\n\n"
++            "Built from `agent/my_agent.py` via `scripts/build_notebook.py`. "
++            "Do not edit cells directly — edit the source file and re-run "
++            "`make submit`."
++        ),
++        install_cell,
++        write_agent_cell,
++    ]
++    bundle_sha = ""
++    if needs_pkg:
++        blob_b64, bundle_sha, n_files = build_package_payload()
++        cells.append(unpack_package_cell(blob_b64, bundle_sha, n_files))
++        print(f"[build_notebook] Bundled {PKG_SRC.name}/ "
++              f"{n_files} files, payload sha256={bundle_sha[:12]}")
++    cells.extend([run_cell, dummy_submission_cell])
++
+     notebook = {
+         "metadata": {
+             "kernelspec": {
+@@ -181,36 +304,25 @@ def build() -> dict:
+         },
+         "nbformat_minor": 4,
+         "nbformat": 4,
+-        "cells": [
+-            markdown_cell(
+-                "# ARC Prize 2026 — ARC-AGI-3 Submission\n\n"
+-                "Built from `agent/my_agent.py` via `scripts/build_notebook.py`. "
+-                "Do not edit cells directly — edit the source file and re-run "
+-                "`make submit`."
+-            ),
+-            install_cell,
+-            write_agent_cell,
+-            run_cell,
+-            dummy_submission_cell,
+-        ],
++        "cells": cells,
+     }
+     return notebook
+ 
+ 
+ def main() -> None:
+     NOTEBOOK_PATH.parent.mkdir(parents=True, exist_ok=True)
+-    NOTEBOOK_PATH.write_text(json.dumps(build(), indent=1))
++    NOTEBOOK_PATH.write_text(json.dumps(build(), indent=1), encoding="utf-8")
+     print(f"[build_notebook] Wrote {NOTEBOOK_PATH.relative_to(ROOT)}  "
+           f"(accelerator: {ACCELERATOR})")
+ 
+     # Keep notebooks/kernel-metadata.json in sync so the user never has to
+     # edit it just to flip CPU ↔ GPU.
+     if METADATA_PATH.exists():
+-        meta = json.loads(METADATA_PATH.read_text())
++        meta = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
+         wanted = _ACCELERATORS[ACCELERATOR]["gpu"]
+         if meta.get("enable_gpu") != wanted:
+             meta["enable_gpu"] = wanted
+-            METADATA_PATH.write_text(json.dumps(meta, indent=2) + "\n")
++            METADATA_PATH.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+             print(f"[build_notebook] Synced enable_gpu={wanted} in "
+                   f"{METADATA_PATH.relative_to(ROOT)}")
+ 

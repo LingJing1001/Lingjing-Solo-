@@ -1,0 +1,5 @@
+# 上游补丁必须按字节保存：autocrlf=true 的机器上若把 .patch 转成 CRLF，
+# git apply 的行尾匹配就会漂；README/文档正常走文本规范化。
+*.patch -text
+*.diff  -text
+*.ipynb -text

@@ -1,0 +1,13 @@
+# Code owners — PR 自动请求审核
+
+# 主路径必须负责人看
+/agent/my_agent.py @liaomile
+/docs/冲榜技术说明与四人分工.md @liaomile
+
+# 交付链
+/scripts/ @liaomile
+/CONTRIBUTING.md @liaomile
+
+# 说明：三位伙伴的 @username 补齐后，可改为例如：
+# /agent/my_agent.py @liaomile @partner-a
+# /scripts/ @liaomile @partner-b

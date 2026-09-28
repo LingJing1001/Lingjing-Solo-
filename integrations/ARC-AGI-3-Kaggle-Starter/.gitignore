@@ -6,16 +6,21 @@
 __pycache__/
 *.pyc
 
-# Vendored framework + downloaded game source + agent recordings
+# Vendored framework source is checked in at a pinned commit; installed packages are not.
 vendor/*
 !vendor/requirements.lock
 !vendor/README.md
+!vendor/ARC-AGI-3-Agents/
+!vendor/ARC-AGI-3-Agents/**
 environment_files/
+!environment_files/
+!environment_files/**
 recordings/
 logs.log
 
 # Generated artefacts
 notebooks/submission.ipynb
+!notebooks/submission.ipynb
 reference/
 ui/static/*
 !ui/static/games_benchmark_phase_a_400_b703457.json

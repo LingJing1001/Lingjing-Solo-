@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-09-22T01:59:40.557013+00:00",
+  "agent": "hybrid-ft09-calibrated",
+  "max_steps": 800,
+  "total_games": 1,
+  "games_finished": 1,
+  "running": false,
+  "elapsed_sec": 1.19,
+  "aggregate_score": 100.0,
+  "aggregate_score_official": 100.0,
+  "total_levels_completed": 6,
+  "games_won": 1,
+  "games_zero_levels": 0,
+  "priority_fix": [],
+  "games": [
+    {
+      "game_id": "ft09",
+      "index": 1,
+      "title": "FT09",
+      "tags": [],
+      "total_levels": 6,
+      "human_steps": [
+        43,
+        12,
+        23,
+        28,
+        65,
+        37
+      ],
+      "levels_completed": 6,
+      "actions": 81,
+      "state": "WIN",
+      "game_score": 100.0,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0
+      ],
+      "elapsed_sec": 1.19,
+      "error": null,
+      "level_actions": [
+        4,
+        7,
+        14,
+        16,
+        21,
+        19
+      ]
+    }
+  ],
+  "score_formula": "单局分=各关 (基准步数/实际步数)²×100 加权平均；总分=所有游戏分数的平均值"
+}

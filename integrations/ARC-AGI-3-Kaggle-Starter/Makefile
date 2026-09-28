@@ -15,6 +15,7 @@ VENV_PIP        := $(VENV)/bin/pip
 # (the only env var the modern Kaggle CLI honours for token auth).
 KAGGLE          := KAGGLE_API_TOKEN=$$(cat .kaggle/access_token) $(VENV)/bin/kaggle
 FRAMEWORK_REPO  := https://github.com/arcprize/ARC-AGI-3-Agents.git
+FRAMEWORK_REF   := 4743e7d0aaae0ded0d98a89a7e282e63564cd58b
 FRAMEWORK_DIR   := vendor/ARC-AGI-3-Agents
 COMP_SLUG       := arc-prize-2026-arc-agi-3
 GAME            ?=
@@ -35,14 +36,16 @@ help:
 	@echo ""
 	@echo "Vars: PYTHON=$(PYTHON)  GAME=$(GAME)  STEPS=$(STEPS)"
 
-setup: ## One-time install: venv, arc-agi, kaggle CLI, clone framework
+setup: ## One-time install: venv, locked dependencies, framework source
 	$(PYTHON) -m venv $(VENV)
 	$(VENV_PIP) install --upgrade pip
-	$(VENV_PIP) install "arc-agi>=0.9.6" "kaggle>=2.2" python-dotenv pandas pyarrow
-	@if [ ! -d "$(FRAMEWORK_DIR)/.git" ]; then \
-	    mkdir -p vendor && git clone --depth 1 $(FRAMEWORK_REPO) $(FRAMEWORK_DIR); \
+	$(VENV_PIP) install -r vendor/requirements.lock "kaggle>=2.2"
+	@if [ ! -d "$(FRAMEWORK_DIR)" ]; then \
+	    mkdir -p vendor && git clone --depth 1 --branch main $(FRAMEWORK_REPO) $(FRAMEWORK_DIR) && git -C $(FRAMEWORK_DIR) checkout $(FRAMEWORK_REF); \
+	elif [ -d "$(FRAMEWORK_DIR)/.git" ]; then \
+	    git -C $(FRAMEWORK_DIR) fetch --depth 1 origin $(FRAMEWORK_REF) && git -C $(FRAMEWORK_DIR) checkout --detach $(FRAMEWORK_REF); \
 	else \
-	    git -C $(FRAMEWORK_DIR) pull --ff-only; \
+	    echo "Using checked-in ARC-AGI-3-Agents at $(FRAMEWORK_REF)"; \
 	fi
 	@# Slim agents/__init__.py so we don't need langgraph/langsmith/smolagents/etc.
 	@# (Same trick the official Stochastic Goose sample uses on Kaggle.)
