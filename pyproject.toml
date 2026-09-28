@@ -35,6 +35,10 @@ python_files = ["test_*.py"]
 # 真挂住（如子进程等 stdin）就让它红，而不是卡死整个套件。thread 法全平台可用。
 timeout = 120
 timeout_method = "thread"
+pythonpath = ["."]
+# Hermes ships hydra-core 1.0.7, whose pytest11 entry point is incompatible
+# with Python 3.12 dataclasses. This project does not use the Hydra pytest plugin.
+addopts = ["-p", "no:hydra_pytest"]
 
 [tool.ruff]
 line-length = 100

@@ -219,3 +219,6 @@ __marimo__/
 
 # 源码 zip 快照不进仓库
 /lingjing_solo.zip
+
+# ARC-AGI-3 remains an independent checkout; publish the Starter integration only.
+/integrations/ARC-AGI-3/
