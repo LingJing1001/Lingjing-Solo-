@@ -24,3 +24,23 @@ jobs:
 
       - name: 跑测试闸门（pytest）
         run: python -m pytest tests/ -v
+
+  route-gate:
+    # 路线回放闸门：routes/ 下每条已验证路线必须在真机引擎上三遍复现过关。
+    # 「本地 WIN 三遍才进路由」的机器化；引擎/依赖锁/游戏文件漂移导致路线失效时在此失败。
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 ARC Starter 锁定依赖
+        working-directory: integrations/ARC-AGI-3-Kaggle-Starter
+        run: pip install -r vendor/requirements.lock
+
+      - name: 路线回放闸门（pytest）
+        working-directory: integrations/ARC-AGI-3-Kaggle-Starter
+        run: python -m pytest tests/test_route_replay.py -v

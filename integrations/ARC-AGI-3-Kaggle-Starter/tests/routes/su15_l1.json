@@ -1,0 +1,50 @@
+{
+ "game_id": "su15-1944f8ab",
+ "route_id": "su15_l1_route7",
+ "target_levels": 1,
+ "expected_state": "NOT_FINISHED",
+ "human_baseline_actions": 22,
+ "actions": [
+  {
+   "a": "ACTION6",
+   "x": 10,
+   "y": 53
+  },
+  {
+   "a": "ACTION6",
+   "x": 16,
+   "y": 47
+  },
+  {
+   "a": "ACTION6",
+   "x": 22,
+   "y": 41
+  },
+  {
+   "a": "ACTION6",
+   "x": 28,
+   "y": 35
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 29
+  },
+  {
+   "a": "ACTION6",
+   "x": 40,
+   "y": 23
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 19
+  }
+ ],
+ "meta": {
+  "date": "2026-09-30",
+  "source": "state/su15_closure_search.py — proposer(union)+closure BFS, NO hand-written route, NO engine decoding",
+  "verification": "autonomous discovery: diagonal traction chain, 7 clicks vs human 22",
+  "score_note": "(22/7)^2 = 9.87 -> level score cap 1.15; beats CEAX 25-action replay (0.77)"
+ }
+}

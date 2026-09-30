@@ -1,0 +1,277 @@
+{
+ "game_id": "cd82-fb555c5d",
+ "route_id": "cd82_all6_win73",
+ "target_levels": 6,
+ "expected_state": "WIN",
+ "actions": [
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 46,
+   "y": 4
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 47,
+   "y": 4
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 53,
+   "y": 4
+  },
+  {
+   "a": "ACTION1"
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 29,
+   "y": 4
+  },
+  {
+   "a": "ACTION1"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 35,
+   "y": 4
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION6",
+   "x": 32,
+   "y": 20
+  },
+  {
+   "a": "ACTION6",
+   "x": 35,
+   "y": 4
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 29,
+   "y": 4
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 4
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION1"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 4
+  },
+  {
+   "a": "ACTION6",
+   "x": 13,
+   "y": 39
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 4
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 47,
+   "y": 4
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 35,
+   "y": 4
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 53,
+   "y": 4
+  },
+  {
+   "a": "ACTION1"
+  },
+  {
+   "a": "ACTION1"
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION6",
+   "x": 32,
+   "y": 20
+  },
+  {
+   "a": "ACTION6",
+   "x": 47,
+   "y": 4
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 53,
+   "y": 4
+  },
+  {
+   "a": "ACTION1"
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION5"
+  },
+  {
+   "a": "ACTION6",
+   "x": 29,
+   "y": 4
+  },
+  {
+   "a": "ACTION4"
+  },
+  {
+   "a": "ACTION6",
+   "x": 32,
+   "y": 20
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 4
+  },
+  {
+   "a": "ACTION3"
+  },
+  {
+   "a": "ACTION2"
+  },
+  {
+   "a": "ACTION6",
+   "x": 13,
+   "y": 39
+  }
+ ],
+ "meta": {
+  "date": "2026-09-29",
+  "source": "state/cd82_solve.py — painting game (ring rotation / paint / swatches / strips), mechanics via engine introspection",
+  "verification": "standalone replay 6/6 WIN, official scorecard 100.0, level_actions [5,6,16,14,16,16]",
+  "score_note": "0/6 zero-score game -> full win; Phase A aggregate expected +4.0"
+ }
+}
