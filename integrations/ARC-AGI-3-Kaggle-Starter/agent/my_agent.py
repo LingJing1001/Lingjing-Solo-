@@ -947,7 +947,10 @@ class MyAgent(Agent):
             and "ACTION5" in valid
             and (not self._r3_path)
         ):
-            if self.action_counter < 3:
+            # 前 3 步快速搜一次；CEAX 卡住 100 步 levels 没涨时再搜一次（更多预算）
+            stuck = levels == self._levels_seen
+            should_r3 = self.action_counter < 3 or (stuck and self.action_counter == 100)
+            if should_r3:
                 env_ref = getattr(self, "_env_ref", None)
                 if env_ref is None:
                     print(
@@ -957,11 +960,13 @@ class MyAgent(Agent):
                 else:
                     try:
                         from lingjing_solo.planning.search.generic_shadow import r3_generic_search
-                        print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels}", flush=True)
+                        t_limit = 12.0 if self.action_counter < 3 else 20.0
+                        max_nodes = 15000 if self.action_counter < 3 else 30000
+                        print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s nodes={max_nodes}", flush=True)
                         found = r3_generic_search(
                             env_ref,
-                            t_limit=12.0,
-                            max_nodes=15000,
+                            t_limit=t_limit,
+                            max_nodes=max_nodes,
                             act_map={
                                 n: getattr(GameAction, "ACTION%d" % n)
                                 for n in range(1, 8)
@@ -1005,9 +1010,23 @@ class MyAgent(Agent):
             and gid not in ("ls20", "ar25")
             and objects
         ):
-            best_obj = max(objects, key=lambda o: len(o.pixels))
-            cx = (best_obj.bbox[0] + best_obj.bbox[2]) // 2
-            cy = (best_obj.bbox[1] + best_obj.bbox[3]) // 2
+            # v4 热图提议优先，fallback 到最大 object 中心
+            cx, cy = None, None
+            click_src = "fallback"
+            try:
+                if not hasattr(self, "_ch"):
+                    from arc_adaptor import click_heatmap as _ch_mod
+                    self._ch = _ch_mod
+                _props = self._ch.propose_clicks(grid, topk=1)
+                if _props:
+                    cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
+                    click_src = "v4"
+            except Exception:
+                cx, cy = None, None
+            if cx is None:
+                best_obj = max(objects, key=lambda o: len(o.pixels))
+                cx = (best_obj.bbox[0] + best_obj.bbox[2]) // 2
+                cy = (best_obj.bbox[1] + best_obj.bbox[3]) // 2
             self._hybrid_click_budget -= 1
             action = GameAction.ACTION6
             action.set_data({"x": int(cx), "y": int(cy)})
@@ -1015,7 +1034,7 @@ class MyAgent(Agent):
             if self.action_counter < 5 or self.action_counter % 20 == 0:
                 print(
                     f"[{BUILD_TAG}] hybrid-click step={self.action_counter} "
-                    f"gid={gid} obj_pixels={len(best_obj.pixels)} "
+                    f"gid={gid} src={click_src} "
                     f"click=({cx},{cy}) budget={self._hybrid_click_budget}",
                     flush=True,
                 )
