@@ -1,0 +1,34 @@
+{
+ "game_id": "ft09-0d8bbf25",
+ "route_id": "ft09_l1_route4",
+ "target_levels": 1,
+ "expected_state": "NOT_FINISHED",
+ "actions": [
+  {
+   "a": "ACTION6",
+   "x": 37,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 37,
+   "y": 44
+  },
+  {
+   "a": "ACTION6",
+   "x": 53,
+   "y": 44
+  },
+  {
+   "a": "ACTION6",
+   "x": 37,
+   "y": 52
+  }
+ ],
+ "meta": {
+  "date": "2026-09-30",
+  "source": "state/su15_closure_search.py — union-mode closure search with ablation_seed17_16ch proposer, NO hand-written route",
+  "verification": "autonomous 4-click clear of L1 (hardcoded route uses ~13 actions/level)",
+  "score_note": "validation artifact: pipeline re-derives a hardcoded-routed game autonomously"
+ }
+}

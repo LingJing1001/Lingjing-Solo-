@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lingjing-solo"
+version = "0.1.0"
+description = "Lingjing-Solo single-agent world-model framework for interactive reasoning benchmarks"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT-0"
+license-files = ["LICENSE"]
+authors = [{ name = "LingJing1001" }]
+dependencies = [
+  "numpy>=1.26,<3",
+]
+
+[project.optional-dependencies]
+cnn = [
+  "torch>=2.2",
+]
+dev = [
+  "pytest>=8",
+  "pytest-timeout>=2.3",
+  "ruff>=0.8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["lingjing_solo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+# 单用例 120s 硬顶：test_evidence_backend 的桩+子进程在慢盘/冷缓存下也只有秒级，
+# 真挂住（如子进程等 stdin）就让它红，而不是卡死整个套件。thread 法全平台可用。
+timeout = 120
+timeout_method = "thread"
+pythonpath = ["."]
+# Hermes ships hydra-core 1.0.7, whose pytest11 entry point is incompatible
+# with Python 3.12 dataclasses. This project does not use the Hydra pytest plugin.
+addopts = ["-p", "no:hydra_pytest"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [
+  "environment_files",
+  "reference",
+  "docs",
+  "agent",
+  "_report_*.txt",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = [
+  "E501",  # legacy research code routinely exceeds 100 cols
+  "E701",  # one-liner style used throughout solo modules
+  "E702",  # semicolon-joined statements in compact helpers
+  "E401",  # multi-import lines common in package inits
+  "E402",  # lazy/local imports after path setup
+  "E722",  # bare except retained in defensive game I/O
+  "E731",  # lambda assignment used as small local helpers
+  "I001",  # do not force mass import reorders on sync
+  "F401",  # unused imports widespread in WIP research modules
+  "F841",  # unused locals common in exploratory probes
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_solo.py" = ["F401", "F841"]
+"tests/*" = ["F401", "F841"]

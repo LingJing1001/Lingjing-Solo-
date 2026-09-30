@@ -1,0 +1,66 @@
+Traceback (most recent call last):
+  File "f:\pro\Lingjing-Solo-\examples\probe_ar25_levels.py", line 7, in <module>
+    from arc_agi import Arcade, OperationMode
+  File "D:\Program\Python\Lib\site-packages\arc_agi\__init__.py", line 3, in <module>
+    from .api import RestAPI
+  File "D:\Program\Python\Lib\site-packages\arc_agi\api.py", line 8, in <module>
+    from arcengine import ActionInput, FrameData, FrameDataRaw, GameAction
+  File "D:\Program\Python\Lib\site-packages\arcengine\__init__.py", line 5, in <module>
+    from .base_game import ARCBaseGame
+  File "D:\Program\Python\Lib\site-packages\arcengine\base_game.py", line 12, in <module>
+    from .camera import Camera
+  File "D:\Program\Python\Lib\site-packages\arcengine\camera.py", line 9, in <module>
+    from .interfaces import RenderableUserDisplay
+  File "D:\Program\Python\Lib\site-packages\arcengine\interfaces.py", line 9, in <module>
+    from .enums import InteractionMode
+  File "D:\Program\Python\Lib\site-packages\arcengine\enums.py", line 131, in <module>
+    class FrameData(BaseModel):
+    ...<14 lines>...
+            return self.model_dump_json(indent=2)
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_model_construction.py", line 255, in __new__
+    complete_model_class(
+    ~~~~~~~~~~~~~~~~~~~~^
+        cls,
+        ^^^^
+    ...<3 lines>...
+        create_model_module=_create_model_module,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_model_construction.py", line 648, in complete_model_class
+    schema = gen_schema.generate_schema(cls)
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 729, in generate_schema
+    schema = self._generate_schema_inner(obj)
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 1023, in _generate_schema_inner
+    return self._model_schema(obj)
+           ~~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 856, in _model_schema
+    {k: self._generate_md_field_schema(k, v, decorators) for k, v in fields.items()},
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 1228, in _generate_md_field_schema
+    schema, metadata = self._common_field_schema(name, field_info, decorators)
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 1282, in _common_field_schema
+    schema = self._apply_annotations(
+        source_type,
+        annotations + validators_from_decorators,
+    )
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 2227, in _apply_annotations
+    schema = get_inner_schema(source_type)
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py", line 83, in __call__
+    schema = self._handler(source_type)
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 2206, in inner_handler
+    schema = self._generate_schema_inner(obj)
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 1028, in _generate_schema_inner
+    return self.match_type(obj)
+           ~~~~~~~~~~~~~~~^^^^^
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 1144, in match_type
+    return self._match_generic_type(obj, origin)
+           ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 1171, in _match_generic_type
+    return self._list_schema(self._get_first_arg_or_any(obj))
+                             ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Program\Python\Lib\site-packages\pydantic\_internal\_generate_schema.py", line 987, in _get_first_arg_or_any
+    def _get_first_arg_or_any(self, obj: Any) -> Any:
+    
+KeyboardInterrupt

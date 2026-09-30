@@ -1,0 +1,1139 @@
+{
+  "game": "vc33-5430563c",
+  "mode": "OFFLINE",
+  "seed": 0,
+  "budgets": {
+    "search_seconds": 10.0,
+    "max_depth": 45,
+    "max_states": 5000,
+    "max_steps": 1000,
+    "max_seconds": 120.0
+  },
+  "state": "GAME_OVER",
+  "levels_completed": 2,
+  "win_levels": 7,
+  "executed_steps": 85,
+  "stop_reason": "GAME_OVER",
+  "elapsed_seconds": 18.89,
+  "replay_matches": true,
+  "searches": [
+    {
+      "level": 1,
+      "reason": "solved",
+      "path": [
+        {
+          "action": 6,
+          "data": {
+            "x": 61,
+            "y": 33
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 61,
+            "y": 33
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 61,
+            "y": 33
+          }
+        }
+      ],
+      "states": 6,
+      "search_actions": 28,
+      "seconds": 0.578
+    },
+    {
+      "level": 2,
+      "reason": "solved",
+      "path": [
+        {
+          "action": 6,
+          "data": {
+            "x": 1,
+            "y": 25
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 1,
+            "y": 25
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 1,
+            "y": 45
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 1,
+            "y": 45
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 1,
+            "y": 45
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 1,
+            "y": 45
+          }
+        },
+        {
+          "action": 6,
+          "data": {
+            "x": 1,
+            "y": 45
+          }
+        }
+      ],
+      "states": 47,
+      "search_actions": 875,
+      "seconds": 7.984
+    },
+    {
+      "level": 3,
+      "reason": "time_limit",
+      "path": null,
+      "states": 61,
+      "search_actions": 597,
+      "seconds": 10.031
+    }
+  ],
+  "actions": [
+    {
+      "step": 1,
+      "level_before": 1,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 61,
+        "y": 33
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 0
+    },
+    {
+      "step": 2,
+      "level_before": 1,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 61,
+        "y": 33
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 0
+    },
+    {
+      "step": 3,
+      "level_before": 1,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 61,
+        "y": 33
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 1
+    },
+    {
+      "step": 4,
+      "level_before": 2,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 1,
+        "y": 25
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 1
+    },
+    {
+      "step": 5,
+      "level_before": 2,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 1,
+        "y": 25
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 1
+    },
+    {
+      "step": 6,
+      "level_before": 2,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 1,
+        "y": 45
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 1
+    },
+    {
+      "step": 7,
+      "level_before": 2,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 1,
+        "y": 45
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 1
+    },
+    {
+      "step": 8,
+      "level_before": 2,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 1,
+        "y": 45
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 1
+    },
+    {
+      "step": 9,
+      "level_before": 2,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 1,
+        "y": 45
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 1
+    },
+    {
+      "step": 10,
+      "level_before": 2,
+      "method": "r3_bfs",
+      "action": 6,
+      "data": {
+        "x": 1,
+        "y": 45
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 11,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 12,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 13,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 14,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 15,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 16,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 17,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 18,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 19,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 20,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 21,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 22,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 23,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 24,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 25,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 26,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 27,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 28,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 29,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 30,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 31,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 32,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 33,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 34,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 28,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 35,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 28,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 36,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 28,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 37,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 38,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 39,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 40,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 41,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 34,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 42,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 43,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 44,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 45,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 46,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 47,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 48,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 49,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 50,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 51,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 52,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 53,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 54,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 55,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 56,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 57,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 58,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 59,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 60,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 61,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 62,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 63,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 64,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 65,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 28,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 66,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 28,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 67,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 28,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 68,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 34,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 69,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 38,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 70,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 38,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 71,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 72,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 73,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 74,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 75,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 76,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 77,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 78,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 79,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 80,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 81,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 82,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 16,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 83,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 12,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 84,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 24,
+        "y": 56
+      },
+      "state": "NOT_FINISHED",
+      "levels_completed": 2
+    },
+    {
+      "step": 85,
+      "level_before": 3,
+      "method": "r4_explore",
+      "action": 6,
+      "data": {
+        "x": 28,
+        "y": 56
+      },
+      "state": "GAME_OVER",
+      "levels_completed": 2
+    }
+  ]
+}

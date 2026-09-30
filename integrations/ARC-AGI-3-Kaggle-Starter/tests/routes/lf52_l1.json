@@ -1,0 +1,55 @@
+{
+ "game_id": "lf52-271a04aa",
+ "route_id": "lf52_l1_route8",
+ "target_levels": 1,
+ "expected_state": "NOT_FINISHED",
+ "human_baseline_actions": 32,
+ "actions": [
+  {
+   "a": "ACTION6",
+   "x": 17,
+   "y": 18
+  },
+  {
+   "a": "ACTION6",
+   "x": 30,
+   "y": 19
+  },
+  {
+   "a": "ACTION6",
+   "x": 29,
+   "y": 18
+  },
+  {
+   "a": "ACTION6",
+   "x": 42,
+   "y": 19
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 18
+  },
+  {
+   "a": "ACTION6",
+   "x": 42,
+   "y": 31
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 30
+  },
+  {
+   "a": "ACTION6",
+   "x": 42,
+   "y": 43
+  }
+ ],
+ "meta": {
+  "date": "2026-09-30",
+  "source": "state/su15_closure_search.py — union-mode closure search with ablation_seed17_16ch proposer, NO hand-written route",
+  "verification": "autonomous 8-click clear of L1 (search continued to L2 but hit the 600s time cap)",
+  "score_note": "lf52 was 0/10 = 0 points; L1 human baseline 32 steps vs 8 clicks"
+ }
+}

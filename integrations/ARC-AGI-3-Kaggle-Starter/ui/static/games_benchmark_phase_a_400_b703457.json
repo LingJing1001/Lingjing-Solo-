@@ -1,0 +1,1101 @@
+{
+  "generated_at": "2026-09-28T19:00:16.281422+00:00",
+  "agent": "phase-a-b703457",
+  "max_steps": 400,
+  "total_games": 25,
+  "games_finished": 25,
+  "running": false,
+  "elapsed_sec": 64.19,
+  "aggregate_score": 24.91328,
+  "aggregate_score_official": 24.91328,
+  "total_levels_completed": 49,
+  "games_won": 6,
+  "games_zero_levels": 14,
+  "priority_fix": [
+    "lf52",
+    "bp35",
+    "re86",
+    "sk48",
+    "g50t",
+    "ka59",
+    "tn36",
+    "cd82",
+    "cn04",
+    "dc22"
+  ],
+  "games": [
+    {
+      "game_id": "ar25",
+      "index": 11,
+      "title": "AR25",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 8,
+      "human_steps": [
+        32,
+        50,
+        75,
+        37,
+        89,
+        159,
+        233,
+        73
+      ],
+      "levels_completed": 8,
+      "actions": 276,
+      "state": "WIN",
+      "game_score": 100.0,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0
+      ],
+      "elapsed_sec": 0.29,
+      "error": null,
+      "level_actions": [
+        15,
+        32,
+        40,
+        22,
+        28,
+        53,
+        39,
+        47
+      ]
+    },
+    {
+      "game_id": "sb26",
+      "index": 25,
+      "title": "SB26",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 8,
+      "human_steps": [
+        18,
+        28,
+        18,
+        19,
+        31,
+        23,
+        58,
+        18
+      ],
+      "levels_completed": 8,
+      "actions": 124,
+      "state": "WIN",
+      "game_score": 100.0,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        112.11072664359862
+      ],
+      "elapsed_sec": 0.89,
+      "error": null,
+      "level_actions": [
+        9,
+        15,
+        15,
+        15,
+        17,
+        19,
+        17,
+        17
+      ]
+    },
+    {
+      "game_id": "ls20",
+      "index": 4,
+      "title": "LS20",
+      "tags": [
+        "keyboard"
+      ],
+      "total_levels": 7,
+      "human_steps": [
+        22,
+        123,
+        73,
+        84,
+        96,
+        192,
+        186
+      ],
+      "levels_completed": 7,
+      "actions": 309,
+      "state": "WIN",
+      "game_score": 100.0,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0
+      ],
+      "elapsed_sec": 0.5,
+      "error": null,
+      "level_actions": [
+        13,
+        45,
+        39,
+        43,
+        44,
+        72,
+        53
+      ]
+    },
+    {
+      "game_id": "vc33",
+      "index": 6,
+      "title": "VC33",
+      "tags": [
+        "click"
+      ],
+      "total_levels": 7,
+      "human_steps": [
+        7,
+        18,
+        44,
+        61,
+        131,
+        34,
+        152
+      ],
+      "levels_completed": 7,
+      "actions": 167,
+      "state": "WIN",
+      "game_score": 100.0,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0
+      ],
+      "elapsed_sec": 0.38,
+      "error": null,
+      "level_actions": [
+        3,
+        7,
+        23,
+        21,
+        44,
+        20,
+        49
+      ]
+    },
+    {
+      "game_id": "ft09",
+      "index": 19,
+      "title": "FT09",
+      "tags": [],
+      "total_levels": 6,
+      "human_steps": [
+        43,
+        12,
+        23,
+        28,
+        65,
+        37
+      ],
+      "levels_completed": 6,
+      "actions": 81,
+      "state": "WIN",
+      "game_score": 100.0,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0
+      ],
+      "elapsed_sec": 0.2,
+      "error": null,
+      "level_actions": [
+        4,
+        7,
+        14,
+        16,
+        21,
+        19
+      ]
+    },
+    {
+      "game_id": "r11l",
+      "index": 22,
+      "title": "R11L",
+      "tags": [
+        "click"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        22,
+        33,
+        51,
+        26,
+        52,
+        49
+      ],
+      "levels_completed": 6,
+      "actions": 130,
+      "state": "WIN",
+      "game_score": 100.0,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0
+      ],
+      "elapsed_sec": 0.31,
+      "error": null,
+      "level_actions": [
+        4,
+        16,
+        16,
+        24,
+        30,
+        40
+      ]
+    },
+    {
+      "game_id": "wa30",
+      "index": 14,
+      "title": "WA30",
+      "tags": [
+        "keyboard"
+      ],
+      "total_levels": 9,
+      "human_steps": [
+        71,
+        119,
+        183,
+        98,
+        368,
+        68,
+        79,
+        442,
+        415
+      ],
+      "levels_completed": 3,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 13.333333333333334,
+      "level_scores": [
+        115.0,
+        115.0,
+        115.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.95,
+      "error": null,
+      "level_actions": [
+        26,
+        48,
+        76,
+        250,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "lp85",
+      "index": 15,
+      "title": "LP85",
+      "tags": [
+        "click"
+      ],
+      "total_levels": 8,
+      "human_steps": [
+        17,
+        38,
+        31,
+        16,
+        41,
+        60,
+        26,
+        159
+      ],
+      "levels_completed": 1,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 2.7777777777777777,
+      "level_scores": [
+        115.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.18,
+      "error": null,
+      "level_actions": [
+        5,
+        395,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "s5i5",
+      "index": 20,
+      "title": "S5I5",
+      "tags": [
+        "click"
+      ],
+      "total_levels": 8,
+      "human_steps": [
+        20,
+        89,
+        106,
+        54,
+        162,
+        38,
+        86,
+        83
+      ],
+      "levels_completed": 1,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 2.7777777777777777,
+      "level_scores": [
+        115.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.18,
+      "error": null,
+      "level_actions": [
+        13,
+        387,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "tu93",
+      "index": 9,
+      "title": "TU93",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 9,
+      "human_steps": [
+        19,
+        16,
+        34,
+        42,
+        123,
+        80,
+        14,
+        23,
+        111
+      ],
+      "levels_completed": 1,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 2.2222222222222223,
+      "level_scores": [
+        111.41975308641976,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.57,
+      "error": null,
+      "level_actions": [
+        18,
+        382,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "su15",
+      "index": 23,
+      "title": "SU15",
+      "tags": [
+        "click"
+      ],
+      "total_levels": 9,
+      "human_steps": [
+        22,
+        42,
+        26,
+        115,
+        36,
+        31,
+        8,
+        40,
+        41
+      ],
+      "levels_completed": 1,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 1.720888888888889,
+      "level_scores": [
+        77.44,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.39,
+      "error": null,
+      "level_actions": [
+        25,
+        375,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "sp80",
+      "index": 1,
+      "title": "SP80",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        39,
+        58,
+        25,
+        148,
+        96,
+        152
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.67,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "bp35",
+      "index": 2,
+      "title": "BP35",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 9,
+      "human_steps": [
+        21,
+        48,
+        44,
+        38,
+        33,
+        87,
+        86,
+        131,
+        163
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.64,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "m0r0",
+      "index": 3,
+      "title": "M0R0",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        30,
+        111,
+        203,
+        26,
+        500,
+        237
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 2.97,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "dc22",
+      "index": 5,
+      "title": "DC22",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        59,
+        102,
+        67,
+        98,
+        324,
+        578
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.29,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "lf52",
+      "index": 7,
+      "title": "LF52",
+      "tags": [
+        "click"
+      ],
+      "total_levels": 10,
+      "human_steps": [
+        32,
+        81,
+        60,
+        71,
+        205,
+        148,
+        244,
+        109,
+        164,
+        225
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.26,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "ka59",
+      "index": 8,
+      "title": "KA59",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 7,
+      "human_steps": [
+        28,
+        109,
+        51,
+        51,
+        33,
+        132,
+        326
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.05,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "cd82",
+      "index": 10,
+      "title": "CD82",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        55,
+        8,
+        41,
+        21,
+        23,
+        23
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.31,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "sc25",
+      "index": 12,
+      "title": "SC25",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        36,
+        6,
+        32,
+        83,
+        143,
+        50
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.59,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "g50t",
+      "index": 13,
+      "title": "G50T",
+      "tags": [
+        "keyboard"
+      ],
+      "total_levels": 7,
+      "human_steps": [
+        78,
+        175,
+        179,
+        230,
+        96,
+        54,
+        67
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 2.2,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "cn04",
+      "index": 16,
+      "title": "CN04",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        29,
+        54,
+        85,
+        300,
+        208,
+        113
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.0,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "tr87",
+      "index": 17,
+      "title": "TR87",
+      "tags": [
+        "keyboard"
+      ],
+      "total_levels": 6,
+      "human_steps": [
+        54,
+        58,
+        40,
+        45,
+        71,
+        146
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 2.99,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "sk48",
+      "index": 18,
+      "title": "SK48",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 8,
+      "human_steps": [
+        61,
+        177,
+        101,
+        103,
+        230,
+        181,
+        125,
+        92
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.21,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "re86",
+      "index": 21,
+      "title": "RE86",
+      "tags": [
+        "keyboard_click"
+      ],
+      "total_levels": 8,
+      "human_steps": [
+        26,
+        42,
+        86,
+        108,
+        189,
+        139,
+        424,
+        241
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 3.27,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "game_id": "tn36",
+      "index": 24,
+      "title": "TN36",
+      "tags": [
+        "click"
+      ],
+      "total_levels": 7,
+      "human_steps": [
+        32,
+        72,
+        26,
+        40,
+        30,
+        55,
+        62
+      ],
+      "levels_completed": 0,
+      "actions": 400,
+      "state": "NOT_FINISHED",
+      "game_score": 0.0,
+      "level_scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_sec": 2.87,
+      "error": null,
+      "level_actions": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "score_formula": "单局分=各关 (基准步数/实际步数)²×100 加权平均；总分=所有游戏分数的平均值"
+}

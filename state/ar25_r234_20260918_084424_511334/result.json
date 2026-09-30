@@ -1,0 +1,29 @@
+{
+  "game": "ar25-0c556536",
+  "mode": "OFFLINE",
+  "flow": "r234",
+  "levels_completed": 1,
+  "won": false,
+  "state": "GameState.NOT_FINISHED",
+  "total_steps": 29,
+  "total_search_nodes": 0,
+  "elapsed_seconds": 0.044,
+  "levels": [
+    {
+      "level": 1,
+      "method": "R3搜索",
+      "steps": 15,
+      "search_seconds": 0.0,
+      "nodes": 0,
+      "ok": true
+    },
+    {
+      "level": 2,
+      "method": "R3搜索",
+      "steps": 14,
+      "search_seconds": 0.0,
+      "nodes": 0,
+      "ok": false
+    }
+  ]
+}

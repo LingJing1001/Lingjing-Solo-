@@ -1,0 +1,17 @@
+diff --git a/agents/agent.py b/agents/agent.py
+index 50e3a03..a78d435 100644
+--- a/agents/agent.py
++++ b/agents/agent.py
+@@ -58,0 +59 @@ class Agent(ABC):
++        self._last_requested_action: GameAction | None = None
+@@ -131 +132,7 @@ class Agent(ABC):
+-            self.recorder.record(json.loads(frame.model_dump_json()))
++            payload = json.loads(frame.model_dump_json())
++            if self._last_requested_action is not None:
++                payload["requested_action"] = {
++                    "name": self._last_requested_action.name,
++                    "id": self._last_requested_action.value,
++                }
++            self.recorder.record(payload)
+@@ -160,0 +168 @@ class Agent(ABC):
++        self._last_requested_action = action

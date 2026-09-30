@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "purpose": "R4 hotspot detector offline fixtures",
+  "sources": [
+    {
+      "id": "synthetic-static-components",
+      "path": null,
+      "kind": "synthetic",
+      "status": "available",
+      "notes": "Generated in tests; no level or answer metadata"
+    },
+    {
+      "id": "synthetic-temporal-delta",
+      "path": null,
+      "kind": "synthetic",
+      "status": "available",
+      "notes": "Generated in tests; delta is evidence only, not success"
+    }
+  ],
+  "real_recordings": [],
+  "coordinate_convention": "x=column, y=row, origin=(0,0), integer pixel centers",
+  "action_payload": "not frozen; requires a real ft09 recording/harness sample"
+}

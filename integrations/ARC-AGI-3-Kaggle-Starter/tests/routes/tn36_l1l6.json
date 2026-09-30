@@ -1,0 +1,373 @@
+{
+ "game_id": "tn36-ef4dde99",
+ "route_id": "tn36_l1l6_72",
+ "target_levels": 6,
+ "expected_state": "NOT_FINISHED",
+ "actions": [
+  {
+   "a": "ACTION6",
+   "x": 26,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 26,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 36,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 36,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 36,
+   "y": 55
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 46,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 39
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 39
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  }
+ ],
+ "meta": {
+  "date": "2026-09-30",
+  "source": "state/tn36_solve.py — symbolic solver (teleport-per-level replay); L7 excluded: plan falsified by tn36_l7_verify.py (INCOMPLETE, blocker-locked)",
+  "verification": "6/7 in phase-A benchmark (75.0 game score); L7 pending re-solve"
+ }
+}

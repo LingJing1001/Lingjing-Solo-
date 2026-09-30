@@ -1,0 +1,12 @@
+﻿__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+.kaggle/
+**/access_token
+*.rar
+.DS_Store
+
+# 本地冒烟 / Phase B 模拟日志
+*.log

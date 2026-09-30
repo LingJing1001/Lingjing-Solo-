@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"name": "帮我优化当前文件的性能",
+			"path": "D:/NovaAI-Projects/帮我优化当前文件的性能"
+		},
+		{
+			"name": "ARC-AGI-3-Kaggle-Starter",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"nova.dev.expectedExtensionPath": "",
+		"nova.dev.switchToExpectedInstanceCommand": "",
+		"nova.sandbox.mode": "danger-full-access",
+		"nova.sandbox.approvalPolicy": "never",
+		"nova.computerUse.approvalMode": "off",
+		"nova.model": "ide:minimax-m3"
+	}
+}
