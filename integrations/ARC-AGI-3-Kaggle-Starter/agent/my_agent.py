@@ -971,9 +971,10 @@ class MyAgent(Agent):
                 objects = []
 
         # --- R3 state-space search for keyboard_click unknowns ---
+        # 排除有 inline 解法的游戏, 对所有未知游戏用 BFS 搜索
+        _INLINE_GAMES = ("ls20", "ar25", "ft09", "vc33", "sb26", "tn36", "r11l", "cd82", "tr87", "wa30")
         if (
-            gid not in ("ls20", "ar25")
-            and "ACTION5" in valid
+            gid not in _INLINE_GAMES
             and (not self._r3_path)
         ):
             # 前 3 步快速搜一次；CEAX 卡住 100 步 levels 没涨时再搜一次（更多预算）
@@ -988,23 +989,10 @@ class MyAgent(Agent):
                     )
                 else:
                     try:
-                        from lingjing_solo.planning.search.generic_shadow import r3_generic_search
+                        # 用 reset/重放 BFS 代替 r3_generic_search (快照不完整)
                         t_limit = 40.0 if self.action_counter == 0 else 30.0
-                        max_nodes = 30000 if self.action_counter == 0 else 50000
-                        print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s nodes={max_nodes}", flush=True)
-                        found = r3_generic_search(
-                            env_ref,
-                            t_limit=t_limit,
-                            max_nodes=max_nodes,
-                            act_map={
-                                n: getattr(GameAction, "ACTION%d" % n)
-                                for n in range(1, 8)
-                            },
-                            make_action=_r3_action_input,
-                            game_over_state=GameState.GAME_OVER,
-                            click_proposer=_r3_click_proposer,
-                            make_click_action=_r3_make_click_action,
-                        )
+                        print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s (reset+BFS)", flush=True)
+                        found = self._bfs_search(env_ref, t_limit=t_limit)
                         if found:
                             self._r3_path = list(found)
                             print(
@@ -1165,6 +1153,86 @@ class MyAgent(Agent):
                 )
         self._bp35_idx = 0
         self._bp35_level = -1
+
+    def _bfs_search(self, env_ref: Any, t_limit: float = 60.0) -> Optional[list]:
+        """BFS: depth≤20, states≤5000, frame.available_actions (probe_hardbones 验证 4/9)。"""
+        import time as _time, collections as _coll, os as _os
+        _old = _os.getcwd()
+        try:
+            _os.chdir('C:/newtask-pi')
+            from arc_agi import Arcade as _A, OperationMode as _OM
+            from arcengine import ActionInput as _AI, GameState as _GS
+            _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
+            g0 = env_ref._game
+            gid = getattr(g0, "game_id", "").split("-")[0]
+            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
+            env = arc.make(gid_full)
+            frame = env.reset()
+            g = env._game
+            li0 = int(g._current_level_index)
+            # 用 frame.available_actions (比 g.available_actions 可靠)
+            try:
+                acts = [int(a) for a in frame.available_actions]
+            except:
+                try:
+                    acts = [int(a) for a in g.available_actions]
+                except:
+                    acts = [1, 2, 3, 4]
+            # 去掉 ACTION6/7 (点击/撤销需要坐标, BFS 不处理)
+            acts = [a for a in acts if a not in (6, 7)]
+            import numpy as _np
+            def _gb(f):
+                ff = f.frame
+                return (ff[0] if isinstance(ff, list) and len(ff)==1 else _np.asarray(ff)).astype(int).tobytes()
+            start = _gb(frame)
+            queue = _coll.deque([[]])
+            seen = {start}
+            t0 = _time.time()
+            found = None
+            while queue and not found:
+                if _time.time() - t0 > t_limit or len(seen) > 5000:
+                    break
+                path = queue.popleft()
+                if len(path) >= 20:
+                    continue
+                for a in acts:
+                    env.reset()
+                    g = env._game
+                    for aa in path + [a]:
+                        g.perform_action(_AI(id=_am[aa], data={}, reasoning=None), raw=True)
+                    if int(g._current_level_index) > li0 or g._state == _GS.WIN:
+                        found = path + [a]
+                        print(f"[{BUILD_TAG}] bfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
+                        break
+                    for m in ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']:
+                        try:
+                            v = getattr(g, m)
+                            if callable(v) and v() is True:
+                                found = path + [a]
+                                print(f"[{BUILD_TAG}] bfs-WIN2 gid={gid} method={m} path={path+[a]}", flush=True)
+                                break
+                        except:
+                            pass
+                    if found:
+                        break
+                    try:
+                        fr = env.step(_am[1], data=None)
+                        k = _gb(fr)
+                    except:
+                        k = str(len(seen))
+                    if k not in seen:
+                        seen.add(k)
+                        queue.append(path + [a])
+            _os.chdir(_old)
+            print(f"[{BUILD_TAG}] bfs-done gid={gid} found={found is not None} states={len(seen)} t={_time.time()-t0:.1f}s acts={acts}", flush=True)
+            return found
+        except Exception as exc:
+            try: _os.chdir(_old)
+            except: pass
+            import traceback as _tb
+            print(f"[{BUILD_TAG}] bfs-error: {type(exc).__name__}: {exc}\n{_tb.format_exc()}", flush=True)
+            return None
 
     def _ft09_solve_online(
         self, latest_frame: FrameData, levels: int
