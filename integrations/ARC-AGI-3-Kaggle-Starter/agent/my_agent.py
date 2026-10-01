@@ -284,6 +284,33 @@ def _r3_action_input(action_id: Any) -> Any:
     return ActionInput(id=action_id, data={}, reasoning=None)
 
 
+def _r3_click_proposer(game: Any) -> list:
+    """R3 提议器：从 game 提取帧 → click_heatmap 提议 → list[(x,y)]。"""
+    try:
+        import numpy as np
+        from arc_adaptor import click_heatmap as CH
+        sprites = list(game.current_level._sprites)
+        grid = np.zeros((64, 64), dtype=np.int8)
+        for s in sprites:
+            px = np.array(s.pixels)
+            for r in range(px.shape[0]):
+                for c in range(px.shape[1]):
+                    if px[r][c] != -1:
+                        x, y = int(s.x) + c, int(s.y) + r
+                        if 0 <= x < 64 and 0 <= y < 64:
+                            grid[y, x] = int(px[r][c])
+        props = CH.propose_clicks(grid, topk=6)
+        return [(p["data"]["x"], p["data"]["y"]) for p in props]
+    except Exception:
+        return []
+
+
+def _r3_make_click_action(action_enum: Any, x: int, y: int) -> Any:
+    """构造带 x,y 的 ACTION6 ActionInput。"""
+    from arcengine import ActionInput
+    return ActionInput(id=action_enum, data={"x": int(x), "y": int(y)}, reasoning=None)
+
+
 def _valid_names(frame: FrameData) -> list[str]:
     raw = getattr(frame, "available_actions", None) or []
     out: list[str] = []
@@ -657,6 +684,7 @@ class MyAgent(Agent):
 
         if latest_frame.state in (GameState.NOT_PLAYED, GameState.GAME_OVER):
             if latest_frame.state is GameState.NOT_PLAYED:
+                self.ceax.game_id = str(getattr(latest_frame, "game_id", "") or gid)
                 self.ceax.reset_game()
                 self.ls20.reset()
                 self.ar25.reset()
@@ -927,6 +955,7 @@ class MyAgent(Agent):
             )
         if levels > self._levels_seen:
             self._levels_seen = levels
+            self.ceax.game_id = str(getattr(latest_frame, "game_id", "") or gid)
             self.ceax.reset_game()
             self._prev_grid = None
             print(
@@ -949,7 +978,7 @@ class MyAgent(Agent):
         ):
             # 前 3 步快速搜一次；CEAX 卡住 100 步 levels 没涨时再搜一次（更多预算）
             stuck = levels == self._levels_seen
-            should_r3 = self.action_counter < 3 or (stuck and self.action_counter == 100)
+            should_r3 = self.action_counter == 0 or (stuck and self.action_counter == 100)
             if should_r3:
                 env_ref = getattr(self, "_env_ref", None)
                 if env_ref is None:
@@ -960,8 +989,8 @@ class MyAgent(Agent):
                 else:
                     try:
                         from lingjing_solo.planning.search.generic_shadow import r3_generic_search
-                        t_limit = 12.0 if self.action_counter < 3 else 20.0
-                        max_nodes = 15000 if self.action_counter < 3 else 30000
+                        t_limit = 40.0 if self.action_counter == 0 else 30.0
+                        max_nodes = 30000 if self.action_counter == 0 else 50000
                         print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s nodes={max_nodes}", flush=True)
                         found = r3_generic_search(
                             env_ref,
@@ -973,6 +1002,8 @@ class MyAgent(Agent):
                             },
                             make_action=_r3_action_input,
                             game_over_state=GameState.GAME_OVER,
+                            click_proposer=_r3_click_proposer,
+                            make_click_action=_r3_make_click_action,
                         )
                         if found:
                             self._r3_path = list(found)
@@ -992,7 +1023,14 @@ class MyAgent(Agent):
                         )
 
         if hasattr(self, "_r3_path") and self._r3_path:
-            act_num = self._r3_path.pop(0)
+            item = self._r3_path.pop(0)
+            if isinstance(item, tuple):
+                act_num, cx, cy = item
+                action = GameAction.ACTION6
+                action.set_data({"x": int(cx), "y": int(cy)})
+                action.reasoning = {"text": f"{BUILD_TAG}:r3-search-click L{levels}"}
+                return action
+            act_num = item
             act_name = f"ACTION{act_num}"
             if act_name in valid:
                 action = _as_game_action(act_name)
