@@ -30,7 +30,9 @@ from typing import Any, Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import logging  # noqa: E402
+import logging
+
+import numpy as np  # noqa: E402
 
 from arcengine import ActionInput, GameAction  # noqa: E402
 
@@ -74,10 +76,19 @@ def click_candidates(grid, n: int = N_CLICK_CANDS) -> List[Tuple[int, int, int]]
 
 def candidates_for(arm: str, grid, kb: List[int], ranker: Optional[AffordanceRanker]):
     clicks = click_candidates(grid)
-    if arm in ("ranked", "pruned") and ranker is not None:
+    if arm in ("ranked", "pruned", "random4") and ranker is not None:
         clicks.sort(key=lambda c: -ranker.score(click_context(grid, c[1], c[2])))
     if arm == "pruned":
         clicks = clicks[:PRUNE_K]
+    if arm == "random4":
+        # 归因对照：同样剪 4 个，但按状态确定性随机选（归因"排序器 vs 剪枝本身"）
+        import hashlib as _hl
+        import random as _rnd
+        rng = _rnd.Random(int(_hl.md5(np.ascontiguousarray(grid, np.int64).tobytes())
+                              .hexdigest()[:8], 16))
+        pool = clicks + [(6, c['cx'], c['cy']) for c in []]
+        rng.shuffle(pool)
+        clicks = pool[:PRUNE_K]
     specs = [(a, None, None) for a in sorted(kb)]
     return clicks + specs
 
