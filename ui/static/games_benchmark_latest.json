@@ -1,0 +1,240 @@
+{
+ "label": "smart-router-local",
+ "agent": "integrations\\ARC-AGI-3-Kaggle-Starter\\agent\\my_agent.py",
+ "n_steps": 400,
+ "build_tag": "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix",
+ "generated_at": "2026-10-01T06:31:21.873097+00:00",
+ "results": [
+  {
+   "game_id": "ar25-0c556536",
+   "max_levels": 8,
+   "final_levels": 8,
+   "state": "WIN",
+   "steps": 276,
+   "win": true,
+   "elapsed_s": 0.5
+  },
+  {
+   "game_id": "bp35-0a0ad940",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 31.4
+  },
+  {
+   "game_id": "cd82-fb555c5d",
+   "max_levels": 6,
+   "final_levels": 6,
+   "state": "WIN",
+   "steps": 73,
+   "win": true,
+   "elapsed_s": 0.1
+  },
+  {
+   "game_id": "cn04-2fe56bfb",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 62.6
+  },
+  {
+   "game_id": "dc22-fdcac232",
+   "max_levels": 0,
+   "final_levels": 0,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 11.0
+  },
+  {
+   "game_id": "ft09-0d8bbf25",
+   "max_levels": 6,
+   "final_levels": 6,
+   "state": "WIN",
+   "steps": 81,
+   "win": true,
+   "elapsed_s": 0.1
+  },
+  {
+   "game_id": "g50t-5849a774",
+   "max_levels": 0,
+   "final_levels": 0,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 69.9
+  },
+  {
+   "game_id": "ka59-38d34dbb",
+   "max_levels": 0,
+   "final_levels": 0,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 21.5
+  },
+  {
+   "game_id": "lf52-271a04aa",
+   "max_levels": 0,
+   "final_levels": 0,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 10.6
+  },
+  {
+   "game_id": "lp85-305b61c3",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 8.4
+  },
+  {
+   "game_id": "ls20-9607627b",
+   "max_levels": 7,
+   "final_levels": 7,
+   "state": "WIN",
+   "steps": 309,
+   "win": true,
+   "elapsed_s": 1.0
+  },
+  {
+   "game_id": "m0r0-492f87ba",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 44.0
+  },
+  {
+   "game_id": "r11l-495a7899",
+   "max_levels": 6,
+   "final_levels": 6,
+   "state": "WIN",
+   "steps": 130,
+   "win": true,
+   "elapsed_s": 0.4
+  },
+  {
+   "game_id": "re86-8af5384d",
+   "max_levels": 0,
+   "final_levels": 0,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 49.1
+  },
+  {
+   "game_id": "s5i5-18d95033",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 10.3
+  },
+  {
+   "game_id": "sb26-7fbdac44",
+   "max_levels": 8,
+   "final_levels": 8,
+   "state": "WIN",
+   "steps": 124,
+   "win": true,
+   "elapsed_s": 1.6
+  },
+  {
+   "game_id": "sc25-635fd71a",
+   "max_levels": 4,
+   "final_levels": 4,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 10.9
+  },
+  {
+   "game_id": "sk48-d8078629",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 65.7
+  },
+  {
+   "game_id": "sp80-589a99af",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 12.2
+  },
+  {
+   "game_id": "su15-1944f8ab",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 12.7
+  },
+  {
+   "game_id": "tn36-ef4dde99",
+   "max_levels": 7,
+   "final_levels": 7,
+   "state": "WIN",
+   "steps": 103,
+   "win": true,
+   "elapsed_s": 0.3
+  },
+  {
+   "game_id": "tr87-cd924810",
+   "max_levels": 6,
+   "final_levels": 6,
+   "state": "WIN",
+   "steps": 122,
+   "win": true,
+   "elapsed_s": 0.5
+  },
+  {
+   "game_id": "tu93-0768757b",
+   "max_levels": 1,
+   "final_levels": 1,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 33.4
+  },
+  {
+   "game_id": "vc33-5430563c",
+   "max_levels": 7,
+   "final_levels": 7,
+   "state": "WIN",
+   "steps": 167,
+   "win": true,
+   "elapsed_s": 0.7
+  },
+  {
+   "game_id": "wa30-ee6fef47",
+   "max_levels": 3,
+   "final_levels": 3,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 12.8
+  }
+ ],
+ "summary": {
+  "total_levels": 77,
+  "nonzero_games": 20,
+  "wins": 9,
+  "n_games": 25
+ }
+}

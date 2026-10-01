@@ -69,7 +69,7 @@ BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11l
 AGENT_BRAND = "lingjing-smart"
 
 # Evidence-based route table (do not put uncalibrated scripts here).
-ROUTE_INLINE = frozenset({"ls20", "ar25", "ft09"})
+ROUTE_INLINE = frozenset({"ls20", "ar25", "ft09", "tr87"})
 # Practice ids where CEAX historically cleared ≥1 level @800 — still CEAX path.
 ROUTE_CEAX_KNOWN = frozenset({
     "lp85", "su15", "sb26", "s5i5", "tu93", "r11l",
@@ -122,8 +122,108 @@ _R11L_PLANS: dict[int, list[tuple[int, int]]] = {
     4: [(34, 55), (35, 21), (41, 47), (35, 18), (52, 55), (35, 24), (35, 21), (16, 42), (35, 18), (16, 39), (35, 24), (16, 45), (16, 42), (11, 26), (16, 39), (11, 23), (16, 45), (11, 29), (25, 35), (58, 43), (43, 34), (58, 47), (58, 43), (22, 53), (58, 47), (22, 57), (22, 53), (46, 5), (22, 57), (46, 9)],
     5: [(4, 19), (13, 35), (11, 11), (13, 32), (22, 19), (13, 38), (13, 35), (36, 19), (13, 32), (36, 16), (13, 38), (36, 22), (36, 19), (18, 47), (36, 16), (18, 44), (36, 22), (18, 50), (18, 47), (49, 10), (18, 44), (49, 7), (18, 50), (49, 13), (49, 43), (47, 30), (50, 57), (47, 34), (47, 30), (27, 55), (47, 34), (27, 59), (27, 55), (34, 44), (27, 59), (34, 48), (34, 44), (9, 51), (34, 48), (9, 55)],
 }
+# cd82: 选色点击 + 八向环走位(ACTION1-4) + ACTION5 盖印 + 手柄点击；6 关真机回放 WIN。
+# 语义：(action_id, x, y)；aid=1-5 为纯键盘动作（x,y 无效），aid=6 为 ACTION6 点击。
+# 离线求解 state/cd82_solve.py（IDDFS 区域盖印 + 引擎回放验证），全程 73 步 vs 人类基准 171。
+_CD82_PLANS: dict[int, list[tuple[int, int, int]]] = {
+    0: [(3, 0, 0), (2, 0, 0), (2, 0, 0), (4, 0, 0), (5, 0, 0)],
+    1: [(5, 0, 0), (6, 46, 4), (4, 0, 0), (2, 0, 0), (2, 0, 0), (5, 0, 0)],
+    2: [(6, 47, 4), (4, 0, 0), (2, 0, 0), (5, 0, 0), (6, 53, 4), (1, 0, 0), (3, 0, 0), (3, 0, 0), (2, 0, 0), (5, 0, 0), (6, 29, 4), (1, 0, 0), (5, 0, 0), (6, 35, 4), (4, 0, 0), (6, 32, 20)],
+    3: [(6, 35, 4), (5, 0, 0), (6, 29, 4), (4, 0, 0), (2, 0, 0), (2, 0, 0), (5, 0, 0), (6, 59, 4), (3, 0, 0), (3, 0, 0), (1, 0, 0), (5, 0, 0), (6, 41, 4), (6, 13, 39)],
+    4: [(6, 59, 4), (5, 0, 0), (6, 47, 4), (3, 0, 0), (2, 0, 0), (2, 0, 0), (5, 0, 0), (6, 35, 4), (4, 0, 0), (4, 0, 0), (5, 0, 0), (6, 53, 4), (1, 0, 0), (1, 0, 0), (3, 0, 0), (6, 32, 20)],
+    5: [(6, 47, 4), (4, 0, 0), (2, 0, 0), (5, 0, 0), (6, 53, 4), (1, 0, 0), (3, 0, 0), (3, 0, 0), (5, 0, 0), (6, 29, 4), (4, 0, 0), (6, 32, 20), (6, 41, 4), (3, 0, 0), (2, 0, 0), (6, 13, 39)],
+}
+# tn36: 面板开关组合=命令位掩码，点击火控按钮执行拼块变形；7/7 关真机回放过关。
+# 语义：(x, y) 纯 ACTION6 点击。L7 为 3 发 blocker-aware 航程（slot 重定基×2 + 不可见窗口穿带，
+# 末发垂直进目标口袋 (41,8) aligned WIN）；state/tn36_l7_probe2.py 机制验证 + probe4 冷全航程回放，
+# tests/routes/tn36_l1l7.json 回放闸门 3/3。
+# 离线求解 state/tn36_solve.py（掩码规划 + 引擎回放验证），全程 103 步 vs 人类基准 317。
+_TN36_PLANS: dict[int, list[tuple[int, int]]] = {
+    0: [(26, 42), (26, 45), (36, 42), (36, 45), (41, 42), (41, 45), (36, 55)],
+    1: [(39, 33), (39, 48), (44, 33), (44, 48), (49, 33), (49, 48), (54, 33), (54, 48), (46, 58)],
+    2: [(34, 33), (34, 48), (39, 36), (39, 42), (44, 36), (44, 42), (49, 33), (49, 48), (57, 58)],
+    3: [(34, 33), (34, 42), (39, 33), (44, 33), (44, 36), (49, 33), (49, 36), (54, 33), (54, 36), (59, 33), (59, 36), (57, 58)],
+    4: [(34, 33), (34, 36), (39, 33), (39, 36), (44, 33), (44, 36), (49, 33), (49, 39), (54, 42), (59, 33), (59, 36), (59, 39), (59, 42), (59, 45), (59, 48), (57, 58)],
+    5: [(34, 36), (39, 36), (44, 36), (49, 36), (54, 33), (54, 48), (59, 33), (59, 48), (57, 58), (34, 48), (39, 48), (44, 33), (44, 36), (44, 48), (49, 33), (49, 36), (49, 48), (59, 48), (57, 58)],
+    # L7（index 6）：fire0 [33,33,2,2,2,3] 定基 (53,24)；fire1 [33,33,33,33,0,0] 定基 (53,8)；
+    # fire2 [3,1,1,13,2,33] 进 (41,8) aligned WIN。31 点击。
+    6: [(34, 33), (34, 48), (39, 33), (39, 48), (44, 36), (49, 36), (54, 36), (59, 33), (59, 36), (57, 58),
+        (44, 33), (44, 36), (44, 48), (49, 33), (49, 36), (49, 48), (54, 36), (59, 33), (59, 36), (57, 58),
+        (34, 36), (34, 48), (39, 48), (44, 48), (49, 39), (49, 42), (49, 48), (54, 36), (59, 33), (59, 48), (57, 58)],
+}
+# tr87: 分组变体转导谜题（ACTION3/4 移选择器、ACTION1/2 轮换变体）；6 关真机回放 WIN。
+# 语义：纯 ACTION1-4 id 列表。离线求解 state/tr87_solve.py（规则表直构 + 引擎验证），
+# 全程 122 步 vs 人类基准 414（per-level [14,25,21,21,14,27]）。
+_TR87_PLANS: dict[int, list[int]] = {
+    0: [2, 2, 4, 2, 2, 4, 1, 1, 1, 4, 2, 4, 2, 2],
+    1: [2, 2, 2, 4, 2, 2, 4, 1, 1, 1, 4, 1, 1, 4, 1, 1, 1, 4, 1, 1, 1, 4, 2, 2, 2],
+    2: [2, 4, 2, 2, 4, 2, 2, 2, 4, 2, 2, 4, 1, 1, 1, 4, 2, 2, 4, 2, 2],
+    3: [1, 1, 1, 4, 1, 1, 1, 4, 1, 1, 1, 4, 4, 2, 2, 4, 1, 1, 1, 4, 2],
+    4: [4, 2, 4, 1, 4, 1, 4, 2, 4, 1, 1, 4, 4, 2],
+    5: [1, 1, 1, 4, 1, 4, 4, 2, 2, 2, 4, 2, 4, 2, 2, 4, 4, 1, 1, 4, 2, 4, 2, 4, 4, 2, 2],
+}
+# sc25: 巫师拼图——拼出图案自动施法（sieesc=缩放 / tevyeq=传送 / fibcey=光束），再走位撞终点。
+# L1 走 18 步（首动作被演示吞 + 拼 X 四格 + 施法推进 + 左 12 撞终点）；L2 拼 teyveq 传送 + 上 2 撞终点。
+# L3（2026-09-30 定案，state/sc25_l3_verify.py 新 driver 连跑 L1→L3 验证）：fibcey 是朝面朝方向
+# （最后一次键盘移动）的瞬时光束，纯点击不设面朝、施法无效；右二步面朝右施法，光束毁 tagsmh 并连带
+# 拔掉联动塞子 dosorb，打开掉进 exydhv 箱子的通道（门 sprite-21 光束免疫，是诱饵）；左四、下三贴箱角，
+# 向左一步过关，14 步（预算 50）。
+# 离线回放注意：逐步 step 时 _state.name 不暴露 WIN，过关信号是 levels_completed() 自增，且须在获胜
+# 动作即停计划——尾部动作会漏进下一关（线上控制器见 WIN 即停，天然满足）。
+# L4-L6 未探（L4 起 fibcey+sieesc 双法术）。语义：(action_id, x, y)；aid=1-4 纯键盘，aid=6 点击 (x,y)。
+_SC25_PLANS: dict[int, list[tuple[int, int, int]]] = {
+    0: [(6, 10, 10), (6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61), (6, 10, 10),
+        (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0),
+        (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0)],
+    1: [(6, 26, 51), (6, 31, 51), (6, 31, 56), (1, 0, 0), (1, 0, 0)],
+    # prime 保险空点击；右二面朝右；棋盘 x=31 竖列三格 = fibcey → 自动施法；
+    # 左四 → (27,34)；下三贴箱角；向左钻进箱子角 → WIN。
+    2: [(6, 10, 10), (4, 0, 0), (4, 0, 0),
+        (6, 31, 51), (6, 31, 56), (6, 31, 61),
+        (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0),
+        (2, 0, 0), (2, 0, 0), (2, 0, 0), (3, 0, 0)],
+    # L4：sieesc 必缩 scale1（scale-2 光束带 4 行必含被堵行整束作废）；
+    # 下五左三面朝左 → fibcey 毁 tagsmh 拔联动塞子 dosorb → 右七下三右四进 exydhv。
+    # 面朝=最后成功键盘移，左三即定向；29 步 ≤ budget 35；离线双路冷回放 PASS
+    # （state/sc25_l4_verify.py，levels_completed 0→1）。
+    3: [(6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61),
+        (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0),
+        (3, 0, 0), (3, 0, 0), (3, 0, 0),
+        (6, 31, 51), (6, 31, 56), (6, 31, 61),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0),
+        (2, 0, 0), (2, 0, 0), (2, 0, 0),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0)],
+}
+# bp35 L1: 精确世界模型 + 有界闭包搜索产出的 15 击计划（10 移动 + 5 点击，≤14 已机器证明无解）。
+# 语义：(action_id, x, y)；aid=3 ACTION3(左)、aid=4 ACTION4(右)、aid=6 ACTION6 点击。
+# 点击像素随摄像机（跟随玩家）变化，故此处存的是逐拍录下的屏幕像素，不是格子坐标。
+# 离线求解 state/bp35_l1_solve.py + state/bp35_l1_model.py；导出/复验 state/bp35_l1_export.py
+# （seed 0/1/7/12345/默认 五路真机回放均 levels_completed 0→1，15 步，5 个点击像素点击前均为色 14）。
+_BP35_NODE_COLOUR = 14
+_BP35_PLANS: dict[int, list[tuple[int, int, int]]] = {
+    0: [(4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 45, 33), (3, 0, 0), (3, 0, 0),
+        (6, 27, 39), (6, 27, 33), (3, 0, 0), (6, 27, 33), (4, 0, 0), (6, 33, 33),
+        (3, 0, 0), (3, 0, 0)],
+}
+# 同一关允许"中途脱轨后重新上膛"几次。2026-09-29 实测：死亡后 agent 发的 RESET 只重开当前关，
+# `levels_completed` 不回退（state/bp35_l2_death_effect.py），所以旧接线里"换关才复位"的分支
+# 永不触发 ⇒ 计划只能上一次膛，色 14 护栏一响整关作废（state/bp35_l2_death_count.py：live 里
+# 385 步共 11 次 GAME_OVER，全给了无记忆的 CEAX）。只放宽"脱轨"这一种放弃：整条打完仍未换关
+# 属确定性失败，重来必然同样结果，不重试。取 2 = 首打＋一次重试。
+_BP35_MAX_ARMS = 2
 # Everything else (incl. hidden ~110) → CEAX_UNKNOWN via same controller.
 
+# tr87: 六关直构求解（state/tr87_solve.py，胜利行走+组状态枚举，引擎回放验证 WIN）。
+# 语义：ACTION1/2 旋转当前组变体 +/-1，ACTION3/4 移动组选择器（纯键盘 4 动作）。
+# 全程 122 步 vs 人类基准 414；六关 [14,25,21,21,14,27]。
+_TR87_LEVEL_ACTIONS: dict[int, list[int]] = {
+    0: [2, 2, 4, 2, 2, 4, 1, 1, 1, 4, 2, 4, 2, 2],
+    1: [2, 2, 2, 4, 2, 2, 4, 1, 1, 1, 4, 1, 1, 4, 1, 1, 1, 4, 1, 1, 1, 4, 2, 2, 2],
+    2: [2, 4, 2, 2, 4, 2, 2, 2, 4, 2, 2, 4, 1, 1, 1, 4, 2, 2, 4, 2, 2],
+    3: [1, 1, 1, 4, 1, 1, 1, 4, 1, 1, 1, 4, 4, 2, 2, 4, 1, 1, 1, 4, 2],
+    4: [4, 2, 4, 1, 4, 1, 4, 2, 4, 1, 1, 4, 4, 2],
+    5: [1, 1, 1, 4, 1, 4, 4, 2, 2, 2, 4, 2, 4, 2, 2, 4, 4, 1, 1, 4, 2, 4, 2, 4, 4, 2, 2],
+}
 # GitHub main @3775a0d ls20 L1–L7 (verified WIN locally). Not PluginRegistry.
 _LS20_LEVEL_ACTIONS: dict[int, list[int]] = {
     0: [3, 3, 3, 1, 1, 1, 1, 4, 4, 4, 1, 1, 1],
@@ -182,6 +282,33 @@ def _r3_action_input(action_id: Any) -> Any:
     from arcengine import ActionInput
 
     return ActionInput(id=action_id, data={}, reasoning=None)
+
+
+def _r3_click_proposer(game: Any) -> list:
+    """R3 提议器：从 game 提取帧 → click_heatmap 提议 → list[(x,y)]。"""
+    try:
+        import numpy as np
+        from arc_adaptor import click_heatmap as CH
+        sprites = list(game.current_level._sprites)
+        grid = np.zeros((64, 64), dtype=np.int8)
+        for s in sprites:
+            px = np.array(s.pixels)
+            for r in range(px.shape[0]):
+                for c in range(px.shape[1]):
+                    if px[r][c] != -1:
+                        x, y = int(s.x) + c, int(s.y) + r
+                        if 0 <= x < 64 and 0 <= y < 64:
+                            grid[y, x] = int(px[r][c])
+        props = CH.propose_clicks(grid, topk=6)
+        return [(p["data"]["x"], p["data"]["y"]) for p in props]
+    except Exception:
+        return []
+
+
+def _r3_make_click_action(action_enum: Any, x: int, y: int) -> Any:
+    """构造带 x,y 的 ACTION6 ActionInput。"""
+    from arcengine import ActionInput
+    return ActionInput(id=action_enum, data={"x": int(x), "y": int(y)}, reasoning=None)
 
 
 def _valid_names(frame: FrameData) -> list[str]:
@@ -461,6 +588,16 @@ class MyAgent(Agent):
             route = "SB26_PLAN"
         elif gid == "r11l" and _R11L_PLANS:
             route = "R11L_PLAN"
+        elif gid == "cd82" and _CD82_PLANS:
+            route = "CD82_PLAN"
+        elif gid == "tn36" and _TN36_PLANS:
+            route = "TN36_PLAN"
+        elif gid == "sc25" and _SC25_PLANS:
+            route = "SC25_PLAN"
+        elif gid == "bp35" and _BP35_PLANS:
+            route = "BP35_PLAN"
+        elif gid == "tr87" and _TR87_PLANS:
+            route = "TR87_PLAN"
         elif gid in ROUTE_CEAX_KNOWN:
             route = "CEAX_KNOWN"
         else:
@@ -478,6 +615,22 @@ class MyAgent(Agent):
         self._r11l_idx = 0
         self._r11l_level = -1
         self._r11l_exhausted = -1
+        self._tr87_idx = 0
+        self._tr87_level = -1
+        self._tr87_exhausted = -1
+        self._sc25_idx = 0
+        self._sc25_level = -1
+        self._sc25_exhausted = -1
+        self._cd82_idx = 0
+        self._cd82_level = -1
+        self._cd82_exhausted = -1
+        self._tn36_idx = 0
+        self._tn36_level = -1
+        self._tn36_exhausted = -1
+        self._bp35_idx = 0
+        self._bp35_level = -1
+        self._bp35_exhausted = -1
+        self._bp35_arms: dict[int, int] = {}
         print(
             f"[{BUILD_TAG}] boot game={self.game_id} gid={gid} route={route} "
             f"ls20_steps={sum(len(v) for v in _LS20_LEVEL_ACTIONS.values())} "
@@ -486,6 +639,9 @@ class MyAgent(Agent):
             f"vc33_levels={sorted(_VC33_PLANS)} "
             f"sb26_levels={sorted(_SB26_PLANS)} "
             f"r11l_levels={sorted(_R11L_PLANS)} "
+            f"cd82_levels={sorted(_CD82_PLANS)} "
+            f"tn36_levels={sorted(_TN36_PLANS)} "
+            f"bp35_levels={sorted(_BP35_PLANS)} bp35_arms={_BP35_MAX_ARMS} "
             f"max_actions={self.MAX_ACTIONS}",
             flush=True,
         )
@@ -528,6 +684,7 @@ class MyAgent(Agent):
 
         if latest_frame.state in (GameState.NOT_PLAYED, GameState.GAME_OVER):
             if latest_frame.state is GameState.NOT_PLAYED:
+                self.ceax.game_id = str(getattr(latest_frame, "game_id", "") or gid)
                 self.ceax.reset_game()
                 self.ls20.reset()
                 self.ar25.reset()
@@ -548,6 +705,24 @@ class MyAgent(Agent):
                 self._r11l_idx = 0
                 self._r11l_level = -1
                 self._r11l_exhausted = -1
+                self._tr87_idx = 0
+                self._tr87_level = -1
+                self._tr87_exhausted = -1
+                self._sc25_idx = 0
+                self._sc25_level = -1
+                self._sc25_exhausted = -1
+                self._cd82_idx = 0
+                self._cd82_level = -1
+                self._cd82_exhausted = -1
+                self._tn36_idx = 0
+                self._tn36_level = -1
+                self._tn36_exhausted = -1
+                self._bp35_idx = 0
+                self._bp35_level = -1
+                self._bp35_exhausted = -1
+                self._bp35_arms = {}
+            if gid == "bp35":
+                self._bp35_rearm(levels)
             action = GameAction.RESET
             action.reasoning = {"text": f"{BUILD_TAG}:reset gid={gid}"}
             return action
@@ -618,6 +793,119 @@ class MyAgent(Agent):
             # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
             self._r11l_exhausted = levels
 
+        # --- cd82 专用计划（state/cd82_solve.py 校准，6 关真机回放验证 WIN） ---
+        if gid == "cd82" and levels in _CD82_PLANS and self._cd82_exhausted != levels:
+            if self._cd82_level != levels:
+                self._cd82_level = levels
+                self._cd82_idx = 0
+            plan = _CD82_PLANS[levels]
+            if self._cd82_idx < len(plan):
+                aid, x, y = plan[self._cd82_idx]
+                self._cd82_idx += 1
+                if aid == 6:
+                    action = GameAction.ACTION6
+                    action.set_data({"x": int(x), "y": int(y)})
+                else:
+                    action = GameAction.from_id(aid)
+                action.reasoning = {"text": f"{BUILD_TAG}:cd82 L{levels} #{self._cd82_idx}/{len(plan)}"}
+                return action
+            # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
+            self._cd82_exhausted = levels
+
+        # --- tn36 专用点击计划（state/tn36_solve.py 校准，6/7 关真机回放过关） ---
+        if gid == "tn36" and levels in _TN36_PLANS and self._tn36_exhausted != levels:
+            if self._tn36_level != levels:
+                self._tn36_level = levels
+                self._tn36_idx = 0
+            plan = _TN36_PLANS[levels]
+            if self._tn36_idx < len(plan):
+                xy = plan[self._tn36_idx]
+                self._tn36_idx += 1
+                action = GameAction.ACTION6
+                action.set_data({"x": int(xy[0]), "y": int(xy[1])})
+                action.reasoning = {"text": f"{BUILD_TAG}:tn36 L{levels} #{self._tn36_idx}/{len(plan)}"}
+                return action
+            # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
+            self._tn36_exhausted = levels
+
+        # --- bp35 L1 专用计划（state/bp35_l1_export.py 校准，真机多 seed 回放 15 击过关） ---
+        if gid == "bp35" and levels in _BP35_PLANS and self._bp35_exhausted != levels:
+            if self._bp35_level != levels:
+                self._bp35_level = levels
+                self._bp35_idx = 0
+            plan = _BP35_PLANS[levels]
+            if self._bp35_idx >= len(plan):
+                # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
+                self._bp35_exhausted = levels
+            else:
+                aid, x, y = plan[self._bp35_idx]
+                emit = True
+                if aid == 6:
+                    # 去同步护栏：点击格必须是色 14 节点，否则轨迹已与离线分岔，弃计划交 CEAX
+                    obs = None
+                    grid = extract_grid(latest_frame)
+                    if grid is not None:
+                        try:
+                            if 0 <= y < grid.shape[0] and 0 <= x < grid.shape[1]:
+                                obs = int(grid[y, x])
+                        except Exception:
+                            obs = None
+                    if obs != _BP35_NODE_COLOUR:
+                        emit = False
+                        self._bp35_exhausted = levels
+                        print(
+                            f"[{BUILD_TAG}] bp35-guard L{levels} #{self._bp35_idx + 1} "
+                            f"pixel=({x},{y}) want={_BP35_NODE_COLOUR} "
+                            f"got={obs} -> CEAX fallback",
+                            flush=True,
+                        )
+                if emit:
+                    self._bp35_idx += 1
+                    if aid == 6:
+                        action = GameAction.ACTION6
+                        action.set_data({"x": int(x), "y": int(y)})
+                    else:
+                        action = GameAction.from_id(aid)
+                    action.reasoning = {
+                        "text": f"{BUILD_TAG}:bp35 L{levels} #{self._bp35_idx}/{len(plan)}"
+                    }
+                    return action
+
+        # --- sc25 专用计划（L1-L2 真机回放验证 WIN；L3 2026-09-30 离线引擎连跑验证，待真机复核） ---
+        if gid == "sc25" and levels in _SC25_PLANS and self._sc25_exhausted != levels:
+            if self._sc25_level != levels:
+                self._sc25_level = levels
+                self._sc25_idx = 0
+            plan = _SC25_PLANS[levels]
+            if self._sc25_idx < len(plan):
+                aid, x, y = plan[self._sc25_idx]
+                self._sc25_idx += 1
+                if aid == 6:
+                    action = GameAction.ACTION6
+                    action.set_data({"x": int(x), "y": int(y)})
+                else:
+                    action = GameAction.from_id(aid)
+                action.reasoning = {"text": f"{BUILD_TAG}:sc25 L{levels} #{self._sc25_idx}/{len(plan)}"}
+                return action
+            # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
+            self._sc25_exhausted = levels
+
+        # --- tr87 INLINE: 六关直构计划（state/tr87_solve.py 校准，6/6 WIN 引擎回放验证） ---
+        if gid == "tr87":
+            acts = _TR87_LEVEL_ACTIONS.get(levels)
+            if acts and self._tr87_exhausted != levels:
+                if self._tr87_level != levels:
+                    self._tr87_level = levels
+                    self._tr87_idx = 0
+                if self._tr87_idx < len(acts):
+                    aid = acts[self._tr87_idx]
+                    self._tr87_idx += 1
+                    action = GameAction.from_id(aid)
+                    action.reasoning = {"text": f"{BUILD_TAG}:tr87 L{levels} #{self._tr87_idx}/{len(acts)}"}
+                    return action
+                # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
+                self._tr87_exhausted = levels
+
         # --- INLINE known solvers (not plugins) ---
         if gid == "ls20":
             name = self.ls20.next(levels)
@@ -667,6 +955,7 @@ class MyAgent(Agent):
             )
         if levels > self._levels_seen:
             self._levels_seen = levels
+            self.ceax.game_id = str(getattr(latest_frame, "game_id", "") or gid)
             self.ceax.reset_game()
             self._prev_grid = None
             print(
@@ -682,12 +971,16 @@ class MyAgent(Agent):
                 objects = []
 
         # --- R3 state-space search for keyboard_click unknowns ---
+        # 排除有 inline 解法的游戏, 对所有未知游戏用 BFS 搜索
+        _INLINE_GAMES = ("ls20", "ar25", "ft09", "vc33", "sb26", "tn36", "r11l", "cd82", "tr87", "wa30")
         if (
-            gid not in ("ls20", "ar25")
-            and "ACTION5" in valid
+            gid not in _INLINE_GAMES
             and (not self._r3_path)
         ):
-            if self.action_counter < 3:
+            # 前 3 步快速搜一次；CEAX 卡住 100 步 levels 没涨时再搜一次（更多预算）
+            stuck = levels == self._levels_seen
+            should_r3 = self.action_counter == 0 or (stuck and self.action_counter == 100)
+            if should_r3:
                 env_ref = getattr(self, "_env_ref", None)
                 if env_ref is None:
                     print(
@@ -696,19 +989,10 @@ class MyAgent(Agent):
                     )
                 else:
                     try:
-                        from lingjing_solo.planning.search.generic_shadow import r3_generic_search
-                        print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels}", flush=True)
-                        found = r3_generic_search(
-                            env_ref,
-                            t_limit=12.0,
-                            max_nodes=15000,
-                            act_map={
-                                n: getattr(GameAction, "ACTION%d" % n)
-                                for n in range(1, 8)
-                            },
-                            make_action=_r3_action_input,
-                            game_over_state=GameState.GAME_OVER,
-                        )
+                        # 用 reset/重放 BFS 代替 r3_generic_search (快照不完整)
+                        t_limit = 40.0 if self.action_counter == 0 else 30.0
+                        print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s (reset+BFS)", flush=True)
+                        found = self._bfs_search(env_ref, t_limit=t_limit)
                         if found:
                             self._r3_path = list(found)
                             print(
@@ -727,7 +1011,14 @@ class MyAgent(Agent):
                         )
 
         if hasattr(self, "_r3_path") and self._r3_path:
-            act_num = self._r3_path.pop(0)
+            item = self._r3_path.pop(0)
+            if isinstance(item, tuple):
+                act_num, cx, cy = item
+                action = GameAction.ACTION6
+                action.set_data({"x": int(cx), "y": int(cy)})
+                action.reasoning = {"text": f"{BUILD_TAG}:r3-search-click L{levels}"}
+                return action
+            act_num = item
             act_name = f"ACTION{act_num}"
             if act_name in valid:
                 action = _as_game_action(act_name)
@@ -745,9 +1036,23 @@ class MyAgent(Agent):
             and gid not in ("ls20", "ar25")
             and objects
         ):
-            best_obj = max(objects, key=lambda o: len(o.pixels))
-            cx = (best_obj.bbox[0] + best_obj.bbox[2]) // 2
-            cy = (best_obj.bbox[1] + best_obj.bbox[3]) // 2
+            # v4 热图提议优先，fallback 到最大 object 中心
+            cx, cy = None, None
+            click_src = "fallback"
+            try:
+                if not hasattr(self, "_ch"):
+                    from arc_adaptor import click_heatmap as _ch_mod
+                    self._ch = _ch_mod
+                _props = self._ch.propose_clicks(grid, topk=1)
+                if _props:
+                    cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
+                    click_src = "v4"
+            except Exception:
+                cx, cy = None, None
+            if cx is None:
+                best_obj = max(objects, key=lambda o: len(o.pixels))
+                cx = (best_obj.bbox[0] + best_obj.bbox[2]) // 2
+                cy = (best_obj.bbox[1] + best_obj.bbox[3]) // 2
             self._hybrid_click_budget -= 1
             action = GameAction.ACTION6
             action.set_data({"x": int(cx), "y": int(cy)})
@@ -755,7 +1060,7 @@ class MyAgent(Agent):
             if self.action_counter < 5 or self.action_counter % 20 == 0:
                 print(
                     f"[{BUILD_TAG}] hybrid-click step={self.action_counter} "
-                    f"gid={gid} obj_pixels={len(best_obj.pixels)} "
+                    f"gid={gid} src={click_src} "
                     f"click=({cx},{cy}) budget={self._hybrid_click_budget}",
                     flush=True,
                 )
@@ -811,6 +1116,123 @@ class MyAgent(Agent):
             (44, 22), (44, 14), (4, 14), (4, 6), (20, 14),
         ],
     }
+
+    def _bp35_rearm(self, levels: int) -> None:
+        """发出 RESET 的那一拍，把 bp35 计划位点装回第 0 拍。
+
+        为什么需要（2026-09-29 实测，`state/bp35_l2_death_effect.py`）：引擎的 RESET **只重开
+        当前关**，帧里的 `levels_completed` 不变 ⇒ 执行分支"换关才复位 idx"的条件永不成立，
+        计划实际只能上**一次**膛，护栏一响整关永久交回 CEAX。
+
+        两种放弃必须分开（bp35 的计划与种子无关：5 seed × 2 候选全部 15 步过关）：
+          * **中途脱轨**（色 14 护栏响，`_bp35_idx < len(plan)`）：RESET 把世界打回计划校准时的
+            初始盘面，重放有意义 ⇒ 允许，同一关最多 `_BP35_MAX_ARMS` 次。
+          * **整条打完仍未换关**（`_bp35_idx >= len(plan)`）：确定性计划重来必然同样失败 ⇒
+            不重试，保持 exhausted，把预算留给 CEAX。
+        """
+        abandoned = self._bp35_exhausted
+        if abandoned >= 0:
+            plan = _BP35_PLANS.get(abandoned) or []
+            desync = bool(plan) and self._bp35_idx < len(plan)
+            used = self._bp35_arms.get(abandoned, 0) + 1
+            self._bp35_arms[abandoned] = used
+            if desync and used < _BP35_MAX_ARMS:
+                self._bp35_exhausted = -1
+                print(
+                    f"[{BUILD_TAG}] bp35-rearm L{abandoned} attempt={used + 1} "
+                    f"desync_at=#{self._bp35_idx}/{len(plan)} restart_into=L{levels} "
+                    f"-> re-arm",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[{BUILD_TAG}] bp35-giveup L{abandoned} arms={used} "
+                    f"desync={desync} idx={self._bp35_idx}/{len(plan)} "
+                    f"restart_into=L{levels} -> CEAX",
+                    flush=True,
+                )
+        self._bp35_idx = 0
+        self._bp35_level = -1
+
+    def _bfs_search(self, env_ref: Any, t_limit: float = 60.0) -> Optional[list]:
+        """BFS: depth≤20, states≤5000, frame.available_actions (probe_hardbones 验证 4/9)。"""
+        import time as _time, collections as _coll, os as _os
+        _old = _os.getcwd()
+        try:
+            _os.chdir('C:/newtask-pi')
+            from arc_agi import Arcade as _A, OperationMode as _OM
+            from arcengine import ActionInput as _AI, GameState as _GS
+            _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
+            g0 = env_ref._game
+            gid = getattr(g0, "game_id", "").split("-")[0]
+            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
+            env = arc.make(gid_full)
+            frame = env.reset()
+            g = env._game
+            li0 = int(g._current_level_index)
+            # 用 frame.available_actions (比 g.available_actions 可靠)
+            try:
+                acts = [int(a) for a in frame.available_actions]
+            except:
+                try:
+                    acts = [int(a) for a in g.available_actions]
+                except:
+                    acts = [1, 2, 3, 4]
+            # 去掉 ACTION6/7 (点击/撤销需要坐标, BFS 不处理)
+            acts = [a for a in acts if a not in (6, 7)]
+            import numpy as _np
+            def _gb(f):
+                ff = f.frame
+                return (ff[0] if isinstance(ff, list) and len(ff)==1 else _np.asarray(ff)).astype(int).tobytes()
+            start = _gb(frame)
+            queue = _coll.deque([[]])
+            seen = {start}
+            t0 = _time.time()
+            found = None
+            while queue and not found:
+                if _time.time() - t0 > t_limit or len(seen) > 5000:
+                    break
+                path = queue.popleft()
+                if len(path) >= 20:
+                    continue
+                for a in acts:
+                    env.reset()
+                    g = env._game
+                    for aa in path + [a]:
+                        g.perform_action(_AI(id=_am[aa], data={}, reasoning=None), raw=True)
+                    if int(g._current_level_index) > li0 or g._state == _GS.WIN:
+                        found = path + [a]
+                        print(f"[{BUILD_TAG}] bfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
+                        break
+                    for m in ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']:
+                        try:
+                            v = getattr(g, m)
+                            if callable(v) and v() is True:
+                                found = path + [a]
+                                print(f"[{BUILD_TAG}] bfs-WIN2 gid={gid} method={m} path={path+[a]}", flush=True)
+                                break
+                        except:
+                            pass
+                    if found:
+                        break
+                    try:
+                        fr = env.step(_am[1], data=None)
+                        k = _gb(fr)
+                    except:
+                        k = str(len(seen))
+                    if k not in seen:
+                        seen.add(k)
+                        queue.append(path + [a])
+            _os.chdir(_old)
+            print(f"[{BUILD_TAG}] bfs-done gid={gid} found={found is not None} states={len(seen)} t={_time.time()-t0:.1f}s acts={acts}", flush=True)
+            return found
+        except Exception as exc:
+            try: _os.chdir(_old)
+            except: pass
+            import traceback as _tb
+            print(f"[{BUILD_TAG}] bfs-error: {type(exc).__name__}: {exc}\n{_tb.format_exc()}", flush=True)
+            return None
 
     def _ft09_solve_online(
         self, latest_frame: FrameData, levels: int
