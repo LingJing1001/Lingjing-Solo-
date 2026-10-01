@@ -64,8 +64,16 @@ _bootstrap_paths()
 from lingjing_solo.core import SoloConfig, extract_grid, hash_grid  # noqa: E402
 from lingjing_solo.perception import PerceptionEncoder  # noqa: E402
 from lingjing_solo.transfer.ceax_controller import CeaxController  # noqa: E402
+try:
+    from v14_arc_transition import V14ArcTransition  # noqa: E402
+except ModuleNotFoundError:
+    # benchmark_all_games.py copies this file into the ARC template directory.
+    _source_agent_dir = _FILE.parents[4] / "agent"
+    if (_source_agent_dir / "v14_arc_transition.py").is_file():
+        sys.path.insert(0, str(_source_agent_dir))
+    from v14_arc_transition import V14ArcTransition  # noqa: E402
 
-BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix"
+BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition"
 AGENT_BRAND = "lingjing-smart"
 
 # Evidence-based route table (do not put uncalibrated scripts here).
@@ -446,6 +454,7 @@ class MyAgent(Agent):
         self._errors = 0
         self._r3_path: list[int] = []
         self._env_ref: Any = getattr(self, "arc_env", None)
+        self._v14_transition = V14ArcTransition()
         self._hybrid_click_budget: int = 20
         self._ft09_plan: Optional[list[tuple[int, int]]] = None
         self._ft09_idx: int = 0
@@ -502,8 +511,21 @@ class MyAgent(Agent):
     def choose_action(
         self, frames: list[FrameData], latest_frame: FrameData
     ) -> GameAction:
+        grid = None
         try:
-            return self._choose_action_inner(frames, latest_frame)
+            if latest_frame.state is GameState.NOT_PLAYED:
+                self._v14_transition.reset()
+            grid = extract_grid(latest_frame)
+            self._v14_transition.observe(grid)
+            self.ceax.set_field_gradient(self._v14_transition.gradient)
+        except Exception as exc:  # noqa: BLE001 — physical telemetry must not kill ARC
+            if self._errors < 5:
+                print(
+                    f"[{BUILD_TAG}] v14-observe ERROR: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+        try:
+            action = self._choose_action_inner(frames, latest_frame)
         except Exception as exc:  # noqa: BLE001 — never kill Phase B thread
             self._errors += 1
             if self._errors <= 5 or self._errors % 50 == 0:
@@ -514,8 +536,18 @@ class MyAgent(Agent):
                 )
                 traceback.print_exc()
             if latest_frame.state in (GameState.NOT_PLAYED, GameState.GAME_OVER):
-                return _safe_reset()
-            return _safe_fallback(int(getattr(latest_frame, "levels_completed", 0) or 0))
+                action = _safe_reset()
+            else:
+                action = _safe_fallback(int(getattr(latest_frame, "levels_completed", 0) or 0))
+        try:
+            return self._v14_transition.transition(action, grid)
+        except Exception as exc:  # noqa: BLE001 — preserve ARC action fallback
+            if self._errors < 5:
+                print(
+                    f"[{BUILD_TAG}] v14-transition ERROR: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+            return action
 
     def _choose_action_inner(
         self, frames: list[FrameData], latest_frame: FrameData
