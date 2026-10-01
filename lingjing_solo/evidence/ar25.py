@@ -72,8 +72,13 @@ def run_ar25_level(*, level: int, output_dir: str | Path, strategy: str = "auto"
             handle.write(json.dumps(record, sort_keys=True) + "\n")
 
     replay = replay_recording(recording, legal_actions=_LEGAL_ACTIONS)
+    branch = _git_value(root, "branch", "--show-current")
+    if not branch:
+        # detached HEAD (CI checkout): fallback to GITHUB_REF_NAME or short commit
+        import os
+        branch = os.environ.get("GITHUB_REF_NAME", "") or _git_value(root, "rev-parse", "--short", "HEAD")
     manifest = build_manifest(
-        run_id=run_id, game_id="AR25", branch=_git_value(root, "branch", "--show-current"),
+        run_id=run_id, game_id="AR25", branch=branch,
         commit=_git_value(root, "rev-parse", "HEAD"),
         module_versions={"ar25_solver": __version__, "evidence": "lingjing-evidence-v1"},
         evidence_tier="offline", mode="candidate-replay", seed=None,
