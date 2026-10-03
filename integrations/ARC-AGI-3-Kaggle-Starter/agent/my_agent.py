@@ -989,10 +989,35 @@ class MyAgent(Agent):
                     )
                 else:
                     try:
-                        # 用 reset/重放 BFS 代替 r3_generic_search (快照不完整)
-                        t_limit = 40.0 if self.action_counter == 0 else 30.0
-                        print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s (reset+BFS)", flush=True)
-                        found = self._bfs_search(env_ref, t_limit=t_limit)
+                        found = None
+                        # 专用求解器优先（机制已知，比通用 IDDFS 快且准）
+                        try:
+                            import os as _os4, sys as _sys4
+                            _sys4.path.insert(0, _os4.path.dirname(_os4.path.abspath(__file__)))
+                            import shadow_adapter as _sa
+                            _has_sa = True
+                        except Exception:
+                            _has_sa = False
+
+                        if _has_sa and gid in _sa._SHADOW_MODULES:
+                            print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
+                            path = _sa.solve(gid, env_ref._game, t_limit=120.0)
+                            if path:
+                                # 转换格式: int → int, dict → tuple, tuple → tuple
+                                found = []
+                                for a in path:
+                                    if isinstance(a, dict):
+                                        found.append((a.get("a", 6), a.get("x", 0), a.get("y", 0)))
+                                    elif isinstance(a, tuple) and len(a) == 2:
+                                        found.append((6, a[0], a[1]))
+                                    else:
+                                        found.append(int(a))
+                                print(f"[{BUILD_TAG}] shadow_solver path_len={len(found)}", flush=True)
+                        # 通用 IDDFS 兜底（无专用求解器或专用求解器失败时）
+                        if found is None:
+                            t_limit = 600.0 if self.action_counter == 0 else 500.0
+                            print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s (IDDFS)", flush=True)
+                            found = self._iddfs_search(env_ref, t_limit=t_limit)
                         if found:
                             self._r3_path = list(found)
                             print(
@@ -1155,7 +1180,10 @@ class MyAgent(Agent):
         self._bp35_level = -1
 
     def _bfs_search(self, env_ref: Any, t_limit: float = 60.0) -> Optional[list]:
-        """BFS: depth≤20, states≤5000, frame.available_actions (probe_hardbones 验证 4/9)。"""
+        """BFS: 深度<15、去重状态≤8000、动作集取 frame.available_actions（probe_hardbones 验证 4/9）。
+
+        去重键 = (关卡号, 已完成关数, 交付画面全动画层 bytes, sprite 签名)，见 `_key`。
+        """
         import time as _time, collections as _coll, os as _os
         _old = _os.getcwd()
         try:
@@ -1179,28 +1207,102 @@ class MyAgent(Agent):
                     acts = [int(a) for a in g.available_actions]
                 except:
                     acts = [1, 2, 3, 4]
-            # 去掉 ACTION6/7 (点击/撤销需要坐标, BFS 不处理)
-            acts = [a for a in acts if a not in (6, 7)]
+            # 键盘动作（去掉 6/7，需要坐标的点击/撤销单独处理）
+            kbd_acts = [a for a in acts if a not in (6, 7)]
+            # 如果游戏有 ACTION6，用热图提议器生成 top-8 点击候选加入 BFS
+            click_acts = []
+            if 6 in acts:
+                try:
+                    sys.path.insert(0, "F:/pro2")
+                    from arc_adaptor import click_heatmap as _ch
+                    import numpy as _np2
+                    ff = frame.frame
+                    if isinstance(ff, list):
+                        frame_arr = _np2.asarray(ff[0])  # 多帧取第一个
+                    else:
+                        frame_arr = _np2.asarray(ff)
+                        if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
+                            frame_arr = frame_arr[0]  # (2,64,64) → (64,64)
+                    props = _ch.propose_clicks(frame_arr, topk=8)
+                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
+                except Exception:
+                    pass
+            all_acts = kbd_acts + click_acts  # 混合动作空间
             import numpy as _np
+
             def _gb(f):
-                ff = f.frame
-                return (ff[0] if isinstance(ff, list) and len(ff)==1 else _np.asarray(ff)).astype(int).tobytes()
-            start = _gb(frame)
+                """画面键：把这次动作交付的**全部动画层**当场转 bytes（int8＝8 倍省内存）。
+
+                两条实测约束：
+                  1. 必须在交付当场取——游戏会就地重涂已经交出去的帧数组
+                     （lf52.py:5683-5695 的 `bcvezkazgy(arr, counter)` 直接写 `arr[0, :]`），
+                     事后拿旧 FrameData 再读到的是新画面（state/_frame_share_1001.py）。
+                  2. 只取最后一层会漏状态——lf52 入口 6 个不同的选中，最后一层只差
+                     HUD 计数器 1px（给 3 个键），选中环在 plane0（6 个键），
+                     state/_sel_key_diag_1001.py ⇒ 这里逐层都取。
+                键偏细只多展开几个节点（不丢状态），偏粗会把不同状态并成一个 = 0 命中。
+                """
+                ff = getattr(f, "frame", None)
+                if not ff:
+                    return b""                    # WIN/GAME_OVER 交付空画面
+                planes = ff if isinstance(ff, list) else [ff]
+                return b"".join(_np.asarray(p).astype(_np.int8).tobytes() for p in planes)
+
+            def _gs(g):
+                """sprite 签名（只作画面键的补充项，不单独当键）。
+
+                10-01 修的属性名错误：`arcengine/sprites.py` 里 Sprite 只有
+                `tags`(list, :90/:155/:358) 和 `rotation`(实例属性, :84/:197)，**没有 `tag`**
+                —— 旧写法 `s.tag` 每节点 AttributeError 被 `except: return None` 吞掉，
+                于是 live 永远走兜底键 `_gb(env.step(ACTION1))`：在沙箱里多走一步、
+                且量的是"再按一下上"的状态而不是节点自己的状态（10-01 九局 A/B：这一步全部成功，
+                所以再下一层的 `k = str(len(seen))` 没被触发——但那是天然唯一键，一旦触发＝去重全关）。
+                补充项而不是主键的依据：lf52 关卡只有 1 个 1×1 sprite，入口 6 个 active
+                状态它给 1 个键、8 击真解 9 个状态只给 2 个键（state/_sprite_key_audit_1001.py），
+                画面之外的隐藏状态才轮到它分开。
+                """
+                try:
+                    return tuple(sorted(
+                        (s.name, int(s.x), int(s.y), int(s.layer), int(s.rotation),
+                         tuple(sorted(s.tags)))
+                        for s in g.current_level.get_sprites()
+                    ))
+                except Exception:
+                    return None
+
+            def _key(g, f):
+                """节点去重键 = (关卡号, 已完成关数, 画面 bytes, sprite 签名)。"""
+                try:
+                    done = int(g._score or 0)
+                except Exception:
+                    done = 0
+                return (int(g._current_level_index), done, _gb(f), _gs(g))
+
+            start = _key(g, frame)
             queue = _coll.deque([[]])
             seen = {start}
             t0 = _time.time()
             found = None
             while queue and not found:
-                if _time.time() - t0 > t_limit or len(seen) > 5000:
+                if _time.time() - t0 > t_limit or len(seen) > 15000:
                     break
                 path = queue.popleft()
-                if len(path) >= 20:
+                if len(path) >= 25:
                     continue
-                for a in acts:
+                for a in all_acts:
                     env.reset()
                     g = env._game
+                    fr = frame
                     for aa in path + [a]:
-                        g.perform_action(_AI(id=_am[aa], data={}, reasoning=None), raw=True)
+                        if isinstance(aa, tuple):
+                            act_num, cx, cy = aa
+                            fr = g.perform_action(_AI(id=_am[act_num], data={"x": cx, "y": cy}, reasoning=None), raw=True)
+                        else:
+                            fr = g.perform_action(_AI(id=_am[aa], data={}, reasoning=None), raw=True)
+                    # 键必须在这里取：动作交付的画面数组之后会被游戏/下一次 reset 重涂，
+                    # 而下面那些 game 方法调用也可能顺带渲染。旧写法在这里多走一步
+                    # `env.step(ACTION1)` 只为了拿一帧，量到的还是"再按一下上"的状态。
+                    k = _key(g, fr)
                     if int(g._current_level_index) > li0 or g._state == _GS.WIN:
                         found = path + [a]
                         print(f"[{BUILD_TAG}] bfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
@@ -1216,22 +1318,297 @@ class MyAgent(Agent):
                             pass
                     if found:
                         break
-                    try:
-                        fr = env.step(_am[1], data=None)
-                        k = _gb(fr)
-                    except:
-                        k = str(len(seen))
                     if k not in seen:
                         seen.add(k)
                         queue.append(path + [a])
             _os.chdir(_old)
-            print(f"[{BUILD_TAG}] bfs-done gid={gid} found={found is not None} states={len(seen)} t={_time.time()-t0:.1f}s acts={acts}", flush=True)
+            print(f"[{BUILD_TAG}] bfs-done gid={gid} found={found is not None} states={len(seen)} t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}", flush=True)
             return found
         except Exception as exc:
             try: _os.chdir(_old)
             except: pass
             import traceback as _tb
             print(f"[{BUILD_TAG}] bfs-error: {type(exc).__name__}: {exc}\n{_tb.format_exc()}", flush=True)
+            return None
+
+    def _iddfs_search(self, env_ref: Any, t_limit: float = 60.0) -> Optional[list]:
+        """IDDFS: 迭代加深 DFS，省内存（只存当前路径），能搜更深（depth≤40）。
+
+        相比 BFS 的优势：
+          - 内存 O(depth) vs BFS O(states×depth)
+          - 每轮迭代加深 depth limit，找到最短解
+          - 能搜到 depth=40（BFS 受 frontier 内存限制只到 25）
+        """
+        import time as _time, os as _os, sys as _sys
+        import numpy as _np2
+        _old = _os.getcwd()
+        try:
+            _os.chdir('C:/newtask-pi')
+            from arc_agi import Arcade as _A, OperationMode as _OM
+            from arcengine import ActionInput as _AI, GameState as _GS
+            _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
+            g0 = env_ref._game
+            gid = getattr(g0, "game_id", "").split("-")[0]
+            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
+            env = arc.make(gid_full)
+            frame = env.reset()
+            g = env._game
+            li0 = int(g._current_level_index)
+            try:
+                acts = [int(a) for a in frame.available_actions]
+            except:
+                try:
+                    acts = [int(a) for a in g.available_actions]
+                except:
+                    acts = [1, 2, 3, 4]
+            kbd_acts = [a for a in acts if a not in (6, 7)]
+            click_acts = []
+            has_click = 6 in acts
+            if has_click:
+                try:
+                    _sys.path.insert(0, "F:/pro2")
+                    from arc_adaptor import click_heatmap as _ch
+                    import numpy as _np2
+                    ff = frame.frame
+                    if isinstance(ff, list):
+                        frame_arr = _np2.asarray(ff[0])
+                    else:
+                        frame_arr = _np2.asarray(ff)
+                        if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
+                            frame_arr = frame_arr[0]
+                    # 热图 top-8
+                    props = _ch.propose_clicks(frame_arr, topk=8)
+                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
+                    # 非背景像素采样 top-8（补充热图遗漏的有效位置）
+                    try:
+                        hist = _np2.bincount(frame_arr.flatten(), minlength=16)
+                        bg = int(_np2.argmax(hist))
+                        nonbg = _np2.argwhere(frame_arr != bg)
+                        if len(nonbg) > 0:
+                            step = max(1, len(nonbg) // 8)
+                            for i in range(0, len(nonbg), step):
+                                y, x = int(nonbg[i][0]), int(nonbg[i][1])
+                                pos = (6, x, y)
+                                if pos not in click_acts:
+                                    click_acts.append(pos)
+                                if len(click_acts) >= 16:
+                                    break
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            all_acts = kbd_acts + click_acts
+
+            # RidgeLinear IDA* 启发式：学 value(state) = 预测 level_index
+            try:
+                _sys.path.insert(0, "F:/pro2")
+                from lingjing_solo.lincore.spectral import RidgeLinear as _RL
+                _ridge = _RL(dim=40, lam=0.1)
+                _has_ridge = True
+            except Exception:
+                _ridge = None
+                _has_ridge = False
+
+            def _extract_features(gg, frame_arr):
+                """状态特征：sprite 位置(24维) + 帧颜色直方图(16维) = 40维。"""
+                feats = []
+                try:
+                    sprites = gg.current_level.get_sprites()
+                    for s in sprites[:8]:
+                        feats.extend([float(s.x) / 64.0, float(s.y) / 64.0, float(s.rotation) / 360.0])
+                    while len(feats) < 24:
+                        feats.append(0.0)
+                except Exception:
+                    feats = [0.0] * 24
+                try:
+                    hist = _np2.bincount(frame_arr.flatten(), minlength=16)
+                    total = max(1, float(frame_arr.size))
+                    feats.extend([float(h) / total for h in hist])
+                except Exception:
+                    feats.extend([0.0] * 16)
+                return feats
+
+            # 余弦相似度去重：相似状态（cos>0.95）视为相同，减少冗余搜索
+            _seen_feats = _np2.zeros((15000, 40), dtype=_np2.float32)
+            _n_seen = [0]
+            def _cos_dedup(feat, threshold=0.99):
+                """余弦相似度去重。返回 True=新状态，False=模糊重复。"""
+                n = _n_seen[0]
+                feat = _np2.asarray(feat, dtype=_np2.float32)
+                if n == 0:
+                    _seen_feats[0] = feat
+                    _n_seen[0] = 1
+                    return True
+                fn = feat / (_np2.linalg.norm(feat) + 1e-8)
+                sn = _seen_feats[:n] / (_np2.linalg.norm(_seen_feats[:n], axis=1, keepdims=True) + 1e-8)
+                sims = sn @ fn  # (n,) 余弦相似度
+                if float(sims.max()) > threshold:
+                    return False  # 模糊重复
+                if n < 15000:
+                    _seen_feats[n] = feat
+                    _n_seen[0] = n + 1
+                return True
+
+            def _gs(gg):
+                try:
+                    sprites = gg.current_level.get_sprites()
+                    return hash(tuple(sorted(
+                        (s.name, int(s.x), int(s.y), int(s.rotation),
+                         tuple(sorted(s.tags)),
+                         hash(_np2.asarray(s.pixels).tobytes()) if hasattr(s, 'pixels') and s.pixels is not None else 0)
+                        for s in sprites
+                    )))
+                except Exception:
+                    return None
+
+            def _replay(path):
+                """reset + 重放 path，返回 (game, frame_arr)。用 env.step 获取帧。"""
+                fr = env.reset()
+                for aa in path:
+                    if isinstance(aa, tuple):
+                        act_num, cx, cy = aa
+                        fr = env.step(_am[act_num], data={"x": cx, "y": cy})
+                    else:
+                        fr = env.step(_am[aa], data={})
+                gg = env._game
+                ff = fr.frame
+                if isinstance(ff, list):
+                    frame_arr = _np2.asarray(ff[0]) if ff else _np2.zeros((64, 64), dtype=int)
+                else:
+                    frame_arr = _np2.asarray(ff)
+                    if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
+                        frame_arr = frame_arr[0]
+                return gg, frame_arr
+
+            def _gen_clicks(frame_arr):
+                """热图 top-8 + 非背景像素采样 top-8 = 16 个点击候选。
+
+                热图提议器可能遗漏有效位置（如 dc22 的 (48,35)/(54,38)），
+                非背景像素采样补充热图没覆盖的位置。
+                """
+                if not has_click:
+                    return []
+                clicks = []
+                # 热图 top-8
+                try:
+                    props = _ch.propose_clicks(frame_arr, topk=8)
+                    clicks.extend([(6, p["data"]["x"], p["data"]["y"]) for p in props])
+                except Exception:
+                    pass
+                # 非背景像素采样 top-8（补充热图遗漏的位置）
+                try:
+                    hist = _np2.bincount(frame_arr.flatten(), minlength=16)
+                    bg = int(_np2.argmax(hist))
+                    nonbg = _np2.argwhere(frame_arr != bg)
+                    if len(nonbg) > 0:
+                        step = max(1, len(nonbg) // 8)
+                        for i in range(0, len(nonbg), step):
+                            y, x = int(nonbg[i][0]), int(nonbg[i][1])
+                            pos = (6, x, y)
+                            if pos not in clicks:
+                                clicks.append(pos)
+                            if len(clicks) >= 16:
+                                break
+                except Exception:
+                    pass
+                return clicks
+
+            _win_methods = ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']
+            def _check_win(gg):
+                if int(gg._current_level_index) > li0 or gg._state == _GS.WIN:
+                    return True
+                for m in _win_methods:
+                    try:
+                        v = getattr(gg, m)
+                        if callable(v) and v() is True:
+                            return True
+                    except:
+                        pass
+                return False
+
+            t0 = _time.time()
+            start_hash = _gs(g)
+            MAX_DEPTH = 200
+            total_states = [0]
+            found_box = [None]
+
+            def _dfs(depth, max_depth, path, seen, current_acts):
+                if _time.time() - t0 > t_limit or depth >= max_depth:
+                    return
+                # 先 replay 所有子动作，用 RidgeLinear 预测 value 排序
+                children = []
+                for a in current_acts:
+                    if found_box[0] is not None or _time.time() - t0 > t_limit:
+                        return
+                    gg, frame_arr = _replay(path + [a])
+                    total_states[0] += 1
+                    if _check_win(gg):
+                        found_box[0] = path + [a]
+                        print(f"[{BUILD_TAG}] iddfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
+                        return
+                    k = _gs(gg)
+                    if k is not None and k not in seen:
+                        feat = _extract_features(gg, frame_arr)
+                        # 余弦相似度去重：相似状态跳过
+                        if not _cos_dedup(feat):
+                            continue
+                        val = 0.0
+                        if _has_ridge and _ridge.n > 0:
+                            val, _ = _ridge.predict(feat)
+                        children.append((a, gg, frame_arr, k, val))
+                # IDA*：按 value 降序（value 高 = level_index 高 = 更接近通关）
+                if _has_ridge and len(children) > 1:
+                    children.sort(key=lambda x: -x[4])
+                # 递归
+                for a, gg, frame_arr, k, val in children:
+                    if found_box[0] is not None or _time.time() - t0 > t_limit:
+                        return
+                    seen.add(k)
+                    # 更新 RidgeLinear（在线学习）
+                    if _has_ridge:
+                        feat = _extract_features(gg, frame_arr)
+                        _ridge.update(feat, float(gg._current_level_index))
+                    # 动态点击候选：热图 + 非背景采样 + sprite 位置
+                    child_acts = kbd_acts + _gen_clicks(frame_arr)
+                    if has_click:
+                        try:
+                            for s in gg.current_level.get_sprites():
+                                if hasattr(s, 'tags') and any('sys_click' in str(t) for t in s.tags):
+                                    for offset in (0, 9):
+                                        pos = (6, int(s.x) + offset, int(s.y) + offset)
+                                        if pos not in child_acts:
+                                            child_acts.append(pos)
+                                        if len(child_acts) >= 24:
+                                            break
+                                if len(child_acts) >= 24:
+                                    break
+                        except Exception:
+                            pass
+                    _dfs(depth + 1, max_depth, path + [a], seen, child_acts)
+                    if found_box[0] is not None:
+                        return
+
+            for max_depth in range(1, MAX_DEPTH + 1):
+                if _time.time() - t0 > t_limit or found_box[0] is not None:
+                    break
+                seen = {start_hash}
+                # 模糊去重的记忆必须和 seen 同生命周期：它建在闭包里、整个搜索只建一次，
+                # 于是第 2 轮起根节点的子代全被 sims.max()>0.99 判成重复，children 为空、
+                # 递归永不发生（states 恒等于 MAX_DEPTH×|acts|，只能找到 1 步解）。
+                _n_seen[0] = 0
+                _dfs(0, max_depth, [], seen, all_acts)
+                if found_box[0] is not None:
+                    break
+
+            _os.chdir(_old)
+            print(f"[{BUILD_TAG}] iddfs-done gid={gid} found={found_box[0] is not None} states={total_states[0]} t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}", flush=True)
+            return found_box[0]
+        except Exception as exc:
+            try: _os.chdir(_old)
+            except: pass
+            import traceback as _tb
+            print(f"[{BUILD_TAG}] iddfs-error: {type(exc).__name__}: {exc}\n{_tb.format_exc()}", flush=True)
             return None
 
     def _ft09_solve_online(
