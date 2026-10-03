@@ -1,9 +1,9 @@
 {
- "label": "smart-router-local",
+ "label": "smart-router-wip",
  "agent": "integrations\\ARC-AGI-3-Kaggle-Starter\\agent\\my_agent.py",
  "n_steps": 400,
  "build_tag": "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix",
- "generated_at": "2026-10-01T06:31:21.873097+00:00",
+ "generated_at": "2026-10-03T12:20:51.915532+00:00",
  "results": [
   {
    "game_id": "ar25-0c556536",
@@ -21,7 +21,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 31.4
+   "elapsed_s": 49.9
   },
   {
    "game_id": "cd82-fb555c5d",
@@ -34,12 +34,12 @@
   },
   {
    "game_id": "cn04-2fe56bfb",
-   "max_levels": 1,
-   "final_levels": 1,
+   "max_levels": 0,
+   "final_levels": 0,
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 62.6
+   "elapsed_s": 152.7
   },
   {
    "game_id": "dc22-fdcac232",
@@ -48,7 +48,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 11.0
+   "elapsed_s": 70.3
   },
   {
    "game_id": "ft09-0d8bbf25",
@@ -61,30 +61,30 @@
   },
   {
    "game_id": "g50t-5849a774",
-   "max_levels": 0,
-   "final_levels": 0,
+   "max_levels": 1,
+   "final_levels": 1,
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 69.9
+   "elapsed_s": 30.5
   },
   {
    "game_id": "ka59-38d34dbb",
-   "max_levels": 0,
-   "final_levels": 0,
+   "max_levels": 1,
+   "final_levels": 1,
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 21.5
+   "elapsed_s": 26.3
   },
   {
    "game_id": "lf52-271a04aa",
-   "max_levels": 0,
-   "final_levels": 0,
+   "max_levels": 1,
+   "final_levels": 1,
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 10.6
+   "elapsed_s": 12.7
   },
   {
    "game_id": "lp85-305b61c3",
@@ -93,7 +93,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 8.4
+   "elapsed_s": 77.2
   },
   {
    "game_id": "ls20-9607627b",
@@ -102,7 +102,7 @@
    "state": "WIN",
    "steps": 309,
    "win": true,
-   "elapsed_s": 1.0
+   "elapsed_s": 0.9
   },
   {
    "game_id": "m0r0-492f87ba",
@@ -111,7 +111,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 44.0
+   "elapsed_s": 12.7
   },
   {
    "game_id": "r11l-495a7899",
@@ -129,7 +129,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 49.1
+   "elapsed_s": 16.1
   },
   {
    "game_id": "s5i5-18d95033",
@@ -138,7 +138,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 10.3
+   "elapsed_s": 42.7
   },
   {
    "game_id": "sb26-7fbdac44",
@@ -147,7 +147,7 @@
    "state": "WIN",
    "steps": 124,
    "win": true,
-   "elapsed_s": 1.6
+   "elapsed_s": 1.2
   },
   {
    "game_id": "sc25-635fd71a",
@@ -156,25 +156,25 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 10.9
+   "elapsed_s": 11.8
   },
   {
    "game_id": "sk48-d8078629",
-   "max_levels": 1,
-   "final_levels": 1,
+   "max_levels": 0,
+   "final_levels": 0,
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 65.7
+   "elapsed_s": 26.1
   },
   {
    "game_id": "sp80-589a99af",
-   "max_levels": 1,
-   "final_levels": 1,
+   "max_levels": 0,
+   "final_levels": 0,
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 12.2
+   "elapsed_s": 59.2
   },
   {
    "game_id": "su15-1944f8ab",
@@ -183,7 +183,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 12.7
+   "elapsed_s": 67.6
   },
   {
    "game_id": "tn36-ef4dde99",
@@ -201,7 +201,7 @@
    "state": "WIN",
    "steps": 122,
    "win": true,
-   "elapsed_s": 0.5
+   "elapsed_s": 0.4
   },
   {
    "game_id": "tu93-0768757b",
@@ -210,7 +210,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 33.4
+   "elapsed_s": 36.5
   },
   {
    "game_id": "vc33-5430563c",
@@ -219,7 +219,7 @@
    "state": "WIN",
    "steps": 167,
    "win": true,
-   "elapsed_s": 0.7
+   "elapsed_s": 0.6
   },
   {
    "game_id": "wa30-ee6fef47",
@@ -228,7 +228,7 @@
    "state": "NOT_FINISHED",
    "steps": 400,
    "win": false,
-   "elapsed_s": 12.8
+   "elapsed_s": 9.7
   }
  ],
  "summary": {
