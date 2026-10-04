@@ -95,13 +95,17 @@ class TestProject:
         assert ps.D2.curvature.shape == (32, 32)
         assert ps.D3.available is True  # 2D 也计算拓扑欧拉示性数
         assert ps.D3.euler_char != 0  # 有连通域和孔洞
-        assert ps.D4.available is False  # 单帧不可用
+        assert ps.D4.available is True  # 单帧也有赝时间映射
         assert ps.D4.is_fake_time is True
+        assert ps.D4.evolution is not None  # 有演化序列
+        assert ps.D4.causal_link is not None  # 有因果连接
 
     def test_flat_field(self):
         obs = np.ones((16, 16)) * 0.5
         c = UniversalConstants()
         ps = project(obs, has_temporal=False, constants=c)
         assert np.max(ps.D1.gradient) < 1e-6  # 平坦场梯度接近 0
+
+
 
 

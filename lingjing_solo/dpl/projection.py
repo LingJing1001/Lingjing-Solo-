@@ -33,8 +33,8 @@ def project(env_state: np.ndarray, has_temporal: bool, constants: UniversalConst
     # D3：信息体维（2D 也计算拓扑欧拉示性数）
     d3 = _compute_d3(I_norm, dim_info)
 
-    # D4：时空信息流维（单帧默认不可用）
-    d4 = D4Spacetime(available=False, is_fake_time=True)
+    # D4：时空信息流维（赝时间映射，单帧也可用）
+    d4 = _compute_d4(I_norm, d1, d2, dim_info)
 
     return ProjectedState(
         D1=d1, D2=d2, D3=d3, D4=d4,
@@ -188,3 +188,68 @@ def _compute_euler_char_fallback(binary: np.ndarray) -> int:
     """scipy 不可用时的 fallback：用前景像素数近似。"""
     n_fg = int(np.sum(binary > 0))
     return n_fg
+
+
+
+def _compute_d4(
+    I_norm: np.ndarray,
+    d1: D1FlowLine,
+    d2: D2Surface,
+    dim_info: DimensionInfo,
+) -> D4Spacetime:
+    """D4 时空信息流维：时间箭头、赝时间映射、因果连接（附录 C C.6）。
+
+    单帧输入也可用：用空间梯度构造赝时间演化。
+    """
+    if I_norm.ndim < 2:
+        return D4Spacetime(available=False, is_fake_time=True)
+
+    # 1. 时间箭头推断：从梯度场的不对称性
+    #    如果梯度场有明显的主导方向 → 有时间箭头
+    #    如果对称 → 静态，时间箭头 = 0
+    time_arrow = 0.0
+    if d1.available:
+        grad_mag = d1.gradient
+        # 计算梯度场的方向偏斜度
+        # 简单代理：全局平均梯度方向和大小
+        mean_grad_norm = np.mean(grad_mag)
+        if mean_grad_norm > 0.01:
+            # 有明显梯度 → 有演化方向
+            time_arrow = 1.0  # 简化：默认未来方向
+        else:
+            time_arrow = 0.0  # 平坦场，无时间箭头
+
+    # 2. 赝时间映射：沿梯度下降方向生成伪时间演化
+    #    从高值区（源）到低值区（汇）的路径
+    evolution = None
+    is_fake_time = True  # 单帧输入默认赝时间
+
+    if d1.available:
+        # 简化版：沿梯度方向做 N 步迭代，模拟时间演化
+        n_steps = 5
+        h = 0.1  # 步长
+        evolution = np.zeros((n_steps,) + I_norm.shape, dtype=np.float32)
+        evolution[0] = I_norm.copy()
+
+        current = I_norm.copy()
+        for t in range(1, n_steps):
+            # 沿梯度方向演化（简化版：扩散）
+            laplacian = np.gradient(np.gradient(current, axis=0), axis=0) + \
+                        np.gradient(np.gradient(current, axis=1), axis=1)
+            current = current + h * laplacian
+            evolution[t] = current
+
+    # 3. 因果连接：从散度场判断源和汇
+    #    正散度 = 源（因），负散度 = 汇（果）
+    causal_link = None
+    if d1.available:
+        div = d1.divergence
+        # 简化：直接用散度场作为因果连接强度
+        causal_link = div.astype(np.float32)
+
+    return D4Spacetime(
+        evolution=evolution,
+        causal_link=causal_link,
+        is_fake_time=is_fake_time,
+        available=True,
+    )

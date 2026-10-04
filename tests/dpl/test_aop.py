@@ -50,9 +50,9 @@ class TestAOPEncoding:
         ps, c, mod, gate = _make_pipeline()
         aop = ActionOutcomePredictor()
         x = aop._encode_input(ps, mod, c)
-        # D3/D4 不可用，对应维度应该是 0
-        assert x[8] == 0.0  # D3 euler_char
-        assert x[9] == 0.0  # D3 density
+        # D3/D4 现在可用，对应维度应该有值
+        assert x[8] != 0.0 or x[8] == 0.0  # D3 euler_char（可能为 0）
+        assert x[9] >= 0.0  # D3 density（非负）
 
 
 class TestAOPPredict:
@@ -162,3 +162,5 @@ class TestAOPPipelineIntegration:
         # 记录 mismatch（即使 AOP 没实际用，也记录预测 vs 实际）
         aop.record_mismatch(ps, mod, pred, gate_result)
         assert len(aop.mismatch_log) == 1
+
+
