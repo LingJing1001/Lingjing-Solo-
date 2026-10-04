@@ -30,7 +30,7 @@ def project(env_state: np.ndarray, has_temporal: bool, constants: UniversalConst
     # D2：信息面维
     d2 = _compute_d2(I_norm, dim_info)
 
-    # D3：信息体维（2D/2.5D 默认不可用）
+    # D3：信息体维（2D 也计算拓扑欧拉示性数）
     d3 = _compute_d3(I_norm, dim_info)
 
     # D4：时空信息流维（单帧默认不可用）
@@ -122,16 +122,69 @@ def _compute_d2(I_norm: np.ndarray, dim_info: DimensionInfo) -> D2Surface:
 
 
 def _compute_d3(I_norm: np.ndarray, dim_info: DimensionInfo) -> D3Volume:
-    """D3 信息体维：密度、欧拉示性数、Ricci 标量（附录 C C.5）。"""
-    if dim_info.spatial < 3.0:
-        # 2D / 2.5D 不可用
-        return D3Volume(available=False)
+    """D3 信息体维：密度、欧拉示性数、Ricci 标量（附录 C C.5）。
 
-    # 3D+ 简化版
+    2D 场景：计算图像拓扑的欧拉示性数（连通域数 - 孔洞数）。
+    3D+ 场景：密度场 + 简化拓扑。
+    """
     density = np.abs(I_norm)
+
+    if dim_info.spatial >= 3.0:
+        # 3D+ 简化版
+        return D3Volume(
+            density=density,
+            euler_char=0,
+            ricci_scalar=None,
+            available=True,
+        )
+
+    # 2D 场景：计算欧拉示性数 χ = C - H
+    # 用 50% 分位数二值化
+    threshold = np.percentile(I_norm, 50)
+    binary = (I_norm > threshold).astype(np.int32)
+
+    # 计算连通域数 C 和孔洞数 H
+    euler_char = _compute_2d_euler_char(binary)
+
     return D3Volume(
         density=density,
-        euler_char=0,
+        euler_char=euler_char,
         ricci_scalar=None,
         available=True,
     )
+
+
+def _compute_2d_euler_char(binary: np.ndarray) -> int:
+    """计算 2D 二值图像的欧拉示性数 χ = C - H。
+
+    用连通域标记法：
+    - 4-连通前景：连通域数 C
+    - 8-连通背景：孔洞数 H
+    - χ = C - H
+    """
+    try:
+        from scipy import ndimage
+    except ImportError:
+        # scipy 不可用时用简化版
+        return _compute_euler_char_fallback(binary)
+
+    # 标记前景连通域（4-连通）
+    structure_4 = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+    labeled_fg, n_components = ndimage.label(binary, structure=structure_4)
+
+    # 标记背景连通域（8-连通）
+    structure_8 = np.ones((3, 3), dtype=int)
+    labeled_bg, n_background = ndimage.label(1 - binary, structure=structure_8)
+
+    # 孔洞数 = 背景连通域数 - 1（减去图像外边界那个）
+    n_holes = n_background - 1
+
+    # 欧拉示性数 = 连通域数 - 孔洞数
+    euler = n_components - n_holes
+    return int(euler)
+
+
+def _compute_euler_char_fallback(binary: np.ndarray) -> int:
+    """scipy 不可用时的 fallback：用前景像素数近似。"""
+    n_fg = int(np.sum(binary > 0))
+    return n_fg

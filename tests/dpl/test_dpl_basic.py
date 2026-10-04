@@ -93,7 +93,8 @@ class TestProject:
         assert ps.D1.gradient_vector.shape == (32, 32, 2)
         assert ps.D2.available is True
         assert ps.D2.curvature.shape == (32, 32)
-        assert ps.D3.available is False  # 2D 不可用
+        assert ps.D3.available is True  # 2D 也计算拓扑欧拉示性数
+        assert ps.D3.euler_char != 0  # 有连通域和孔洞
         assert ps.D4.available is False  # 单帧不可用
         assert ps.D4.is_fake_time is True
 
@@ -102,3 +103,5 @@ class TestProject:
         c = UniversalConstants()
         ps = project(obs, has_temporal=False, constants=c)
         assert np.max(ps.D1.gradient) < 1e-6  # 平坦场梯度接近 0
+
+

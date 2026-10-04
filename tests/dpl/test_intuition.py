@@ -30,13 +30,14 @@ class TestInferBasic:
             "topological_navigation", "conservation_law", "no_intuition",
         )
 
-    def test_2d_has_no_topological_intuition(self):
-        """2D D3 不可用，不应该有拓扑直觉。"""
+    def test_2d_topological_intuition_is_reasonable(self):
+        """2D D3 可用时，拓扑置信度应该合理（0-1 之间）。"""
         ps, c = _make_2d_projected()
         result = infer(ps, c)
         topo_rules = [r for r in result.rules if r.rule_type == "topological"]
-        # D3 不可用，topological 规则应该是 None，不在 rules 里
-        assert len(topo_rules) == 0 or topo_rules[0].confidence == 0.0
+        # D3 现在可用，可能触发拓扑直觉；置信度应该在合理范围
+        if len(topo_rules) > 0:
+            assert 0.0 <= topo_rules[0].confidence <= 1.0
 
 
 class TestGravitationalIntuition:
@@ -128,3 +129,4 @@ class TestFullPipeline:
         assert gate_result.passed is not None
         assert intuition.intuition_type is not None
         assert intuition.confidence >= 0.0
+
