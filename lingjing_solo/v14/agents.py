@@ -25,10 +25,13 @@ V14.2 写场契约升级：
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple, Optional, List
+from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, List
 import numpy as np
 
-from core.writeback import AgentWriteback, validate_writeback
+from lingjing_solo.v14.core.writeback import AgentWriteback, validate_writeback
+
+if TYPE_CHECKING:
+    from lingjing_solo.v14.core.field import Field
 
 
 @dataclass

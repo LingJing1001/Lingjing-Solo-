@@ -1,6 +1,6 @@
 """诊断 V14 失败项"""
 import numpy as np
-from core import build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
+from lingjing_solo.v14.core import build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
 
 # ---- 诊断 1: CSR 维度 ----
 print("=" * 50)
@@ -27,7 +27,7 @@ except ValueError as e:
     print(f"失败: {e}")
     # 修复：需要 (M, N^3) 的投影矩阵，或者只对活动节点操作
     # 正确 API：L_csr 是 (M,M)，输入应为活动节点的 (M,) 向量
-    print(f"\n修复方案：vals_active = phi.ravel()[active_indices]")
+    print("\n修复方案：vals_active = phi.ravel()[active_indices]")
     print(f"  active_indices = np.flatnonzero(mask)  # ({mask.sum()},)")
     active = np.flatnonzero(mask)
     vals_active = phi.ravel()[active]  # (M,)
@@ -44,10 +44,10 @@ print("=" * 50)
 # 周期边界下：距离可以是 (20-3)=17 或 (3-20)%24=7（绕另一侧）
 # 所以梯度可能指向 -x（因为绕过去更近）
 print("周期边界下的距离歧义：")
-print(f"  出口 x=20, Agent x=3")
-print(f"  直接距离: |20-3| = 17")
-print(f"  周期距离: min(17, 24-17) = 7 (绕另一侧)")
-print(f"  → 梯度指向 -x（绕向 0/23 方向）")
+print("  出口 x=20, Agent x=3")
+print("  直接距离: |20-3| = 17")
+print("  周期距离: min(17, 24-17) = 7 (绕另一侧)")
+print("  → 梯度指向 -x（绕向 0/23 方向）")
 print("修复：疏散场景应使用非周期/吸收边界，或显式计算最短路径方向")
 
 # ---- 诊断 3: 确定性 ----

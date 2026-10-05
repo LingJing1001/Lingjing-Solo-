@@ -16,11 +16,11 @@
     observation(field, a) : 返回 Agent 位置的局部梯度
 """
 from __future__ import annotations
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 
-from core.scenario import Scenario
-from agents import Agent, EvacuationAgent
+from lingjing_solo.v14.core.scenario import Scenario
+from lingjing_solo.v14.agents import Agent, EvacuationAgent
 
 
 class EvacuationScenario(Scenario):

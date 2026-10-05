@@ -27,10 +27,10 @@ from dataclasses import dataclass, field as dc_field
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from core.field import Field, FieldConfig
-from core.scenario import Scenario
-from core.writeback import AgentWriteback, validate_writeback
-from agents import Agent
+from lingjing_solo.v14.core.field import Field, FieldConfig
+from lingjing_solo.v14.core.scenario import Scenario
+from lingjing_solo.v14.core.writeback import AgentWriteback, validate_writeback
+from lingjing_solo.v14.agents import Agent
 
 
 @dataclass

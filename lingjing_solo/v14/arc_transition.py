@@ -13,18 +13,11 @@ validated action to ARC after the physical transition has been recorded.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-import sys
 from typing import Any, Optional
 
 import numpy as np
 
-
-_V14_ROOT = Path(__file__).resolve().parents[3] / "vendor" / "lingjing_v14"
-if str(_V14_ROOT) not in sys.path:
-    sys.path.insert(0, str(_V14_ROOT))
-
-from core.field import Field, FieldConfig  # noqa: E402
+from lingjing_solo.v14.core.field import Field, FieldConfig
 
 
 @dataclass(frozen=True)

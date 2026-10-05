@@ -64,14 +64,7 @@ _bootstrap_paths()
 from lingjing_solo.core import SoloConfig, extract_grid, hash_grid  # noqa: E402
 from lingjing_solo.perception import PerceptionEncoder  # noqa: E402
 from lingjing_solo.transfer.ceax_controller import CeaxController  # noqa: E402
-try:
-    from v14_arc_transition import V14ArcTransition  # noqa: E402
-except ModuleNotFoundError:
-    # benchmark_all_games.py copies this file into the ARC template directory.
-    _source_agent_dir = _FILE.parents[4] / "agent"
-    if (_source_agent_dir / "v14_arc_transition.py").is_file():
-        sys.path.insert(0, str(_source_agent_dir))
-    from v14_arc_transition import V14ArcTransition  # noqa: E402
+from lingjing_solo.v14.arc_transition import V14ArcTransition  # noqa: E402
 
 BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition"
 AGENT_BRAND = "lingjing-smart"

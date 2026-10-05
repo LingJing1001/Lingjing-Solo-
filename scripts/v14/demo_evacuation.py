@@ -11,12 +11,12 @@
 - 守恒监测
 """
 from __future__ import annotations
-import sys, os, json
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import json
+import os
 
-from core import Field, FieldConfig
-from engine import Engine, EngineConfig
-from scenarios import EvacuationScenario
+from lingjing_solo.v14.core import Field, FieldConfig
+from lingjing_solo.v14.engine import Engine, EngineConfig
+from lingjing_solo.v14.scenarios import EvacuationScenario
 
 
 def main():

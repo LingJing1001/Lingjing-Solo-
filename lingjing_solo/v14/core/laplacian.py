@@ -69,13 +69,13 @@ def build_bubble_laplacian_csr(
     if M == 0:
         return matrix_type((M, M))
     # 全局 → 局部
-    local = {int(g): l for l, g in enumerate(idxs.tolist())}
+    local = {int(g): local_idx for local_idx, g in enumerate(idxs.tolist())}
     nx, ny, nz = mask.shape
     h2 = h * h
     row, col, data = [], [], []
     for g in idxs.tolist():
         i, j, k = g // (ny * nz), (g % (ny * nz)) // nz, g % nz
-        l = local[g]
+        local_idx = local[g]
         deg = 0
         for di, dj, dk in [(1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)]:
             ni, nj, nk = i + di, j + dj, k + dk
@@ -84,8 +84,8 @@ def build_bubble_laplacian_csr(
             ng = ni * ny * nz + nj * nz + nk
             if ng in local:
                 deg += 1
-                row.append(l); col.append(local[ng]); data.append(1.0 / h2)
-        row.append(l); col.append(l); data.append(-float(deg) / h2)
+                row.append(local_idx); col.append(local[ng]); data.append(1.0 / h2)
+        row.append(local_idx); col.append(local_idx); data.append(-float(deg) / h2)
     return matrix_type((data, (row, col)), shape=(M, M))
 
 

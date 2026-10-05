@@ -14,18 +14,19 @@ V14.0/V14.2 契约测试 —— 由 diagnose.py 的真实运行结果固化而�
 
 约定：不依赖 pytest，纯 Python + numpy，与 V10 风格一致。
 """
-import sys, os, numpy as np
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import sys
+
+import numpy as np
 
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
 
-from core.field import Field, FieldConfig
-from core.writeback import AgentWriteback, validate_writeback
-from agents import EvacuationAgent
-from scenarios.evacuation import EvacuationScenario
-from engine import Engine, EngineConfig
-from core.laplacian import bubble_mask_spherical, build_bubble_laplacian_csr
+from lingjing_solo.v14.core.field import Field, FieldConfig
+from lingjing_solo.v14.core.writeback import AgentWriteback, validate_writeback
+from lingjing_solo.v14.agents import EvacuationAgent
+from lingjing_solo.v14.scenarios.evacuation import EvacuationScenario
+from lingjing_solo.v14.engine import Engine, EngineConfig
+from lingjing_solo.v14.core.laplacian import bubble_mask_spherical, build_bubble_laplacian_csr
 
 
 def _make(N=16, n_agents=12, dt=0.01, seed=42, speed=1.0, D=0.10):

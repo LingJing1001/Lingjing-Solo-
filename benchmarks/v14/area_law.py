@@ -12,12 +12,12 @@
 - CSR 泡壁耗时恒定 → 面积律兑现
 """
 from __future__ import annotations
+import os
 import time
-import numpy as np
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import Field, FieldConfig, build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
+import numpy as np
+
+from lingjing_solo.v14.core import Field, FieldConfig, build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
 
 
 def benchmark_volume_7point(N: int, n_iter: int = 50) -> float:
@@ -54,7 +54,6 @@ def benchmark_bubble_csr(N: int, R: int = 4, n_iter: int = 500) -> tuple[int, fl
 
 def benchmark_bubble_python(N: int, R: int = 4, n_iter: int = 10) -> float:
     """泡壁 Python 循环（对照，验证 CSR 加速）。"""
-    from core.field import Field
     cfg = FieldConfig(shape=(N, N, N), h=1.0/(N-1))
     f = Field(cfg)
     mask = bubble_mask_spherical((N, N, N), (N//2, N//2, N//2), R)

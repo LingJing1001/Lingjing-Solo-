@@ -19,7 +19,7 @@ V14.2：用类型化对象 + 运行时校验强制契约：
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 
 

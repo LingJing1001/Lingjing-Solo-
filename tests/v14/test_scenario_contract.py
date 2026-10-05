@@ -5,13 +5,12 @@ V14.1 接口自检验证：
 这是"平台化底座"的关键能力：第三方插件签名写错时，构造即报错，
 而不是疏散跑到一半才崩。
 """
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import sys
 
-from core.scenario import Scenario, ScenarioInterfaceError
-from core.field import Field, FieldConfig
-from agents import Agent
-from engine import Engine, EngineConfig
+from lingjing_solo.v14.core.scenario import Scenario, ScenarioInterfaceError
+from lingjing_solo.v14.core.field import Field, FieldConfig
+from lingjing_solo.v14.agents import Agent
+from lingjing_solo.v14.engine import Engine, EngineConfig
 import numpy as np
 
 

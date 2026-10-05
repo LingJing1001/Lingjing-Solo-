@@ -23,8 +23,12 @@ V14.1 接口自检：
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import inspect
-from typing import List, Dict, Any
+from typing import TYPE_CHECKING, List, Dict, Any
 import numpy as np
+
+if TYPE_CHECKING:
+    from lingjing_solo.v14.agents import Agent
+    from lingjing_solo.v14.core.field import Field
 
 
 class ScenarioInterfaceError(Exception):

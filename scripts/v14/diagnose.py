@@ -2,13 +2,12 @@
 V14.0 真实状态摸底 v2 —— 严格对齐当前 API，裸跑诊断。
 目标：搞清楚现在到底什么能用、什么不能用，用真实数据说话。
 """
-import sys, os, numpy as np
-sys.path.insert(0, os.path.dirname(__file__))
+import numpy as np
 
-from core.field import Field, FieldConfig
-from agents import EvacuationAgent
-from scenarios.evacuation import EvacuationScenario
-from engine import Engine, EngineConfig
+from lingjing_solo.v14.core.field import Field, FieldConfig
+from lingjing_solo.v14.agents import EvacuationAgent
+from lingjing_solo.v14.scenarios.evacuation import EvacuationScenario
+from lingjing_solo.v14.engine import Engine, EngineConfig
 
 
 def banner(t):
@@ -128,7 +127,7 @@ print(f"  seed=99 终态: {c99[:2]}")
 # ----------------------------------------------------------------------
 banner("D6. 面积律：泡壁活跃节点数 vs N（O(R²) 应为常数）")
 # ----------------------------------------------------------------------
-from core.laplacian import bubble_mask_spherical, build_bubble_laplacian_csr
+from lingjing_solo.v14.core.laplacian import bubble_mask_spherical, build_bubble_laplacian_csr
 R = 3  # 泡壁半径（与场景 bubble_radius 一致）
 for N in [12, 16, 20, 24, 30]:
     cx = N // 2
