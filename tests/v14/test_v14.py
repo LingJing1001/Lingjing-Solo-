@@ -15,8 +15,8 @@ V14.2 改动：
 - 因果闭环改用新的 AgentWriteback 契约验证。
 
 运行:
-    python -m pytest lingjing_solo/v14/tests/test_v14.py -v  # 有 pytest
-    python -m lingjing_solo.v14.tests.test_v14  # 无 pytest（自运行）
+    python -m pytest lingjing_solo/tests/test_v14.py -v  # 有 pytest
+    python -m lingjing_solo.tests.test_v14  # 无 pytest（自运行）
     python -m unittest discover -s tests     # 无 pytest 也不再报错
 """
 from __future__ import annotations
@@ -30,13 +30,13 @@ try:
 except ImportError:
     HAS_PYTEST = False
 
-from lingjing_solo.v14.core import (Field, FieldConfig, laplacian_7point,
+from lingjing_solo.core import (Field, FieldConfig, laplacian_7point,
                   build_bubble_laplacian_csr, bubble_mask_spherical)
-from lingjing_solo.v14.core.writeback import AgentWriteback, validate_writeback  # V14.2
-from lingjing_solo.v14.core.scenario import Scenario
-from lingjing_solo.v14.agents import Agent, EvacuationAgent
-from lingjing_solo.v14.engine import Engine, EngineConfig
-from lingjing_solo.v14.scenarios import EvacuationScenario
+from lingjing_solo.core.writeback import AgentWriteback, validate_writeback  # V14.2
+from lingjing_solo.core.scenario import Scenario
+from lingjing_solo.agents import Agent, EvacuationAgent
+from lingjing_solo.engine import Engine, EngineConfig
+from lingjing_solo.scenarios import EvacuationScenario
 
 
 # ============================================================

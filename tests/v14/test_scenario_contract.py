@@ -7,10 +7,10 @@ V14.1 接口自检验证：
 """
 import sys
 
-from lingjing_solo.v14.core.scenario import Scenario, ScenarioInterfaceError
-from lingjing_solo.v14.core.field import Field, FieldConfig
-from lingjing_solo.v14.agents import Agent
-from lingjing_solo.v14.engine import Engine, EngineConfig
+from lingjing_solo.core.scenario import Scenario, ScenarioInterfaceError
+from lingjing_solo.core.field import Field, FieldConfig
+from lingjing_solo.agents import Agent
+from lingjing_solo.engine import Engine, EngineConfig
 import numpy as np
 
 

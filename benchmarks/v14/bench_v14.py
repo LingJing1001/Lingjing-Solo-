@@ -13,9 +13,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from lingjing_solo.v14.core.field import FieldConfig
-from lingjing_solo.v14.engine import Engine, EngineConfig
-from lingjing_solo.v14.scenarios.evacuation import EvacuationScenario
+from lingjing_solo.core.field import FieldConfig
+from lingjing_solo.engine import Engine, EngineConfig
+from lingjing_solo.scenarios.evacuation import EvacuationScenario
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 os.makedirs(OUT, exist_ok=True)
@@ -23,7 +23,7 @@ os.makedirs(OUT, exist_ok=True)
 
 def benchmark_scaling():
     """三线对照：体积 vs 泡壁-Python vs 泡壁-CSR。"""
-    from lingjing_solo.v14.core.laplacian import build_volume_laplacian_csr, build_bubble_laplacian_csr
+    from lingjing_solo.core.laplacian import build_volume_laplacian_csr, build_bubble_laplacian_csr
     import time
 
     Ns = [12, 16, 20, 24, 30]
@@ -71,7 +71,7 @@ def benchmark_scaling():
 def conservation_identity():
     """守恒恒等式 ΔΣφ = dt·ΣJ（零通量边界，纯扩散时 ΔΣφ→0）。"""
     cfg = FieldConfig(shape=(20, 20, 10), h=1.0 / 19, D=0.05, scheme="explicit")
-    from lingjing_solo.v14.core.field import Field
+    from lingjing_solo.core.field import Field
     field = Field(cfg)
     # 随机初始场（无源项，纯扩散）
     rng = np.random.default_rng(1)

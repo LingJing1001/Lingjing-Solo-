@@ -13,9 +13,9 @@
 """
 import numpy as np
 
-from lingjing_solo.v14.core.field import FieldConfig
-from lingjing_solo.v14.engine import Engine, EngineConfig
-from lingjing_solo.v14.scenarios.evacuation import EvacuationScenario
+from lingjing_solo.core.field import FieldConfig
+from lingjing_solo.engine import Engine, EngineConfig
+from lingjing_solo.scenarios.evacuation import EvacuationScenario
 
 
 def _make_engine(n_agents=6, speed=1.0, seed=7):
@@ -72,7 +72,7 @@ def test_E3_center_of_mass_monotone():
 
 def test_E4_crowding_slowdown():
     """高局部 φ 应使 Agent 减速（拥挤排斥的物理表现）。"""
-    from lingjing_solo.v14.agents import EvacuationAgent
+    from lingjing_solo.agents import EvacuationAgent
     a = EvacuationAgent(0, (5, 5, 5), speed=2.0, crowding_coeff=0.5)
     a.perceive({"gradient": np.array([1.0, 0.0, 0.0]), "local_phi": 0.0, "neighbors": []})
     a.decide()
@@ -86,7 +86,7 @@ def test_E4_crowding_slowdown():
 
 def test_E5_soft_separation():
     """邻近 Agent 应在合力中产生排斥分量。"""
-    from lingjing_solo.v14.agents import EvacuationAgent
+    from lingjing_solo.agents import EvacuationAgent
     a = EvacuationAgent(0, (3, 3, 3), speed=1.0, sep_radius=2.0, sep_strength=1.0)
     a.perceive({
         "gradient": np.array([1.0, 0.0, 0.0]),   # 吸引 +x（出口方向）
@@ -110,7 +110,7 @@ def test_E6_determinism():
 
 def test_E7_boundary_reflection():
     """Agent 连续位移越界时被弹性钳制，不崩溃、不穿墙。"""
-    from lingjing_solo.v14.agents import EvacuationAgent
+    from lingjing_solo.agents import EvacuationAgent
     field = type("F", (), {"phi": np.zeros((24, 16, 8))})()
     a = EvacuationAgent(0, (23, 8, 4), speed=5.0)  # 紧靠 +x 边界
     a.perceive({"gradient": np.array([1.0, 0.0, 0.0]), "local_phi": 0.0, "neighbors": []})

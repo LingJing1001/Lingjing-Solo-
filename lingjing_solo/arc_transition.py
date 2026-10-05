@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from lingjing_solo.v14.core.field import Field, FieldConfig
+from .core.field import Field, FieldConfig
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 """Lingjing engine V14.2 regression entry point.
 
-Run with ``python -m lingjing_solo.v14.regress``. Each suite executes in a
-fresh interpreter while importing the installed ``lingjing_solo.v14`` package.
+Run with ``python -m lingjing_solo.regress``. Each suite executes in a
+fresh interpreter while importing the installed ``lingjing_solo`` package.
 """
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 SUITES = [
-    ("契约测试   test_contracts.py  (C1-C9)", "lingjing_solo.v14.tests.test_contracts"),
-    ("端到端     test_e2e.py", "lingjing_solo.v14.tests.test_e2e"),
-    ("接口自检   test_scenario_contract.py", "lingjing_solo.v14.tests.test_scenario_contract"),
-    ("历史覆盖   test_v14.py", "lingjing_solo.v14.tests.test_v14"),
+    ("契约测试   test_contracts.py  (C1-C9)", "lingjing_solo.tests.test_contracts"),
+    ("端到端     test_e2e.py", "lingjing_solo.tests.test_e2e"),
+    ("接口自检   test_scenario_contract.py", "lingjing_solo.tests.test_scenario_contract"),
+    ("历史覆盖   test_v14.py", "lingjing_solo.tests.test_v14"),
 ]
 
 

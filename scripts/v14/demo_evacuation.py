@@ -14,9 +14,9 @@ from __future__ import annotations
 import json
 import os
 
-from lingjing_solo.v14.core import Field, FieldConfig
-from lingjing_solo.v14.engine import Engine, EngineConfig
-from lingjing_solo.v14.scenarios import EvacuationScenario
+from lingjing_solo.core import Field, FieldConfig
+from lingjing_solo.engine import Engine, EngineConfig
+from lingjing_solo.scenarios import EvacuationScenario
 
 
 def main():

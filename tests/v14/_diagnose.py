@@ -1,6 +1,6 @@
 """诊断 V14 失败项"""
 import numpy as np
-from lingjing_solo.v14.core import build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
+from lingjing_solo.core import build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
 
 # ---- 诊断 1: CSR 维度 ----
 print("=" * 50)

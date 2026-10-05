@@ -17,7 +17,7 @@ import time
 
 import numpy as np
 
-from lingjing_solo.v14.core import Field, FieldConfig, build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
+from lingjing_solo.core import Field, FieldConfig, build_bubble_laplacian_csr, bubble_mask_spherical, laplacian_7point
 
 
 def benchmark_volume_7point(N: int, n_iter: int = 50) -> float:

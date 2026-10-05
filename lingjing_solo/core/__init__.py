@@ -30,3 +30,12 @@ __all__ = [
     "compute_phi", "compute_bubble", "curvature_proxy", "prefer_block_actions",
     "PROTOCOL_MAP", "LAYER_MAP", "MANIFESTO", "protocol_status_summary",
 ]
+
+from .field import Field, FieldConfig
+from .laplacian import laplacian_7point, build_bubble_laplacian_csr, bubble_mask_spherical
+from .scenario import Scenario
+
+__all__ += [
+    "Field", "FieldConfig", "Scenario", "laplacian_7point",
+    "build_bubble_laplacian_csr", "bubble_mask_spherical",
+]

@@ -28,10 +28,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, List
 import numpy as np
 
-from lingjing_solo.v14.core.writeback import AgentWriteback, validate_writeback
+from lingjing_solo.core.writeback import AgentWriteback, validate_writeback
 
 if TYPE_CHECKING:
-    from lingjing_solo.v14.core.field import Field
+    from lingjing_solo.core.field import Field
 
 
 @dataclass

@@ -21,12 +21,12 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
 
-from lingjing_solo.v14.core.field import Field, FieldConfig
-from lingjing_solo.v14.core.writeback import AgentWriteback, validate_writeback
-from lingjing_solo.v14.agents import EvacuationAgent
-from lingjing_solo.v14.scenarios.evacuation import EvacuationScenario
-from lingjing_solo.v14.engine import Engine, EngineConfig
-from lingjing_solo.v14.core.laplacian import bubble_mask_spherical, build_bubble_laplacian_csr
+from lingjing_solo.core.field import Field, FieldConfig
+from lingjing_solo.core.writeback import AgentWriteback, validate_writeback
+from lingjing_solo.agents import EvacuationAgent
+from lingjing_solo.scenarios.evacuation import EvacuationScenario
+from lingjing_solo.engine import Engine, EngineConfig
+from lingjing_solo.core.laplacian import bubble_mask_spherical, build_bubble_laplacian_csr
 
 
 def _make(N=16, n_agents=12, dt=0.01, seed=42, speed=1.0, D=0.10):
