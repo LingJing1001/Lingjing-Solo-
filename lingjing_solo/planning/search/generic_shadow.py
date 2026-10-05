@@ -45,19 +45,32 @@ import numpy as np
 
 
 def generic_snapshot(game: Any) -> dict:
-    """Copy everything reachable through ``__dict__`` (no engine names)."""
-    snap = {}
+    """Copy everything reachable through ``__dict__`` (no engine names).
+
+    整字典单次 deepcopy（共享 memo 保住跨属性对象 identity）。逐属性 deepcopy
+    会把 ``{sprite: n}`` 这类 identity 键表与 sprite 列表拷成两份，restore 后
+    引擎按 sprite 查表直接 KeyError——vc33 上实测（2026-09-30 bench_r3_prune），
+    任何带 identity 键注册表的隐藏局都会踩中。个别属性不可拷时退回逐属性
+    （老行为），牺牲一致性换可用性。
+    """
+    raw = {}
     for k, v in game.__dict__.items():
         if callable(v) and not isinstance(v, type):
             continue
-        try:
-            if isinstance(v, np.ndarray):
-                snap[k] = v.copy()
-            else:
-                snap[k] = copy.deepcopy(v)
-        except Exception:
-            pass
-    return snap
+        raw[k] = v
+    try:
+        return copy.deepcopy(raw)
+    except Exception:  # noqa: BLE001 — 某属性不可拷：退回逐属性
+        snap = {}
+        for k, v in raw.items():
+            try:
+                if isinstance(v, np.ndarray):
+                    snap[k] = v.copy()
+                else:
+                    snap[k] = copy.deepcopy(v)
+            except Exception:
+                pass
+        return snap
 
 
 def generic_restore(game: Any, snap: dict) -> None:

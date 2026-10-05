@@ -61,10 +61,16 @@ def convert_ls20_recording(recording_path: str | Path, output_dir: str | Path) -
         game_specific={"game": "LS20", "frame_shapes": "1/2/6/17 x 64 x 64",
                        "source_recording_commit": _git(recording.parents[1], "rev-parse", "HEAD")},
     )
+    _root = Path(__file__).resolve().parents[2]
+    _branch = _git(_root, "branch", "--show-current")
+    if not _branch:
+        # detached HEAD (CI checkout): fallback to GITHUB_REF_NAME or short commit
+        import os
+        _branch = os.environ.get("GITHUB_REF_NAME", "") or _git(_root, "rev-parse", "--short", "HEAD")
     manifest = build_manifest(
         run_id="ls20-9607627b-real-recording", game_id="LS20",
-        branch=_git(Path(__file__).resolve().parents[2], "branch", "--show-current"),
-        commit=_git(Path(__file__).resolve().parents[2], "rev-parse", "HEAD"),
+        branch=_branch,
+        commit=_git(_root, "rev-parse", "HEAD"),
         module_versions={"action_diff": "r4", "field": "WorldModelField",
                          "evidence": "lingjing-evidence-v1"},
         evidence_tier="recorded-offline", mode="recording-replay", seed=None,

@@ -1,0 +1,530 @@
+{
+ "game_id": "tn36-ef4dde99",
+ "route_id": "tn36_l1l7_103",
+ "target_levels": 7,
+ "expected_state": "WIN",
+ "actions": [
+  {
+   "a": "ACTION6",
+   "x": 26,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 26,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 36,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 36,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 41,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 36,
+   "y": 55
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 46,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 39
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 39
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 45
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 34,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 39,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 44,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 39
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 42
+  },
+  {
+   "a": "ACTION6",
+   "x": 49,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 54,
+   "y": 36
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 33
+  },
+  {
+   "a": "ACTION6",
+   "x": 59,
+   "y": 48
+  },
+  {
+   "a": "ACTION6",
+   "x": 57,
+   "y": 58
+  }
+ ],
+ "meta": {
+  "date": "2026-09-30",
+  "source": "L1-L6: state/tn36_solve.py symbolic solver. L7 (NEW): 3-fire blocker-aware plan state/tn36_l7_probe2.py — fire0 y20 lane to slot (53,24) re-base; fire1 crosses blocker band x53-56 inside the invisible window (ops 0-2), exits band before the counter-2 toggle, lands slot (53,8); fire2 y12 lane + vertical entry into target pocket (41,8) -> aligned WIN (gate non-frozen).",
+  "verification": "cold full-route replay state/tn36_l7_probe4.py: action 103 (final FIRE) levels 6->7, frame state=WIN; 3x gate replays identical",
+  "human_baseline_actions": null,
+  "score_note": "L7 completes tn36 7/7, predicted agg +1.0 (unverified until benchmark rerun)"
+ }
+}

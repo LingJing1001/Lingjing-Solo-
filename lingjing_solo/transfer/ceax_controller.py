@@ -27,6 +27,8 @@ v3.6 attract/pull + hybrid climb:
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -34,6 +36,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from .hypotheses import CompetingHypotheses, HypothesisKind
+from .ledger import VerdictRecord, append_record
 from .rule_transfer import RuleTransfer
 from .skill_library import SkillLibrary
 from .world_model import CounterfactualWorldModel
@@ -290,6 +293,27 @@ def _structure_delta(prev, curr) -> float:
     return float(min(1.0, 0.55 * aspect_chg + 0.35 * color_chg + 1.2 * flip))
 
 
+# --- Live-path A/B switch for the learned click heatmap ---------------------
+# OFF by default: the live path stays the hand extractor alone, so the
+# 2026-09-29 measurement (aggregate 31.913, 61 levels) stays reproducible.
+#   ARC_CLICK_HEAT=1      union proposals into the untried click targets
+#   ARC_CLICK_HEAT_K=<n>  proposals kept per new frame (default 4)
+#   ARC_CLICK_HEAT_W=<f>  prior: score = 0.45 + f * p (default 0.60, so a
+#                         confident cell sorts next to chrome ends at ~1.05 and
+#                         an unconfident one still sits at the untried floor)
+# Which checkpoint is used stays in arc_adaptor (CLICK_HEATMAP_WEIGHTS), so this
+# switch alone decides whether the model is on the live path at all.
+def _heat_enabled() -> bool:
+    return os.environ.get("ARC_CLICK_HEAT", "0") == "1"
+
+
+def _heat_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+
+
 @dataclass
 class ClickTarget:
     xy: Tuple[int, int]
@@ -306,6 +330,23 @@ class ClickTarget:
             # Untried: honor ingest priors (chrome ends > mid / solid rods)
             return 0.45 + float(self.effect_sum)
         return (self.effect_sum / self.trials) + 2.5 * self.progress_hits
+
+
+def prune_click_targets(targets: Dict[Tuple, ClickTarget],
+                        discarded: Dict[Tuple, ClickTarget],
+                        min_trials: int = 6, floor: float = 0.06) -> List[Tuple]:
+    """退役死目标：trials>=min_trials、平均 effect<floor 且从未推进过关卡的
+    ClickTarget 移入 discarded（审计留档，不再被提议）。未尝试目标永不退役
+    （score 0.45+prior 是探索起点）；曾推进过关卡的目标（progress_hits>0）永不退役。
+    纯函数——CeaxController 只在 CEAX_PRUNE=1 时每 100 verdict 调一次。
+    """
+    retired: List[Tuple] = []
+    for key, t in list(targets.items()):
+        if t.trials >= min_trials and t.progress_hits == 0                 and (t.effect_sum / t.trials) < floor:
+            discarded[key] = t
+            del targets[key]
+            retired.append(key)
+    return retired
 
 
 def _norm_action(name: str) -> str:
@@ -329,11 +370,13 @@ class CeaxController:
         self.cfg = cfg
         self.log = logger
         self.hyps = CompetingHypotheses()
+        self._ledger_step = 0
         self.skills = SkillLibrary(min_confidence=0.55)
         self.model = CounterfactualWorldModel()
         self.planner = CounterfactualPlanner()
         self.transfer = RuleTransfer(min_confidence=0.55)
         self.targets: Dict[Tuple, ClickTarget] = {}
+        self.targets_discarded: Dict[Tuple, ClickTarget] = {}   # 治理退役（审计留档）
         self._grid_i = 0
         self._last_click: Optional[Tuple[int, int]] = None
         self._last_key: Optional[Tuple] = None
@@ -389,6 +432,9 @@ class CeaxController:
         self._pull_hits = 0
         self._pull_mode = False
         self._pull_eligible = False
+        self._heat_on = _heat_enabled()
+        self._heat_props: Dict[str, List[Tuple[int, int, float, int]]] = {}
+        self._heat_failed = False
         self.metrics = {
             "experiments": 0,
             "exploits": 0,
@@ -400,6 +446,8 @@ class CeaxController:
             "nav_steps": 0,
             "align_hits": 0,
             "pull_hits": 0,
+            "heat_trials": 0,
+            "heat_hits": 0,
         }
 
     def set_field_gradient(self, gradient: Optional[np.ndarray]) -> None:
@@ -431,6 +479,7 @@ class CeaxController:
     def reset_game(self, *, import_skills: Optional[dict] = None):
         exported = self.skills.export()
         self.hyps = CompetingHypotheses()
+        self._ledger_step = 0
         self.model = CounterfactualWorldModel()
         self.targets.clear()
         self._grid_i = 0
@@ -484,6 +533,8 @@ class CeaxController:
         self._pull_hits = 0
         self._pull_mode = False
         self._pull_eligible = False
+        self._heat_props.clear()
+        self._heat_failed = False
         # Keep _kb_failed_pc across NOT_PLAYED/lose resets so decoy roles stay banned
         if import_skills:
             self.skills.clear()
@@ -502,6 +553,8 @@ class CeaxController:
             "nav_steps": 0,
             "align_hits": 0,
             "pull_hits": 0,
+            "heat_trials": 0,
+            "heat_hits": 0,
         }
 
     def _colors_from_skills(self) -> List[int]:
@@ -600,6 +653,7 @@ class CeaxController:
         self._pull_mode = False
         self._pull_eligible = False
         self.hyps = CompetingHypotheses()
+        self._ledger_step = 0
 
     def observe_outcome(
         self,
@@ -772,6 +826,15 @@ class CeaxController:
             if progressed:
                 t.progress_hits += 1
 
+        if (
+            self._last_action == "ACTION6"
+            and self._last_key
+            and self._last_key[0] == "heat"
+        ):
+            self.metrics["heat_trials"] = int(self.metrics.get("heat_trials", 0)) + 1
+            if effect >= 0.08:
+                self.metrics["heat_hits"] = int(self.metrics.get("heat_hits", 0)) + 1
+
         if self._last_action == "ACTION6":
             self._clicks_since_submit += 1
             if effect >= 0.08:
@@ -827,6 +890,39 @@ class CeaxController:
         if self._prev_hash and self._last_action:
             self.model.observe(self._prev_hash, self._last_action, grid_hash or "changed")
         self._prev_hash = grid_hash or self._prev_hash
+
+        # ---- verdict ledger（CEAX_LEDGER=1 启用；追加写，绝不影响决策与返回）----
+        self._ledger_step += 1
+        if os.environ.get("CEAX_LEDGER", "") == "1":
+            try:
+                xy = self._last_click if self._last_action == "ACTION6" else None
+                rec = VerdictRecord(
+                    game_id=str(getattr(self, "game_id", "") or ""),
+                    block=self._ledger_step // 100,
+                    step=self._ledger_step,
+                    action=self._last_action or "",
+                    x=int(xy[0]) if xy else None,
+                    y=int(xy[1]) if xy else None,
+                    delta_pixels=int(delta_pixels),
+                    progressed=bool(progressed),
+                    levels=int(levels),
+                    effect=round(float(effect), 4),
+                    grid_hash=grid_hash or "",
+                )
+                base = os.environ.get("CEAX_LEDGER_PATH", "F:/pro2/state/ceax_ledger")
+                append_record(Path(base) / f"{rec.game_id or 'unknown'}.jsonl",
+                              rec.to_dict())
+            except Exception:
+                pass
+            if (os.environ.get("CEAX_PRUNE", "") == "1"
+                    and self._ledger_step % 100 == 0):
+                try:
+                    retired = prune_click_targets(self.targets, self.targets_discarded)
+                    if retired:
+                        self.metrics["targets_pruned"] = (
+                            int(self.metrics.get("targets_pruned", 0)) + len(retired))
+                except Exception:
+                    pass
 
     def choose(
         self,
@@ -1009,13 +1105,17 @@ class CeaxController:
                     self._commit("ACTION6", t.xy, t.key)
                     return "ACTION6", t.xy, f"ceax_postL:{t.xy}"
 
+            if self._heat_on:
+                self._ingest_heat_targets(grid, grid_hash)
+
             nxt = self._next_experiment_click()
             if nxt is not None:
                 xy, key = nxt
                 self._exploit_streak = 0
                 self.metrics["experiments"] += 1
                 self._commit("ACTION6", xy, key)
-                return "ACTION6", xy, f"ceax_experiment:{xy}"
+                src = "heat" if key and key[0] == "heat" else "experiment"
+                return "ACTION6", xy, f"ceax_{src}:{xy}"
 
             # Suppress blind grid while rediscovering after level-up
             if self._post_level_budget <= 0:
@@ -1344,6 +1444,63 @@ class CeaxController:
         ]
         cands.sort(key=lambda t: (self._target_score(t), -t.area), reverse=True)
         return cands[:n]
+
+    def _ingest_heat_targets(self, grid, grid_hash: str) -> int:
+        """Union the learned heatmap into the untried click targets.
+
+        Additive on purpose: the model never overrides an evidence-driven click
+        (exploit / post-level preferred colour run first), it only ranks among the
+        candidates that are still untried — and only for cells the hand extractor
+        did not report, so it buys recall the object list cannot reach. Prior is
+        `ARC_CLICK_HEAT_W * p`, which lands inside the hand prior range (untried
+        score = 0.45 + prior, chrome ends ~1.05), so a confident cell competes with
+        chrome ends and an unsure one sits at the untried floor.
+
+        Proposals are cached per grid_hash: the grid only changes on an effective
+        action, so one frame costs one forward pass. Any failure (missing module,
+        no weights, wrong shape) disables the branch for the rest of the game and
+        leaves the hand path exactly as it was.
+        """
+        if grid is None or self._heat_failed:
+            return 0
+        topk = max(1, int(_heat_env("ARC_CLICK_HEAT_K", 4.0)))
+        weight = _heat_env("ARC_CLICK_HEAT_W", 0.60)
+        key = grid_hash or ""
+        props = self._heat_props.get(key) if key else None
+        if props is None:
+            try:
+                from arc_adaptor.click_heatmap import propose_clicks
+
+                raw = propose_clicks(grid, topk=topk) or []
+                props = []
+                for p in raw:
+                    d = p.get("data") or {}
+                    props.append((int(d["x"]), int(d["y"]),
+                                  float(p.get("score", 0.0)),
+                                  int(p.get("color", -1)),
+                                  int(p.get("cells", 1))))
+            except Exception:
+                self._heat_failed = True
+                return 0
+            if key:
+                self._heat_props[key] = props
+        if not props:
+            return 0
+
+        known = {t.xy for t in self.targets.values()}
+        added = 0
+        for x, y, score, color, cells in props[:topk]:
+            if not (0 <= x < 64 and 0 <= y < 64):
+                continue
+            hk = ("heat", x, y)
+            if hk in self.targets or hk in self._blocked_keys or (x, y) in known:
+                continue
+            t = ClickTarget(xy=(x, y), key=hk, area=max(1, cells), color=color)
+            t.effect_sum = weight * max(0.0, min(1.0, score))
+            self.targets[hk] = t
+            known.add((x, y))
+            added += 1
+        return added
 
     def _next_experiment_click(self) -> Optional[Tuple[Tuple[int, int], Tuple]]:
         untried = [
