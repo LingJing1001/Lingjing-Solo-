@@ -37,3 +37,5 @@ data/aop/labels.jsonl
 models/aop/checkpoints/
 *.pt
 *.pth
+integrations/ARC-AGI-3-Kaggle-Starter/environment_files/**/__pycache__/
+integrations/ARC-AGI-3-Kaggle-Starter/environment_files/**/*.pyc
