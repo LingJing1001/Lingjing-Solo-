@@ -26,3 +26,14 @@ Thumbs.db
 # Demo output
 demo_output*.png
 demo_output*.jpg
+
+# Local environments and generated runtime data
+.venv/
+artifacts/
+state/
+data/aop/raw/
+data/aop/normalized.recording.jsonl
+data/aop/labels.jsonl
+models/aop/checkpoints/
+*.pt
+*.pth
