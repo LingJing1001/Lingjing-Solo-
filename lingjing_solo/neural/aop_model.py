@@ -30,6 +30,8 @@ class AOPModel(nn.Module):
 
 
 def save_checkpoint(path: str | Path, model: AOPModel, config: dict[str, Any]) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"format": "aop.model.v1", "config": {**model.config, **config}, "state_dict": model.state_dict()}
     torch.save(payload, path)
 

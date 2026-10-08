@@ -59,8 +59,20 @@ def validate_rows(rows: Iterable[dict[str, Any]]) -> ValidationReport:
             last_tick.pop(episode, None)
             continue
         actions += 1
-        if legal and action["name"] not in {str(x.get("name")) if isinstance(x, dict) else str(x) for x in legal}:
-            raise RecordingValidationError(f"line {line_no}: requested action is not legal before the step")
+        if legal:
+            legal_ids = {x.get("id") for x in legal if isinstance(x, dict) and "id" in x}
+            legal_names = {str(x.get("name")) for x in legal if isinstance(x, dict) and "name" in x}
+            scalar_legal = {str(x) for x in legal if not isinstance(x, dict)}
+            action_id = action.get("id")
+            is_legal = (
+                (action_id in legal_ids if legal_ids else False)
+                or action["name"] in legal_names
+                or action["name"] in scalar_legal
+                or (action_id is not None and str(action_id) in scalar_legal)
+                or (not legal_ids and not legal_names and not scalar_legal)
+            )
+            if not is_legal:
+                raise RecordingValidationError(f"line {line_no}: requested action is not legal before the step")
         if not any(k in before for k in ("state", "levels_completed", "score", "game_specific")):
             raise RecordingValidationError(f"line {line_no}: no authoritative before-state/progress field")
     if total == 0:

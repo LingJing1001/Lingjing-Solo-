@@ -40,6 +40,17 @@ def normalize(input_path: Path, output_path: Path, episode_id: str | None = None
             data = event.get("data")
             if not isinstance(data, dict):
                 raise ValueError(f"line {line_no}: recorder event data must be an object")
+            # The official remote recorder uses action_input, while the local
+            # AOP recorder emits requested_action. Convert the former without
+            # inferring anything beyond the recorded action id.
+            if "requested_action" not in data:
+                action_input = data.get("action_input")
+                if isinstance(action_input, dict) and isinstance(action_input.get("id"), str):
+                    action_name = action_input["id"]
+                    action_id = None
+                    if action_name.startswith("ACTION") and action_name[6:].isdigit():
+                        action_id = int(action_name[6:])
+                    data = {**data, "requested_action": {"name": action_name, "id": action_id}}
             observation = event.get("observation")
             if isinstance(observation, dict) and data.get("requested_action") is not None:
                 direct.append({"episode_id": episode_id or data.get("episode_id"),

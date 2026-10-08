@@ -1,0 +1,2 @@
+{"authoritative_action": "ACTION1", "episode_id": "remote-ls20-1", "model_version": "aop.model.v1", "prediction": {"action": "ACTION1", "action_effective": 1, "progressed": 0}, "step_id": 1, "used_for_control": false}
+{"authoritative_action": "ACTION1", "episode_id": "remote-ls20-2", "model_version": "aop.model.v1", "prediction": {"action": "ACTION1", "action_effective": 1, "progressed": 0}, "step_id": 1, "used_for_control": false}

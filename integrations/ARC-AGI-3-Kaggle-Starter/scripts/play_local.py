@@ -108,7 +108,14 @@ def main() -> None:
         help="Path to agent .py (default: agent/my_agent.py). "
              "Use agent/baselines/aether_prime.py for baseline compare.",
     )
+    p.add_argument(
+        "--record-dir",
+        default=None,
+        help="Save recorder JSONL files under this directory; enables recording.",
+    )
     args = p.parse_args()
+    if args.record_dir:
+        os.environ["RECORDINGS_DIR"] = str(Path(args.record_dir).resolve())
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -170,7 +177,7 @@ def main() -> None:
             game_id=game_id,
             agent_name=f"MyAgent.local.{game_id}",
             ROOT_URL="http://localhost",
-            record=False,
+            record=bool(args.record_dir),
             arc_env=env,
             tags=["local-dev"],
         )
