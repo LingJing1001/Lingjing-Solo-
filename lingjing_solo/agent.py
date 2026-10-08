@@ -33,7 +33,8 @@ class LingjingSoloAgent:
                  snapshot_store: SnapshotStore | None = None,
                  performance_monitor: PerformanceMonitor | None = None,
                  evolution_controller: EvolutionController | None = None,
-                 sica_monitor: SICAMonitor | None = None):
+                 sica_monitor: SICAMonitor | None = None,
+                 shadow_observer=None):
         self.cfg = cfg or SoloConfig()
         self.log = logger or Logger()
         self.step = 0
@@ -44,6 +45,14 @@ class LingjingSoloAgent:
         self.last_rationale = ""
         self.last_click = None
         self._last_was_click = False
+        # AOP shadow 旁路观测（used_for_control 恒 False，默认 None 零影响）
+        self.shadow_observer = shadow_observer
+        self._episode_id: str | None = None
+        if shadow_observer is not None:
+            from .neural.aop_shadow import build_label_for_step
+            self._build_shadow_label = build_label_for_step
+        else:
+            self._build_shadow_label = None
         self.tabu_store = tabu_store
         self._tabu_writer: WriterCapability | None = None
         if tabu_store is not None:
@@ -105,6 +114,13 @@ class LingjingSoloAgent:
             self.transfer.reset_episode(keep_skills=False, import_cross_game=exported)
         game_id = getattr(env, "game_id", None) or getattr(env, "id", None)
         self.transfer.set_game_id(str(game_id) if game_id else None)
+        # shadow 旁路：新 episode 标识 + 通知 observer 落盘上一 episode 的 pending
+        if self.shadow_observer is not None:
+            import uuid
+            self._episode_id = f"{game_id or 'env'}-{uuid.uuid4().hex[:8]}"
+            self.shadow_observer.on_episode_reset(self._episode_id)
+        else:
+            self._episode_id = None
         self.step = 0
         self._prev_frame = None
         self._last_action = None
@@ -196,6 +212,14 @@ class LingjingSoloAgent:
                 self._last_action,
                 curr.levels_completed,
             )
+            # shadow 旁路：回填上一 tick 的 actual（used_for_control=False，不改动作）
+            if self.shadow_observer is not None and self._episode_id is not None:
+                _prog = curr.levels_completed > self._levels_seen
+                _dpx = len(snap.delta_pixels) if snap.delta_pixels else 0
+                self.shadow_observer.observe_outcome(
+                    self._episode_id, self.step - 1,
+                    {"action_effective": _dpx > 0 or _prog, "progressed": _prog},
+                )
 
         self.field.update(curr, self._prev_frame, self._last_action)
         self._record_tabu_transition(curr)
@@ -353,6 +377,15 @@ class LingjingSoloAgent:
 
         if action is None:
             action = valid[0]
+
+        # shadow 旁路：记录预测（used_for_control=False，绝不改 action）
+        if self.shadow_observer is not None and self._episode_id is not None:
+            _label = self._build_shadow_label(
+                state=curr.state, levels_completed=curr.levels_completed,
+                legal_actions=valid, tick=self.step, step_id=self.step,
+                action=action,
+            )
+            self.shadow_observer.observe_predict(self._episode_id, self.step, _label, action)
 
         return self._commit(action, curr, rationale=rationale, click_xy=click_xy)
 
