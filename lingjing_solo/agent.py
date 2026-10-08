@@ -34,7 +34,8 @@ class LingjingSoloAgent:
                  performance_monitor: PerformanceMonitor | None = None,
                  evolution_controller: EvolutionController | None = None,
                  sica_monitor: SICAMonitor | None = None,
-                 shadow_observer=None):
+                 shadow_observer=None,
+                 aop_controller=None):
         self.cfg = cfg or SoloConfig()
         self.log = logger or Logger()
         self.step = 0
@@ -53,6 +54,9 @@ class LingjingSoloAgent:
             self._build_shadow_label = build_label_for_step
         else:
             self._build_shadow_label = None
+        # AOP 控制接入（高置信可覆盖动作，fail-closed，默认 None 零影响）
+        self.aop_controller = aop_controller
+        self.last_aop_meta: dict | None = None
         self.tabu_store = tabu_store
         self._tabu_writer: WriterCapability | None = None
         if tabu_store is not None:
@@ -377,6 +381,16 @@ class LingjingSoloAgent:
 
         if action is None:
             action = valid[0]
+
+        # AOP 控制接入：高置信预测可覆盖动作（fail-closed，默认 None 零影响）
+        if self.aop_controller is not None:
+            action, self.last_aop_meta = self.aop_controller.advise(
+                action, state=curr.state, levels_completed=curr.levels_completed,
+                legal_actions=valid, tick=self.step, step_id=self.step,
+                episode_id=self._episode_id,
+            )
+            if self.last_aop_meta.get("overrode"):
+                rationale = "aop_control"
 
         # shadow 旁路：记录预测（used_for_control=False，绝不改 action）
         if self.shadow_observer is not None and self._episode_id is not None:
