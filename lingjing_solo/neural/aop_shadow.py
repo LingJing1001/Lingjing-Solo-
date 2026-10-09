@@ -44,6 +44,7 @@ class AOPShadowObserver:
         output_path: str | Path,
         *,
         action_names: Optional[list[str]] = None,
+        max_pending: int = 1000,
     ) -> None:
         self.model, self.config = load_checkpoint(checkpoint_path)
         self.model.eval()
@@ -53,6 +54,7 @@ class AOPShadowObserver:
         self.model_version = str(self.config.get("version", "aop.model.v1"))
         self.output_path = Path(output_path)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.max_pending = max(1, int(max_pending))
 
         self._pending: dict[tuple[str, int], dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -106,8 +108,15 @@ class AOPShadowObserver:
             row["exception"] = repr(exc)
         row["latency_ms"] = (time.perf_counter() - t0) * 1000.0
 
+        overflow_row = None
         with self._lock:
+            # pending 上限：超限则落盘最旧的（actual=null），防长 episode 内存泄漏
+            if len(self._pending) >= self.max_pending:
+                oldest_key = next(iter(self._pending))
+                overflow_row = self._pending.pop(oldest_key)
             self._pending[(episode_id, step_id)] = row
+        if overflow_row is not None:
+            self._write_row(overflow_row)
 
     # ── 实际结果回填 ─────────────────────────────────────────────────────
     def observe_outcome(

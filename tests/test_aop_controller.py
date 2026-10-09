@@ -194,3 +194,57 @@ def test_override_changes_rationale(tmp_path: Path) -> None:
     assert action == "ACTION3"
     assert agent.last_rationale == "aop_control"
     assert agent.last_aop_meta["used_for_control"] is True
+
+
+def test_batch_forward_scores_all_actions(tmp_path: Path) -> None:
+    """批量前向：confidence 是所有合法动作中最高 progressed 概率，应在 (0,1)。"""
+    ckpt = tmp_path / "aop.pt"
+    _make_checkpoint(ckpt)
+    ctrl = AOPController(ckpt, threshold=0.99)
+    action, meta = ctrl.advise(
+        "ACTION1", state="NOT_FINISHED", levels_completed=0,
+        legal_actions=ACTIONS, tick=0, step_id=0,
+    )
+    assert 0.0 < meta["confidence"] < 1.0
+    assert action == "ACTION1"  # threshold=0.99 不覆盖
+
+
+def test_batch_forward_consistent_across_legal_sets(tmp_path: Path) -> None:
+    """不同合法动作集都应正常打分不崩溃。"""
+    ckpt = tmp_path / "aop.pt"
+    _make_checkpoint(ckpt)
+    ctrl = AOPController(ckpt, threshold=0.5)
+    for legal in [["ACTION1"], ACTIONS, ["ACTION2", "ACTION4"]]:
+        action, meta = ctrl.advise(
+            legal[0], state="NOT_FINISHED", levels_completed=0,
+            legal_actions=legal, tick=0, step_id=0,
+        )
+        assert action in legal
+        assert 0.0 <= meta["confidence"] <= 1.0
+
+
+def test_batch_forward_scores_all_actions(tmp_path: Path) -> None:
+    """批量前向：confidence 是所有合法动作中最高 progressed 概率，应在 (0,1)。"""
+    ckpt = tmp_path / "aop.pt"
+    _make_checkpoint(ckpt)
+    ctrl = AOPController(ckpt, threshold=0.99)
+    action, meta = ctrl.advise(
+        "ACTION1", state="NOT_FINISHED", levels_completed=0,
+        legal_actions=ACTIONS, tick=0, step_id=0,
+    )
+    assert 0.0 < meta["confidence"] < 1.0
+    assert action == "ACTION1"  # threshold=0.99 不覆盖
+
+
+def test_batch_forward_consistent_across_legal_sets(tmp_path: Path) -> None:
+    """不同合法动作集都应正常打分不崩溃。"""
+    ckpt = tmp_path / "aop.pt"
+    _make_checkpoint(ckpt)
+    ctrl = AOPController(ckpt, threshold=0.5)
+    for legal in [["ACTION1"], ACTIONS, ["ACTION2", "ACTION4"]]:
+        action, meta = ctrl.advise(
+            legal[0], state="NOT_FINISHED", levels_completed=0,
+            legal_actions=legal, tick=0, step_id=0,
+        )
+        assert action in legal
+        assert 0.0 <= meta["confidence"] <= 1.0

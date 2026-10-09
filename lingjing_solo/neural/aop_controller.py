@@ -105,7 +105,8 @@ class AOPController:
 
         t0 = time.perf_counter()
         try:
-            scored: list[tuple[float, str]] = []
+            # 批量编码所有合法动作 → 一次前向（n 次 → 1 次）
+            features_list = []
             for act in legal_actions:
                 label = {
                     "observation_before": {
@@ -117,17 +118,16 @@ class AOPController:
                     "step_id": step_id,
                     "state_delta": {},
                 }
-                features = encode_label(
+                features_list.append(encode_label(
                     label,
                     action_id=self.action_to_id.get(act, 0),
                     action_count=self.action_count,
-                ).unsqueeze(0)
-                with torch.no_grad():
-                    out = self.model(features)
-                prog_prob = float(_softmax(out["progressed"])[0, 1].item())
-                scored.append((prog_prob, act))
-
-            scored.sort(reverse=True)
+                ))
+            batch = torch.stack(features_list)  # (n, 16)
+            with torch.no_grad():
+                out = self.model(batch)
+            prog_probs = _softmax(out["progressed"])[:, 1].tolist()
+            scored = sorted(zip(prog_probs, legal_actions), reverse=True)
             best_prob, best_action = scored[0]
             meta["confidence"] = best_prob
 

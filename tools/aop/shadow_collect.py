@@ -69,6 +69,9 @@ def main() -> int:
     # 现有 ExplorationEngine 缺 rha_penalty（advisor.py:112 会调），打最小 stub
     if not hasattr(agent.explorer, "rha_penalty"):
         agent.explorer.rha_penalty = lambda a: 0.0
+    # 现有 ExplorationEngine 缺 rha_penalty（advisor.py:112 会调），打最小 stub
+    if not hasattr(agent.explorer, "rha_penalty"):
+        agent.explorer.rha_penalty = lambda a: 0.0
 
     for tick in range(args.steps):
         frame = stub_frame(tick)

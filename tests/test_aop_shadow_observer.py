@@ -99,3 +99,35 @@ def test_episode_reset_flushes_previous(tmp_path: Path) -> None:
     rows = [json.loads(l) for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
     assert len(rows) == 1
     assert rows[0]["episode_id"] == "ep1"
+
+
+def test_pending_cap_flushes_oldest(tmp_path: Path) -> None:
+    ckpt = tmp_path / "aop.pt"
+    _make_checkpoint(ckpt)
+    out = tmp_path / "shadow.jsonl"
+    obs = AOPShadowObserver(ckpt, out, max_pending=3)
+    obs.on_episode_reset("ep")
+    for s in range(5):
+        obs.observe_predict("ep", s, _label(s), "ACTION1")
+    obs.flush()
+    rows = [json.loads(l) for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(rows) == 5  # 全部最终落盘
+    # overflow 时落盘的最旧行 actual=null（未回填）
+    assert any(r["step_id"] == 0 and r["actual"] is None for r in rows)
+    assert obs.pending_count() == 0  # flush 后清空
+
+
+def test_pending_cap_flushes_oldest(tmp_path: Path) -> None:
+    ckpt = tmp_path / "aop.pt"
+    _make_checkpoint(ckpt)
+    out = tmp_path / "shadow.jsonl"
+    obs = AOPShadowObserver(ckpt, out, max_pending=3)
+    obs.on_episode_reset("ep")
+    for s in range(5):
+        obs.observe_predict("ep", s, _label(s), "ACTION1")
+    obs.flush()
+    rows = [json.loads(l) for l in out.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(rows) == 5  # 全部最终落盘
+    # overflow 时落盘的最旧行 actual=null（未回填）
+    assert any(r["step_id"] == 0 and r["actual"] is None for r in rows)
+    assert obs.pending_count() == 0  # flush 后清空
