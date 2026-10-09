@@ -81,8 +81,18 @@ class EngineSolver:
         # 3. 找 maps 数据
         maps_data = self._find_maps(mod)
         if maps_data is None:
-            print(f"  [engine_solver] {short_id}: 无 maps 数据", flush=True)
-            return None
+            print(f"  [engine_solver] {short_id}: 无 maps 数据，试通用 BFS...", flush=True)
+            # 通用 BFS（角色移动类）
+            try:
+                result = self._generic_bfs_solve(game_id, mod)
+                if result:
+                    print(f"  [engine_solver] {short_id}: 通用 BFS 搜出 {len(result)} 步", flush=True)
+                else:
+                    print(f"  [engine_solver] {short_id}: 通用 BFS 搜不出", flush=True)
+                return result
+            except Exception as e:
+                print(f"  [engine_solver] {short_id}: 通用 BFS 异常: {e}", flush=True)
+                return None
         print(f"  [engine_solver] {short_id}: 找到 maps, {len(maps_data)} 关", flush=True)
 
         # 4. 找缩放因子（优先用模块的 crxpafuiwp，否则遍历找）
@@ -104,6 +114,86 @@ class EngineSolver:
             print(f"  [engine_solver] {short_id}: BFS 异常: {e}", flush=True)
             traceback.print_exc()
             return None
+
+    def _generic_bfs_solve(self, game_id, mod, time_limit=30):
+        """通用 BFS（角色移动类）: generic_snapshot + perform_action + 状态去重。"""
+        import hashlib, time
+        from collections import deque
+        try:
+            from lingjing_solo.planning.search.generic_shadow import generic_snapshot, generic_restore
+            from arcengine import GameAction, ActionInput
+            import arc_agi
+            from arc_agi import OperationMode
+        except ImportError:
+            return None
+
+        arc = arc_agi.Arcade(operation_mode=OperationMode.OFFLINE, environments_dir=self.environments_dir)
+        env = arc.make(game_id.split("-")[0])
+        if env is None:
+            return None
+        env.reset()
+        game = env._game
+        if hasattr(game, "on_set_level"):
+            game.on_set_level(game.current_level)
+
+        # 只搜移动动作（跳过 ACTION6 点击，需要坐标）
+        all_actions = getattr(game, "available_actions", [1, 2, 3, 4])
+        move_actions = [a for a in all_actions if a != 6]
+
+        def state_key(g):
+            parts = [str(g.level_index), str(getattr(g, "_state", ""))]
+            for k, v in sorted(g.__dict__.items()):
+                if isinstance(v, (int, float, str, bool)):
+                    parts.append(f"{k}={v}")
+            return hashlib.md5("|".join(parts).encode("utf-8", "replace")).hexdigest()[:10]
+
+        t0 = time.time()
+        all_solution = []
+
+        for lvl in range(len(getattr(game, "_levels", []) or [])):
+            initial = generic_snapshot(game)
+            seen = {state_key(game)}
+            queue = deque([(initial, [])])
+            sol = None
+
+            while queue and time.time() - t0 < time_limit:
+                snap, path = queue.popleft()
+                for aid in move_actions:
+                    generic_restore(game, snap)
+                    try:
+                        action = getattr(GameAction, f"ACTION{aid}", None) or GameAction.from_id(aid)
+                        game.perform_action(ActionInput(id=action, data={}, reasoning=None), raw=True)
+                    except Exception:
+                        continue
+                    if game.level_index > lvl or str(getattr(game, "_state", "")).upper() == "WIN":
+                        sol = path + [aid]
+                        break
+                    key = state_key(game)
+                    if key not in seen:
+                        seen.add(key)
+                        if len(path) < 50:
+                            queue.append((generic_snapshot(game), path + [aid]))
+                if sol:
+                    break
+
+            if sol is None:
+                return None
+
+            for aid in sol:
+                action = getattr(GameAction, f"ACTION{aid}", None) or GameAction.from_id(aid)
+                game.perform_action(ActionInput(id=action, data={}, reasoning=None), raw=True)
+                all_solution.append((f"ACTION{aid}", 0, 0))
+
+            if str(getattr(game, "_state", "")).upper() == "WIN":
+                break
+
+            if lvl + 1 < len(getattr(game, "_levels", []) or []):
+                if hasattr(game, "set_level"):
+                    game.set_level(lvl + 1)
+                if hasattr(game, "on_set_level"):
+                    game.on_set_level(game.current_level)
+
+        return all_solution if all_solution else None
 
     def _find_maps(self, mod) -> Optional[dict]:
         """在模块里找 maps 数据（dict of dict of list of list）。"""
