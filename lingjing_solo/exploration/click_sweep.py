@@ -10,6 +10,11 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
+try:
+    from scipy import ndimage as _ndi
+except ImportError:
+    _ndi = None
+
 from ..core import SoloConfig, Logger, clamp
 
 
@@ -21,9 +26,10 @@ def _guess_bg(grid: np.ndarray) -> int:
 class BubbleClickPlanner:
     """在 BubbleWall 清晰区内生成并消费点击队列。"""
 
-    def __init__(self, cfg: SoloConfig, logger: Logger = None):
+    def __init__(self, cfg: SoloConfig, logger: Logger = None, click_proposer=None):
         self.cfg = cfg
         self.log = logger or Logger()
+        self.click_proposer = click_proposer  # 神经网络点击提议器（可选）
         self.tried: set[Tuple[int, int]] = set()
         self.queue: deque[Tuple[int, int]] = deque()
         self.stall = 0                  # 连续无像素变化步数
@@ -33,6 +39,8 @@ class BubbleClickPlanner:
         self.consec_clicks = 0          # 连续点击次数（防点死）
         self.click_noops = 0            # 点击无效果计数
         self.cooldown = 0               # 点击冷却（步）
+        self.last_click_effective = False  # 上次点击是否产生 grid 变化（贪心重复用）
+        self.greedy_repeats = 0           # 当前贪心重复次数（限制防角色移出边界）
 
     def reset(self):
         self.tried.clear()
@@ -44,10 +52,13 @@ class BubbleClickPlanner:
         self.consec_clicks = 0
         self.click_noops = 0
         self.cooldown = 0
+        self.last_click_effective = False
 
     def observe_effect(self, delta_pixels: int, progressed: bool, was_click: bool):
         if self.cooldown > 0:
             self.cooldown -= 1
+        if was_click:
+            self.last_click_effective = delta_pixels > 0 or progressed
         if delta_pixels <= 0 and not progressed:
             self.stall += 1
             if was_click:
@@ -68,11 +79,16 @@ class BubbleClickPlanner:
             return False
         if not (self.cfg.enable_mouse or self.cfg.enable_click_sweep):
             return False
-        if self.cooldown > 0:
-            return False
-        # 连续点击上限：避免 vc33 类关卡被点穿 GAME_OVER
-        if self.consec_clicks >= self.cfg.click_max_consecutive:
-            return False
+        # click-only 关（valid 只有 ACTION6）：必须持续点击，不受 consec/cooldown
+        # 节流——这些限制是为混合动作关（避免点穿 GAME_OVER）设计的，click-only
+        # 关不点就无事可做，且 consec_clicks 永不重置（note_simple_action 不会被调）
+        _click_only = all(a == "ACTION6" for a in valid_actions)
+        if not _click_only:
+            if self.cooldown > 0:
+                return False
+            # 连续点击上限：避免 vc33 类关卡被点穿 GAME_OVER
+            if self.consec_clicks >= self.cfg.click_max_consecutive:
+                return False
         if force and self.stall >= 2:
             return True
         # 仅当卡住时点击；有队列不等于每步都点
@@ -101,6 +117,19 @@ class BubbleClickPlanner:
             pt = (xi, yi)
             if pt not in self.tried:
                 candidates.append(pt)
+
+        # 0) 按钮像素聚类（sys_click 类 sprite）：直接点按钮中心，远胜随机探索
+        #    val=8 (button_L) / val=14 (button_R) 连通区域 → 中心，面积 3~30 过滤噪点
+        if _ndi is not None:
+            for btn_val in (8, 14):
+                mask = (g == btn_val)
+                if mask.sum() < 3:
+                    continue
+                labeled, n = _ndi.label(mask)
+                for i in range(1, n + 1):
+                    ys, xs = np.where(labeled == i)
+                    if 8 <= len(xs) <= 30:
+                        add(int(np.mean(xs)), int(np.mean(ys)))
 
         # 1) 感知对象质心（泡壁内高精度结果）
         for obj in objects or []:
@@ -162,6 +191,30 @@ class BubbleClickPlanner:
         self.log.log("Click", f"refill q={len(self.queue)} tried={len(self.tried)}")
 
     def next_xy(self, grid=None, bubble=None, objects=None, phi=None) -> Optional[Tuple[int, int]]:
+        # 神经网络点击提议器优先（有训练好的模型就用，没有回退启发式）
+        if self.click_proposer is not None and grid is not None:
+            try:
+                proposals = self.click_proposer(np.asarray(grid), topk=4, threshold=0.5)
+                for p in proposals:
+                    pt = (int(p["data"]["x"]), int(p["data"]["y"]))
+                    if pt not in self.tried:
+                        self.tried.add(pt)
+                        self.last_xy = pt
+                        self.clicks_done += 1
+                        self.consec_clicks += 1
+                        return pt
+            except Exception:
+                pass  # 模型失败 → 回退启发式
+
+        # 贪心：上次点击有效（grid 变化）→ 重复同一位置（hill climbing）
+        # 持续点有效按钮直到撞墙（按钮失效）或重复上限，然后换下一个按钮
+        # 重复上限防角色单方向移出边界 → GAME_OVER
+        if self.last_click_effective and self.last_xy is not None and self.greedy_repeats < 0:  # 禁用贪心，纯轮询
+            self.greedy_repeats += 1
+            self.clicks_done += 1
+            self.consec_clicks += 1
+            return self.last_xy
+        self.greedy_repeats = 0  # 换按钮，重置贪心计数
         if len(self.queue) < 3:
             self.refill(grid, bubble=bubble, objects=objects, phi=phi)
         while self.queue:

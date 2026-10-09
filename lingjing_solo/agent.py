@@ -36,7 +36,8 @@ class LingjingSoloAgent:
                  sica_monitor: SICAMonitor | None = None,
                  shadow_observer=None,
                  aop_controller=None,
-                 engine_solver=None):
+                 engine_solver=None,
+                 click_proposer=None):
         self.cfg = cfg or SoloConfig()
         self.log = logger or Logger()
         self.step = 0
@@ -60,6 +61,8 @@ class LingjingSoloAgent:
         self.last_aop_meta: dict | None = None
         # 引擎解法器（有引擎代码就读，没有回退原流程）
         self.engine_solver = engine_solver
+        # 神经网络点击提议器（有训练好的模型就用，没有回退启发式）
+        self._click_proposer = click_proposer
         self.tabu_store = tabu_store
         self._tabu_writer: WriterCapability | None = None
         if tabu_store is not None:
@@ -81,7 +84,7 @@ class LingjingSoloAgent:
         self.encoder = PerceptionEncoder(self.cfg, self.log)
         self.field = WorldModelField(self.cfg, self.log)
         self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
-        self.clicks = BubbleClickPlanner(self.cfg, self.log)
+        self.clicks = BubbleClickPlanner(self.cfg, self.log, click_proposer=self._click_proposer)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor = StrategicAdvisor(self.cfg, self.log)
         self.reflector = ReflectionTrigger(self.cfg, self.field, self.log)
@@ -104,7 +107,7 @@ class LingjingSoloAgent:
             exported = self.transfer.on_episode_end(self.field)
         self.field.reset()
         self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
-        self.clicks = BubbleClickPlanner(self.cfg, self.log)
+        self.clicks = BubbleClickPlanner(self.cfg, self.log, click_proposer=self._click_proposer)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor.calls_used = 0
         self.reflector = ReflectionTrigger(self.cfg, self.field, self.log)
