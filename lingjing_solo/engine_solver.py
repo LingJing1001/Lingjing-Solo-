@@ -28,12 +28,8 @@ class EngineSolver:
         self._solutions: dict[str, Optional[list]] = {}
         self._step_idx: dict[str, int] = {}
 
-    def get_action(self, game_id: str) -> Optional[str]:
-        """返回当前步的动作（如 'ACTION6'）或 None（回退原流程）。
-
-        解法是按钮点击序列。每步返回 ACTION6（点击）。
-        实际坐标由 agent 的 BubbleClickPlanner 或调用方决定。
-        """
+    def get_action(self, game_id: str) -> Optional[tuple]:
+        """返回 (action_name, x, y) 或 None（回退原流程）。"""
         if game_id not in self._solutions:
             self._solutions[game_id] = self._solve(game_id)
             self._step_idx[game_id] = 0
@@ -44,7 +40,7 @@ class EngineSolver:
 
         idx = self._step_idx.get(game_id, 0)
         if idx >= len(sol):
-            return None  # 解法用完
+            return None
 
         self._step_idx[game_id] = idx + 1
         return sol[idx]
@@ -66,6 +62,7 @@ class EngineSolver:
         game_dir = Path(self.environments_dir) / short_id
         py_files = list(game_dir.rglob("*.py"))
         if not py_files:
+            print(f"  [engine_solver] {short_id}: 无 .py 文件", flush=True)
             return None
 
         # 2. import 游戏模块
@@ -73,24 +70,39 @@ class EngineSolver:
             mod_name = f"_engine_{short_id}"
             spec = importlib.util.spec_from_file_location(mod_name, py_files[0])
             if spec is None or spec.loader is None:
+                print(f"  [engine_solver] {short_id}: spec 加载失败", flush=True)
                 return None
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
-        except Exception:
+        except Exception as e:
+            print(f"  [engine_solver] {short_id}: import 失败: {e}", flush=True)
             return None
 
-        # 3. 找 maps 数据（dict of dict of list of list）
+        # 3. 找 maps 数据
         maps_data = self._find_maps(mod)
         if maps_data is None:
-            return None  # 不是"按钮循环"类游戏
+            print(f"  [engine_solver] {short_id}: 无 maps 数据", flush=True)
+            return None
+        print(f"  [engine_solver] {short_id}: 找到 maps, {len(maps_data)} 关", flush=True)
 
-        # 4. 找缩放因子
-        scale = self._find_scale(mod)
+        # 4. 找缩放因子（优先用模块的 crxpafuiwp，否则遍历找）
+        scale = getattr(mod, "crxpafuiwp", None)
+        if not scale:
+            scale = self._find_scale(mod)
+        print(f"  [engine_solver] scale={scale}", flush=True)
 
         # 5. 创建游戏实例，提取按钮/goal，BFS 搜
         try:
-            return self._bfs_solve(game_id, mod, maps_data, scale)
-        except Exception:
+            result = self._bfs_solve(game_id, mod, maps_data, scale)
+            if result is None:
+                print(f"  [engine_solver] {short_id}: BFS 搜不出", flush=True)
+            else:
+                print(f"  [engine_solver] {short_id}: BFS 搜出 {len(result)} 步", flush=True)
+            return result
+        except Exception as e:
+            import traceback
+            print(f"  [engine_solver] {short_id}: BFS 异常: {e}", flush=True)
+            traceback.print_exc()
             return None
 
     def _find_maps(self, mod) -> Optional[dict]:
@@ -135,34 +147,62 @@ class EngineSolver:
             return None
         env.reset()
         game = env._game
+        # 确保 on_set_level 被调（ucybisahh/afhycvvjg 等关卡状态初始化）
+        if hasattr(game, "on_set_level"):
+            game.on_set_level(game.current_level)
+        # 确保 on_set_level 被调（ucybisahh/afhycvvjg 等关卡状态初始化）
+        if hasattr(game, "on_set_level"):
+            game.on_set_level(game.current_level)
 
-        # 解析 maps（如果是原始格式，需要 qfvvosdkqr 转换）
-        maps = self._normalize_maps(maps_raw, mod)
+        # 解析 maps：直接用 game.uopmnplcnv（已由 qfvvosdkqr 转换）
+        maps = getattr(game, "uopmnplcnv", None)
+        if maps is None:
+            maps = self._normalize_maps(maps_raw, mod)
 
         # 搜每关解法
         all_actions = []
         for lvl in range(len(getattr(game, "_levels", []) or [])):
             sol = self._solve_one_level(game, mod, maps, scale)
             if sol is None:
+                print(f"  [engine_solver] Level {lvl} 搜不出 (name={getattr(game,'ucybisahh','?')})", flush=True)
                 return None  # 某关搜不出 → 整体失败
+            print(f"  [engine_solver] Level {lvl}: {len(sol)} 步", flush=True)
 
-            # 执行解法（手动模拟）
-            for letter, direction in sol:
-                self._click(game, mod, maps, scale, letter, direction)
-                all_actions.append("ACTION6")  # 点击动作
+            # 执行解法（手动模拟）+ 记录按钮屏幕坐标
+            for group in sol:
+                for letter, direction in group:
+                    btn_xy = self._find_button_screen(game, letter, direction)
+                    self._click(game, mod, maps, scale, letter, direction)
+                    all_actions.append(("ACTION6", btn_xy[0], btn_xy[1]))
 
             if str(game._state).upper() == "WIN":
                 break
 
-            # 切换关卡
-            if hasattr(game, "set_level"):
-                game.set_level(lvl + 1)
-            else:
-                game.next_level()
-            if hasattr(game, "on_set_level"):
-                game.on_set_level(game.current_level)
+            # 切换关卡（最后一关后不切换）
+            if lvl + 1 < len(getattr(game, "_levels", []) or []):
+                if hasattr(game, "set_level"):
+                    game.set_level(lvl + 1)
+                else:
+                    game.next_level()
+                if hasattr(game, "on_set_level"):
+                    game.on_set_level(game.current_level)
 
         return all_actions if all_actions else None
+
+    def _find_button_screen(self, game, letter, direction) -> tuple:
+        """找该字母该方向按钮的屏幕坐标。"""
+        target_tag = f"button_{letter}_{'R' if direction else 'L'}"
+        cam = game.camera
+        for s in game.current_level._sprites:
+            if s.tags and s.tags[0] == target_tag:
+                # grid 坐标 → 屏幕坐标（反查 display_to_grid）
+                for x in range(64):
+                    for y in range(64):
+                        r = cam.display_to_grid(x, y)
+                        if r and r[0] == s.x and r[1] == s.y:
+                            return (x, y)
+                return (s.x * 2, s.y * 2 + 14)  # fallback 公式
+        return (32, 32)  # 兜底
 
     def _normalize_maps(self, maps_raw, mod):
         """标准化 maps 格式: {level: {letter: {qcmzcjocmj: {num: (y,x)}, oxbwsencfv: L}}}。"""
@@ -182,6 +222,7 @@ class EngineSolver:
         """搜当前关的解法: goal 位置去重 + 按钮分组 + fast BFS。"""
         level_name = getattr(game, "ucybisahh", None)
         if level_name is None or level_name not in maps:
+            print(f"    [L] level_name={level_name} maps_keys={list(maps.keys())[:3]}", flush=True)
             return None
 
         # 提取按钮（按位置分组）
@@ -193,13 +234,16 @@ class EngineSolver:
                     btn_groups.setdefault((s.x, s.y), []).append((parts[1], parts[2] == "R"))
         btn_list = list(btn_groups.values())
         if not btn_list:
+            print(f"    [L] 无按钮", flush=True)
             return None
 
         # 提取 goal/goal-o 位置 + 目标
         goals, goal_os = self._get_goals(game)
         targets = self._get_targets(game)
         if not goals or not targets:
+            print(f"    [L] 无 goal({len(goals)}) 或无 targets({len(targets[0])+len(targets[1])})", flush=True)
             return None
+        print(f"    [L] btns={len(btn_list)} goals={len(goals)} targets={targets}", flush=True)
 
         init_state = (tuple(sorted(goals)), tuple(sorted(goal_os)))
         target_state = targets

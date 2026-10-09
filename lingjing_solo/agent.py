@@ -177,14 +177,18 @@ class LingjingSoloAgent:
     def choose_action(self, frames, latest_frame, valid_actions=None):
         # 引擎解法器: 有引擎代码 → 读代码搜解法 → 直接返回；没有 → 原流程
         if self.engine_solver is not None:
-            game_id = getattr(self.transfer, "game_id", None) or ""
+            game_id = getattr(self.transfer, "_game_id", None) or getattr(self.transfer, "game_id", None) or ""
             if game_id:
-                action = self.engine_solver.get_action(game_id)
-                if action is not None and (not valid_actions or action in valid_actions):
-                    self.step += 1
-                    self._last_action = action
-                    self.last_rationale = "engine_solver"
-                    return self._emit(action)
+                result = self.engine_solver.get_action(game_id)
+                if result is not None:
+                    action, click_x, click_y = result
+                    if not valid_actions or action in valid_actions:
+                        self.step += 1
+                        self._last_action = action
+                        self.last_rationale = "engine_solver"
+                        self.last_click = (click_x, click_y)
+                        self._last_was_click = (action == "ACTION6")
+                        return self._emit(action)
 
         curr = self._parse_frame(latest_frame)
 
