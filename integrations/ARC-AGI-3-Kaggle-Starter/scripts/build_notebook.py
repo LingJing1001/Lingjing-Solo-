@@ -224,8 +224,8 @@ def build() -> dict:
         }
         \"\"\")
 
-            # Fail loud if wrong agent landed (SmartRouter v1 fingerprint).
-            !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router-v1'), BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
+            # Fail loud if wrong agent landed (SmartRouter fingerprint).
+            !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router'), BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
 
             # Point the framework at the gateway sidecar.
             with open('/kaggle/working/ARC-AGI-3-Agents/.env', 'w') as f:
