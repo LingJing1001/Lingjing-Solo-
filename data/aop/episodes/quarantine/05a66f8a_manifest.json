@@ -1,0 +1,18 @@
+{
+  "game_id": "vc33",
+  "environment_id": "vc33",
+  "scorecard_id": "05a66f8a-3d9f-4e27-a5a1-cd72e26d54d3",
+  "label": "success",
+  "rep": 0,
+  "levels_completed": 5,
+  "state": "NOT_FINISHED",
+  "actions": 100,
+  "win": false,
+  "tags": [
+    "vc33",
+    "success",
+    "rep0",
+    "phase-a"
+  ],
+  "collected_at": 1791592512.843544
+}

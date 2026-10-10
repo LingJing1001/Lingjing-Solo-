@@ -1,0 +1,19 @@
+﻿=== Level 0 ===  StepCounter=13
+  -> Level 1
+=== Level 1 ===  StepCounter=60
+  -> Level 2
+=== Level 2 ===  StepCounter=80
+  -> Level 3
+=== Level 3 ===  StepCounter=150
+  -> Level 4
+=== Level 4 ===  StepCounter=80
+  -> Level 5
+=== Level 5 ===  StepCounter=80
+  -> Level 6
+=== Level 6 ===  StepCounter=80
+  -> Level 7
+=== Level 7 ===  StepCounter=80
+    game.set_level(lvl + 1)
+  File "D:\Program\Python\Lib\site-packages\arcengine\base_game.py", line 158, in set_level
+    raise IndexError(f"Level index {index} out of range [0, {len(self._levels)})")
+IndexError: Level index 8 out of range [0, 8)

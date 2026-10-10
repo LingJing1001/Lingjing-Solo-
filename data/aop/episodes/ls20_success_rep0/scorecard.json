@@ -1,0 +1,91 @@
+{
+  "source_url": null,
+  "tags": [
+    "ls20",
+    "success",
+    "rep0",
+    "phase-a",
+    "agent"
+  ],
+  "opaque": null,
+  "card_id": "100f5fe7-6c6d-47ca-b08d-3e079583f618",
+  "api_key": null,
+  "score": 21.428571428571427,
+  "environments": [
+    {
+      "id": "ls20-9607627b",
+      "runs": [
+        {
+          "id": null,
+          "guid": "80a589c4-2426-453f-b622-8a3fd2ef34a3",
+          "score": 21.428571428571427,
+          "levels_completed": 3,
+          "actions": 100,
+          "resets": 0,
+          "state": "NOT_FINISHED",
+          "completed": false,
+          "level_scores": [
+            115.0,
+            115.0,
+            115.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "level_actions": [
+            13,
+            45,
+            39,
+            3,
+            0,
+            0,
+            0
+          ],
+          "level_baseline_actions": [
+            22,
+            123,
+            73,
+            84,
+            96,
+            192,
+            186
+          ],
+          "number_of_levels": null,
+          "number_of_environments": 0,
+          "message": null
+        }
+      ],
+      "score": 21.428571428571427,
+      "actions": 100,
+      "levels_completed": 3,
+      "completed": false,
+      "level_count": 7,
+      "resets": 0
+    }
+  ],
+  "tags_scores": [
+    {
+      "id": "keyboard",
+      "guid": null,
+      "score": 21.428571428571427,
+      "levels_completed": 3,
+      "actions": 100,
+      "resets": null,
+      "state": null,
+      "completed": null,
+      "level_scores": null,
+      "level_actions": null,
+      "level_baseline_actions": null,
+      "number_of_levels": 7,
+      "number_of_environments": 1,
+      "message": null
+    }
+  ],
+  "competition_mode": false,
+  "total_environments_completed": 0,
+  "total_environments": 1,
+  "total_levels_completed": 3,
+  "total_levels": 7,
+  "total_actions": 100
+}

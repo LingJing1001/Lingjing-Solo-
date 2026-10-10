@@ -1,0 +1,33 @@
+{
+  "episodes": 10,
+  "total_labels": 1486,
+  "train_rows": 1152,
+  "valid_rows": 334,
+  "action_names": [
+    "ACTION1",
+    "ACTION2",
+    "ACTION3",
+    "ACTION4",
+    "ACTION5",
+    "ACTION6"
+  ],
+  "final_val_loss": 2.9680252075195312,
+  "accuracy_effective": 1.0,
+  "accuracy_progressed": 0.9580838084220886,
+  "accuracy_action": 0.01796407252550125,
+  "macro_f1": 0.011764705882352941,
+  "invalid_action_rate": 1.0,
+  "confidence_distribution": {
+    "mean": 0.28183873006683624,
+    "median": 0.2849794626235962,
+    "p25": 0.28144263476133347,
+    "p50": 0.2849794626235962,
+    "p75": 0.2857056185603142,
+    "p90": 0.2863226532936096,
+    "min": 0.24568219482898712,
+    "max": 0.3552296757698059,
+    "std": 0.010346225441734956
+  },
+  "invalid_count": 334,
+  "total_valid_samples": 334
+}

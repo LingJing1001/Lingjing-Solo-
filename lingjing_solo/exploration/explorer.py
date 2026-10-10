@@ -139,6 +139,21 @@ class ExplorationEngine:
         else:
             self._failure_counts.pop(action, None)
 
+    def rha_penalty(self, action: str) -> float:
+        """Repeated Hard Action 惩罚：对反复无进展的动作降权。
+
+        惩罚 = base * fⁿ / (1 + fⁿ)，f=失败次数，n=power。
+        失败 0 → 0；失败多 → 趋近 base（默认 0.8）。
+        供 StrategicAdvisor.suggest_hypotheses 对候选动作排序时调用。
+        """
+        failures = self._failure_counts.get(action, 0)
+        if failures == 0:
+            return 0.0
+        base = getattr(self.cfg, "rha_penalty_base", 0.8)
+        power = getattr(self.cfg, "rha_penalty_power", 2.0)
+        fp = failures ** power
+        return float(base) * fp / (1.0 + fp)
+
     def on_environment_feedback(self, state: str, levels: int, previous_levels: int) -> None:
         """关卡变化后清理上一关的失败计数。"""
         if levels > previous_levels:

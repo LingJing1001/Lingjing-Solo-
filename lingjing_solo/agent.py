@@ -33,7 +33,11 @@ class LingjingSoloAgent:
                  snapshot_store: SnapshotStore | None = None,
                  performance_monitor: PerformanceMonitor | None = None,
                  evolution_controller: EvolutionController | None = None,
-                 sica_monitor: SICAMonitor | None = None):
+                 sica_monitor: SICAMonitor | None = None,
+                 shadow_observer=None,
+                 aop_controller=None,
+                 engine_solver=None,
+                 click_proposer=None):
         self.cfg = cfg or SoloConfig()
         self.log = logger or Logger()
         self.step = 0
@@ -44,6 +48,21 @@ class LingjingSoloAgent:
         self.last_rationale = ""
         self.last_click = None
         self._last_was_click = False
+        # AOP shadow 旁路观测（used_for_control 恒 False，默认 None 零影响）
+        self.shadow_observer = shadow_observer
+        self._episode_id: str | None = None
+        if shadow_observer is not None:
+            from .neural.aop_shadow import build_label_for_step
+            self._build_shadow_label = build_label_for_step
+        else:
+            self._build_shadow_label = None
+        # AOP 控制接入（高置信可覆盖动作，fail-closed，默认 None 零影响）
+        self.aop_controller = aop_controller
+        self.last_aop_meta: dict | None = None
+        # 引擎解法器（有引擎代码就读，没有回退原流程）
+        self.engine_solver = engine_solver
+        # 神经网络点击提议器（有训练好的模型就用，没有回退启发式）
+        self._click_proposer = click_proposer
         self.tabu_store = tabu_store
         self._tabu_writer: WriterCapability | None = None
         if tabu_store is not None:
@@ -65,7 +84,7 @@ class LingjingSoloAgent:
         self.encoder = PerceptionEncoder(self.cfg, self.log)
         self.field = WorldModelField(self.cfg, self.log)
         self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
-        self.clicks = BubbleClickPlanner(self.cfg, self.log)
+        self.clicks = BubbleClickPlanner(self.cfg, self.log, click_proposer=self._click_proposer)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor = StrategicAdvisor(self.cfg, self.log)
         self.reflector = ReflectionTrigger(self.cfg, self.field, self.log)
@@ -88,7 +107,7 @@ class LingjingSoloAgent:
             exported = self.transfer.on_episode_end(self.field)
         self.field.reset()
         self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
-        self.clicks = BubbleClickPlanner(self.cfg, self.log)
+        self.clicks = BubbleClickPlanner(self.cfg, self.log, click_proposer=self._click_proposer)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor.calls_used = 0
         self.reflector = ReflectionTrigger(self.cfg, self.field, self.log)
@@ -105,6 +124,16 @@ class LingjingSoloAgent:
             self.transfer.reset_episode(keep_skills=False, import_cross_game=exported)
         game_id = getattr(env, "game_id", None) or getattr(env, "id", None)
         self.transfer.set_game_id(str(game_id) if game_id else None)
+        # 引擎解法器: 新 episode 重置步数
+        if self.engine_solver is not None and game_id:
+            self.engine_solver.reset_episode(str(game_id).split("-")[0])
+        # shadow 旁路：新 episode 标识 + 通知 observer 落盘上一 episode 的 pending
+        if self.shadow_observer is not None:
+            import uuid
+            self._episode_id = f"{game_id or 'env'}-{uuid.uuid4().hex[:8]}"
+            self.shadow_observer.on_episode_reset(self._episode_id)
+        else:
+            self._episode_id = None
         self.step = 0
         self._prev_frame = None
         self._last_action = None
@@ -146,6 +175,21 @@ class LingjingSoloAgent:
         return self.reflector.should_give_up(self.advisor)
 
     def choose_action(self, frames, latest_frame, valid_actions=None):
+        # 引擎解法器: 有引擎代码 → 读代码搜解法 → 直接返回；没有 → 原流程
+        if self.engine_solver is not None:
+            game_id = getattr(self.transfer, "_game_id", None) or getattr(self.transfer, "game_id", None) or ""
+            if game_id:
+                result = self.engine_solver.get_action(game_id)
+                if result is not None:
+                    action, click_x, click_y = result
+                    if not valid_actions or action in valid_actions:
+                        self.step += 1
+                        self._last_action = action
+                        self.last_rationale = "engine_solver"
+                        self.last_click = (click_x, click_y)
+                        self._last_was_click = (action == "ACTION6")
+                        return self._emit(action)
+
         curr = self._parse_frame(latest_frame)
 
         if curr is None:
@@ -154,7 +198,10 @@ class LingjingSoloAgent:
             self.field.inject_source_term("RESET", rationale="reset")
             return self._emit("RESET")
 
-        if self._advisor_blocked() and self.field.noop_streak >= 8:
+        # click-only 关（valid 只有 ACTION6）不走符号 give_up：否则 early return 跳过
+        # click 探索流程，且返回的 allowed_actions[0] 常为非法动作 → 死锁
+        _click_only = bool(valid_actions) and all(a == "ACTION6" for a in valid_actions)
+        if self._advisor_blocked() and self.field.noop_streak >= 8 and not _click_only:
             # 封闭模式：符号猜想耗尽且长期无进展 → 提前结束本局
             self.last_rationale = "symbolic_give_up"
             return self._emit(self.cfg.allowed_actions[0])
@@ -196,6 +243,14 @@ class LingjingSoloAgent:
                 self._last_action,
                 curr.levels_completed,
             )
+            # shadow 旁路：回填上一 tick 的 actual（used_for_control=False，不改动作）
+            if self.shadow_observer is not None and self._episode_id is not None:
+                _prog = curr.levels_completed > self._levels_seen
+                _dpx = len(snap.delta_pixels) if snap.delta_pixels else 0
+                self.shadow_observer.observe_outcome(
+                    self._episode_id, self.step - 1,
+                    {"action_effective": _dpx > 0 or _prog, "progressed": _prog},
+                )
 
         self.field.update(curr, self._prev_frame, self._last_action)
         self._record_tabu_transition(curr)
@@ -353,6 +408,44 @@ class LingjingSoloAgent:
 
         if action is None:
             action = valid[0]
+
+        # AOP 控制接入：高置信预测可覆盖动作（fail-closed，默认 None 零影响）
+        if self.aop_controller is not None:
+            action, self.last_aop_meta = self.aop_controller.advise(
+                action, state=curr.state, levels_completed=curr.levels_completed,
+                legal_actions=valid, tick=self.step, step_id=self.step,
+                episode_id=self._episode_id,
+            )
+            if self.last_aop_meta.get("overrode"):
+                rationale = "aop_control"
+
+        # shadow 旁路：记录预测（used_for_control=False，绝不改 action）
+        if self.shadow_observer is not None and self._episode_id is not None:
+            _label = self._build_shadow_label(
+                state=curr.state, levels_completed=curr.levels_completed,
+                legal_actions=valid, tick=self.step, step_id=self.step,
+                action=action,
+            )
+            self.shadow_observer.observe_predict(self._episode_id, self.step, _label, action)
+
+        # ACTION6 但无新坐标（search/fallback 路径返回）→ 取新点击坐标，
+        # 否则 _commit 复用 last_xy 导致同一坐标反复点击 → StepCounter 超限 GAME_OVER
+        if action == "ACTION6" and click_xy is None:
+            click_xy = self.clicks.next_xy(
+                curr.grid,
+                bubble=self.field.bubble or snap.bubble,
+                objects=snap.objects,
+                phi=self.field.phi or snap.phi,
+            )
+            # 队列耗尽（next_xy 返回 None）→ 清 tried 重新探索，避免复用旧坐标死锁
+            if click_xy is None:
+                self.clicks.tried.clear()
+                click_xy = self.clicks.next_xy(
+                    curr.grid,
+                    bubble=self.field.bubble or snap.bubble,
+                    objects=snap.objects,
+                    phi=self.field.phi or snap.phi,
+                )
 
         return self._commit(action, curr, rationale=rationale, click_xy=click_xy)
 

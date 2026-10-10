@@ -19,8 +19,13 @@ def _grid(frame) -> np.ndarray | None:
         return None
     if isinstance(raw, np.ndarray):
         return raw
-    layer = raw[-1] if raw and isinstance(raw[0][0], list) else raw
-    return np.array(layer, dtype=np.int8)
+    # FrameDataRaw.frame 是 list of 2D arrays（多层动画帧）→ 取最后一层
+    if raw and hasattr(raw[0], "ndim") and raw[0].ndim == 2:
+        return np.array(raw[-1], dtype=np.int8)
+    # 嵌套 list → 取最后一层
+    if raw and isinstance(raw[0], list) and raw[0] and isinstance(raw[0][0], list):
+        return np.array(raw[-1], dtype=np.int8)
+    return np.array(raw, dtype=np.int8)
 
 
 def _bg_color(grid: np.ndarray) -> int:

@@ -1,0 +1,18 @@
+{
+  "game_id": "re86",
+  "environment_id": "re86",
+  "scorecard_id": "71c6da7c-937e-447b-9782-32e5bda90957",
+  "label": "fail",
+  "rep": 0,
+  "levels_completed": 0,
+  "state": "GAME_OVER",
+  "actions": 100,
+  "win": false,
+  "tags": [
+    "re86",
+    "fail",
+    "rep0",
+    "phase-a"
+  ],
+  "collected_at": 1791592613.7761345
+}
