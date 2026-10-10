@@ -53,6 +53,7 @@ class Agent(ABC):
         self.card_id = card_id
         self.game_id = game_id
         self.guid = ""
+        self._last_requested_action: GameAction | None = None
         self.agent_name = agent_name
         self.tags = tags or []
         self.frames = [FrameData(levels_completed=0)]
@@ -128,7 +129,13 @@ class Agent(ABC):
         if frame.guid:
             self.guid = frame.guid
         if hasattr(self, "recorder") and not self.is_playback:
-            self.recorder.record(json.loads(frame.model_dump_json()))
+            payload = json.loads(frame.model_dump_json())
+            if self._last_requested_action is not None:
+                payload["requested_action"] = {
+                    "name": self._last_requested_action.name,
+                    "id": self._last_requested_action.value,
+                }
+            self.recorder.record(payload)
 
     def do_action_request(self, action: GameAction) -> FrameData:
         data = action.action_data.model_dump()
@@ -158,6 +165,7 @@ class Agent(ABC):
 
     def take_action(self, action: GameAction) -> Optional[FrameData]:
         """Submits the specific action and gets the next frame."""
+        self._last_requested_action = action
         frame_data = self.do_action_request(action)
         try:
             frame = FrameData.model_validate(frame_data)

@@ -15,6 +15,7 @@ You don't normally need to call this directly — `make submit` runs it for you.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 from pathlib import Path
@@ -63,30 +64,81 @@ def markdown_cell(source: str) -> dict:
 
 
 def _collect_lingjing_files() -> list[tuple[str, str]]:
-    """Return [(relative_posix_path, source_text), ...] under lingjing_solo/.
+    """Return the static import closure needed by the Kaggle SmartRouter.
 
-    Includes ``*.py`` and ScriptBank JSON under ``planning/data/*.json`` so
-    Kaggle notebooks ship offline level scripts (ls20 / ar25 / …).
+    Shipping every local module made the notebook exceed Kaggle's 1 MiB
+    kernel-source limit and unnecessarily included tests/benchmarks. The
+    roots below are the imports used by ``agent/my_agent.py``; relative and
+    absolute ``lingjing_solo`` imports are followed transitively.
     """
     if not LINGJING_SRC.is_dir():
         raise SystemExit(
             f"Could not find {LINGJING_SRC}. "
             "Copy/vendoring lingjing_solo into the starter root is required."
         )
-    out: list[tuple[str, str]] = []
+    module_paths: dict[str, Path] = {"lingjing_solo": LINGJING_SRC / "__init__.py"}
+    for path in LINGJING_SRC.rglob("*.py"):
+        rel = path.relative_to(LINGJING_SRC)
+        parts = list(rel.with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts.pop()
+        module_paths["lingjing_solo." + ".".join(parts)] = path
+
+    def resolve_relative(current: str, name: str, level: int) -> str:
+        current_path = module_paths[current]
+        package = current if current_path.name == "__init__.py" else current.rsplit(".", 1)[0]
+        base = package.split(".")[: -(level - 1)] if level > 1 else package.split(".")
+        return ".".join(base + (name.split(".") if name else []))
+
+    roots = {
+        "lingjing_solo",
+        "lingjing_solo.core",
+        "lingjing_solo.perception",
+        "lingjing_solo.transfer.ceax_controller",
+        "lingjing_solo.arc_transition",
+    }
+    queue = list(roots)
     seen: set[str] = set()
-    for path in sorted(LINGJING_SRC.rglob("*.py")):
-        rel = path.relative_to(LINGJING_SRC).as_posix()
-        seen.add(rel)
-        out.append((rel, path.read_text(encoding="utf-8")))
-    data_dir = LINGJING_SRC / "planning" / "data"
-    if data_dir.is_dir():
-        for path in sorted(data_dir.glob("*.json")):
-            rel = path.relative_to(LINGJING_SRC).as_posix()
-            if rel in seen:
+    while queue:
+        module = queue.pop()
+        if module in seen:
+            continue
+        path = module_paths.get(module)
+        if path is None or not path.is_file():
+            continue
+        seen.add(module)
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                targets = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                target = (
+                    resolve_relative(module, node.module or "", node.level)
+                    if node.level
+                    else (node.module or "")
+                )
+                targets = [target]
+                if node.module is None and node.level:
+                    targets.extend(f"{target}.{alias.name}" for alias in node.names)
+            else:
                 continue
-            seen.add(rel)
-            out.append((rel, path.read_text(encoding="utf-8")))
+            queue.extend(
+                candidate
+                for candidate in targets
+                if candidate == "lingjing_solo" or candidate.startswith("lingjing_solo.")
+            )
+
+    package_shims = {
+        "__init__.py": '"""Kaggle SmartRouter minimal package surface."""\n__version__ = "0.5.0"\n',
+        "transfer/__init__.py": '"""Kaggle SmartRouter transfer surface."""\nfrom .ceax_controller import CeaxController\n__all__ = ["CeaxController"]\n',
+        "v14/__init__.py": '"""Kaggle SmartRouter V14 transition surface."""\nfrom .arc_transition import V14ArcTransition, TransitionDiagnostics\n__all__ = ["V14ArcTransition", "TransitionDiagnostics"]\n',
+    }
+    out: list[tuple[str, str]] = []
+    for module in sorted(seen | {"lingjing_solo"}):
+        path = module_paths[module]
+        rel = path.relative_to(LINGJING_SRC).as_posix()
+        source = package_shims.get(rel, path.read_text(encoding="utf-8-sig"))
+        out.append((rel, source))
     if not any(r.endswith(".py") for r, _ in out):
         raise SystemExit(f"No .py files found under {LINGJING_SRC}")
     return out
@@ -172,8 +224,8 @@ def build() -> dict:
         }
         \"\"\")
 
-            # Fail loud if wrong agent landed (SmartRouter v1 fingerprint).
-            !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router-v1'), BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
+            # Fail loud if wrong agent landed (SmartRouter fingerprint).
+            !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router'), BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
 
             # Point the framework at the gateway sidecar.
             with open('/kaggle/working/ARC-AGI-3-Agents/.env', 'w') as f:

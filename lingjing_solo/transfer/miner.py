@@ -184,5 +184,3 @@ def load_solution_plans() -> List[Tuple[str, str, Dict[int, List[Dict[str, Optio
             per_level = {int(k): plan_steps("kbd", v) for k, v in d["plans"].items()}
         out.append((full, gid, per_level))
     return out
-
-

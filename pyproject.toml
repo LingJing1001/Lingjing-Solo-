@@ -16,6 +16,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+v14 = [
+  "scipy>=1.11,<2",
+]
 cnn = [
   "torch>=2.2",
 ]
@@ -23,6 +26,7 @@ dev = [
   "pytest>=8",
   "pytest-timeout>=2.3",
   "ruff>=0.8",
+  "scipy>=1.11,<2",
 ]
 
 [tool.hatch.build.targets.wheel]

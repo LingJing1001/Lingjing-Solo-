@@ -393,6 +393,8 @@ class CeaxController:
         self._alt_i = 0
         self._preferred_colors: List[int] = []
         self._recent_actions: deque = deque(maxlen=12)
+        self._field_gradient: Optional[np.ndarray] = None
+        self._field_gradient_weight: float = 0.18
         self._action_effects: Dict[str, List[float]] = defaultdict(list)
         self._combo_phase = 0
         self._arrange_mode = False
@@ -447,6 +449,32 @@ class CeaxController:
             "heat_trials": 0,
             "heat_hits": 0,
         }
+
+    def set_field_gradient(self, gradient: Optional[np.ndarray]) -> None:
+        """Install a normalized V14.2 gradient map for candidate scoring."""
+        if gradient is None:
+            self._field_gradient = None
+            return
+        arr = np.asarray(gradient, dtype=np.float64)
+        if arr.ndim != 2 or arr.size == 0 or not np.isfinite(arr).all():
+            self._field_gradient = None
+            return
+        peak = float(np.max(np.abs(arr)))
+        self._field_gradient = arr / peak if peak > 1e-12 else np.zeros_like(arr)
+
+    def _gradient_score(self, xy: Optional[Tuple[int, int]]) -> float:
+        if self._field_gradient is None or xy is None:
+            return 0.0
+        x, y = int(xy[0]), int(xy[1])
+        h, w = self._field_gradient.shape
+        if not (0 <= x < 64 and 0 <= y < 64):
+            return 0.0
+        ix = min(h - 1, max(0, int(round(x * (h - 1) / 63.0))))
+        iy = min(w - 1, max(0, int(round(y * (w - 1) / 63.0))))
+        return float(self._field_gradient[ix, iy])
+
+    def _target_score(self, target: ClickTarget) -> float:
+        return float(target.score + self._field_gradient_weight * self._gradient_score(target.xy))
 
     def reset_game(self, *, import_skills: Optional[dict] = None):
         exported = self.skills.export()
@@ -985,7 +1013,7 @@ class CeaxController:
                 and t.key not in self._blocked_keys
             ]
             if hi:
-                hi.sort(key=lambda t: -t.score)
+                hi.sort(key=lambda t: -self._target_score(t))
                 t = hi[0]
                 self.metrics["experiments"] += 1
                 self._commit("ACTION6", t.xy, t.key)
@@ -1097,7 +1125,7 @@ class CeaxController:
                     self._commit("ACTION6", xy, ("grid", xy[0] // 8, xy[1] // 8))
                     return "ACTION6", xy, f"ceax_grid:{xy}"
 
-            alts = sorted(self.targets.values(), key=lambda t: t.score, reverse=True)[:4]
+            alts = sorted(self.targets.values(), key=self._target_score, reverse=True)[:4]
             if alts:
                 pick = alts[self._step % len(alts)]
                 self.metrics["exploits"] += 1
@@ -1414,7 +1442,7 @@ class CeaxController:
             and t.score >= min_score
             and t.key not in self._blocked_keys
         ]
-        cands.sort(key=lambda t: (t.score, -t.area), reverse=True)
+        cands.sort(key=lambda t: (self._target_score(t), -t.area), reverse=True)
         return cands[:n]
 
     def _ingest_heat_targets(self, grid, grid_hash: str) -> int:
@@ -1482,7 +1510,7 @@ class CeaxController:
 
         def sort_key(t: ClickTarget):
             # Highest prior / score first (chrome ends ingest at ~1.05)
-            return (-t.score, t.trials, t.area)
+            return (-self._target_score(t), t.trials, t.area)
 
         untried.sort(key=sort_key)
         if untried:
