@@ -66,7 +66,79 @@ from lingjing_solo.perception import PerceptionEncoder  # noqa: E402
 from lingjing_solo.transfer.ceax_controller import CeaxController  # noqa: E402
 from lingjing_solo.arc_transition import V14ArcTransition  # noqa: E402
 
-BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition"
+# EngineSolver：有引擎源码的局 → 读源码搜解法（按钮循环类按 maps 建模，其余走通用 BFS）。
+# 任何导入/构造失败都当"不可用"处理（fail-closed），绝不因为解法器而起不来。
+try:
+    from lingjing_solo.engine_solver import EngineSolver as _EngineSolver  # noqa: E402
+
+    _ENGINE_ENV_DIR = str(Path(__file__).resolve().parents[3] / "environment_files")
+except Exception:  # noqa: BLE001 — 解法器缺席不影响跑分
+    _EngineSolver = None  # type: ignore[assignment]
+    _ENGINE_ENV_DIR = ""
+
+_ENGINE: Any = None
+
+# 白名单：只给"卡住"的局开，且挂在各局专用计划之后 → 已 WIN 的局零回归风险。
+_ENGINE_SOLVER_GAMES = frozenset({
+    "bp35", "cn04", "dc22", "g50t", "ka59", "lf52", "lp85", "m0r0",
+    "re86", "s5i5", "sc25", "sk48", "sp80", "tu93", "wa30",
+})
+
+
+def _engine_solver() -> Any:
+    """进程内单例；_ENGINE=False 表示构造过且失败。
+
+    开关（都不设就是本次跑分验证过的默认配置）:
+      ENGINE_SOLVER=off            整个解法器不参与决策，等价接回挂之前的链路
+      ENGINE_SOLVER_GENERIC=1      放开无 maps 局的真引擎逐步 BFS（单局 20~30s，收益 0）
+      ENGINE_SOLVER_CACHE=0        关探测缓存（默认开：源码指纹没变就复用上次结论）
+    """
+    global _ENGINE
+    if _ENGINE is None:
+        if _EngineSolver is None or not _ENGINE_ENV_DIR:
+            return None
+        if str(os.environ.get("ENGINE_SOLVER", "")).strip().lower() in {"off", "0", "none"}:
+            print("[engine_solver] ENGINE_SOLVER=off → 解法器不参与决策", flush=True)
+            _ENGINE = False
+            return None
+        try:
+            _ENGINE = _EngineSolver(environments_dir=_ENGINE_ENV_DIR)
+            print(
+                f"[engine_solver] mode: generic_bfs="
+                f"{'on' if getattr(_ENGINE, 'enable_generic_bfs', False) else 'off'} "
+                f"probe_cache={'on' if getattr(_ENGINE, 'use_cache', False) else 'off'} "
+                f"cache_file={getattr(_ENGINE, 'cache_path', '?')}",
+                flush=True,
+            )
+        except Exception:  # noqa: BLE001
+            _ENGINE = False
+    return _ENGINE or None
+
+
+def _ceax_giveup_after() -> int:
+    """同一关连续零进展多少步之后收手；<=0 就是不收手（原行为）。
+
+    150 的依据：_bench_engine_400.log 里"最终真的换关"的最长平台是 cn04 在 L1 停 75 步，
+    取 2 倍余量。只影响走到 CEAX 未知路径的局（10 个 WIN 局一条该路径日志都没有）。
+    """
+    raw = os.environ.get("CEAX_GIVEUP_STEPS", "150")
+    try:
+        return int(raw.strip())
+    except (AttributeError, ValueError):
+        return 150
+
+
+def _idle_action(valid: list[str]) -> GameAction:
+    """零进展时发的最廉价合法动作：优先非点击键位，没有就点屏幕中心。"""
+    for name in ("ACTION1", "ACTION2", "ACTION3", "ACTION4", "ACTION5"):
+        if name in (valid or []):
+            return _as_game_action(name)
+    action = GameAction.ACTION6
+    action.set_data({"x": 32, "y": 32})
+    return action
+
+
+BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150"
 AGENT_BRAND = "lingjing-smart"
 
 # Evidence-based route table (do not put uncalibrated scripts here).
@@ -579,6 +651,13 @@ class MyAgent(Agent):
         self._ft09_plan: Optional[list[tuple[int, int]]] = None
         self._ft09_idx: int = 0
         self._ft09_level: int = -1
+        self._engine_level: int = -1
+        self._engine_level_steps: int = 0
+        self._engine_off: bool = False
+        # CEAX 止损：同一关连续零进展计步 + 只播一次日志
+        self._stag_level: int = -1
+        self._stag_count: int = 0
+        self._stag_logged: bool = False
         gid = _norm_game(getattr(self, "game_id", ""))
         if gid in ROUTE_INLINE:
             route = f"INLINE:{gid}"
@@ -746,6 +825,16 @@ class MyAgent(Agent):
                 self._bp35_level = -1
                 self._bp35_exhausted = -1
                 self._bp35_arms = {}
+                self._engine_level = -1
+                self._engine_level_steps = 0
+                self._engine_off = False
+                self._stag_level = -1
+                self._stag_count = 0
+                self._stag_logged = False
+                _eng_reset = _engine_solver()
+                _eng_gid = str(getattr(latest_frame, "game_id", "") or "")
+                if _eng_reset is not None and _eng_gid:
+                    _eng_reset.reset_episode(_eng_gid)
             if gid == "bp35":
                 self._bp35_rearm(levels)
             action = GameAction.RESET
@@ -960,9 +1049,75 @@ class MyAgent(Agent):
                 action.reasoning = {"text": f"{BUILD_TAG}:ft09 L{levels}"}
                 return action
 
+        # --- EngineSolver（专用计划之后；只碰白名单卡关局）---
+        full_gid = str(getattr(latest_frame, "game_id", "") or "")
+        if full_gid and gid in _ENGINE_SOLVER_GAMES and not self._engine_off:
+            eng = _engine_solver()
+            if eng is not None:
+                got = eng.get_action(full_gid)
+                if got is None:
+                    # 无引擎解法（或序列已耗尽）→ 本局不再问引擎，回落 CEAX
+                    self._engine_off = True
+                    print(
+                        f"[{BUILD_TAG}] engine-off gid={gid} L={levels} "
+                        f"(无解法或已耗尽)",
+                        flush=True,
+                    )
+                else:
+                    if self._engine_level != levels:
+                        self._engine_level = levels
+                        self._engine_level_steps = 0
+                    self._engine_level_steps += 1
+                    if self._engine_level_steps > 80:
+                        # 失步保护：解法器内部状态与引擎实际分道时及早弃用
+                        # （2026-10-10 已知实例＝叠按钮组被按字母逐个发点击；引擎 step 本身可信）
+                        self._engine_off = True
+                        print(
+                            f"[{BUILD_TAG}] engine-desync gid={gid} L={levels} "
+                            f"80 步未换关，弃用解法器",
+                            flush=True,
+                        )
+                    else:
+                        name, click_x, click_y = got
+                        if name == "ACTION6":
+                            action = GameAction.ACTION6
+                            action.set_data({"x": int(click_x), "y": int(click_y)})
+                        else:
+                            action = _as_game_action(name)
+                        action.reasoning = {
+                            "text": (
+                                f"{BUILD_TAG}:engine L{levels} "
+                                f"#{self._engine_level_steps} {name}"
+                            )
+                        }
+                        return action
+
         # --- CEAX unknown path ---
-        grid = extract_grid(latest_frame)
         valid = _valid_names(latest_frame)
+
+        # 止损计数：本关在这条路径上连续零进展多少步（换关即清零）
+        if levels != self._stag_level:
+            self._stag_level = levels
+            self._stag_count = 0
+        self._stag_count += 1
+        _giveup_after = _ceax_giveup_after()
+        if _giveup_after > 0 and self._stag_count > _giveup_after:
+            # 后面这些步注定不出关（该关已连吃 _giveup_after 次无进展）→
+            # 不再跑 segment / ceax.choose / shadow·IDDFS 搜索，只发最廉价合法动作耗预算。
+            if not self._stag_logged:
+                self._stag_logged = True
+                print(
+                    f"[{BUILD_TAG}] ceax-giveup gid={gid} L={levels} "
+                    f"连续 {self._stag_count} 步零进展（阈值 {_giveup_after}）→ 停止探索，只耗步数",
+                    flush=True,
+                )
+            action = _idle_action(valid)
+            action.reasoning = {
+                "text": f"{BUILD_TAG}:ceax-giveup L{levels} #{self._stag_count}"
+            }
+            return action
+
+        grid = extract_grid(latest_frame)
 
         delta_px = 0
         if self._prev_grid is not None and grid is not None:
