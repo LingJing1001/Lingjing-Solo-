@@ -28,6 +28,11 @@ from itertools import product
 from pathlib import Path
 from typing import Any, Optional
 
+from lingjing_solo.harness.engine_action_adapter import (
+    action_input_for_id,
+    ensure_engine_available,
+)
+
 # 缓存条目结构版本；结构变了旧条目按 miss 处理
 # 2 = 每只按钮组只发一次点击（1 是旧的"按字母逐个发"，解法不可用）
 _CACHE_VERSION = 2
@@ -261,7 +266,7 @@ class EngineSolver:
         from collections import deque
         try:
             from lingjing_solo.planning.search.generic_shadow import generic_snapshot, generic_restore
-            from arcengine import GameAction, ActionInput
+            ensure_engine_available()
             import arc_agi
             from arc_agi import OperationMode
         except ImportError:
@@ -301,8 +306,7 @@ class EngineSolver:
                 for aid in move_actions:
                     generic_restore(game, snap)
                     try:
-                        action = getattr(GameAction, f"ACTION{aid}", None) or GameAction.from_id(aid)
-                        game.perform_action(ActionInput(id=action, data={}, reasoning=None), raw=True)
+                        game.perform_action(action_input_for_id(aid), raw=True)
                     except Exception:
                         continue
                     if game.level_index > lvl or str(getattr(game, "_state", "")).upper() == "WIN":
@@ -320,88 +324,7 @@ class EngineSolver:
                 return None
 
             for aid in sol:
-                action = getattr(GameAction, f"ACTION{aid}", None) or GameAction.from_id(aid)
-                game.perform_action(ActionInput(id=action, data={}, reasoning=None), raw=True)
-                all_solution.append((f"ACTION{aid}", 0, 0))
-
-            if str(getattr(game, "_state", "")).upper() == "WIN":
-                break
-
-            if lvl + 1 < len(getattr(game, "_levels", []) or []):
-                if hasattr(game, "set_level"):
-                    game.set_level(lvl + 1)
-                if hasattr(game, "on_set_level"):
-                    game.on_set_level(game.current_level)
-
-        return all_solution if all_solution else None
-
-    def _generic_bfs_solve(self, game_id, mod, time_limit=30):
-        """通用 BFS（角色移动类）: generic_snapshot + perform_action + 状态去重。"""
-        import hashlib, time
-        from collections import deque
-        try:
-            from lingjing_solo.planning.search.generic_shadow import generic_snapshot, generic_restore
-            from arcengine import GameAction, ActionInput
-            import arc_agi
-            from arc_agi import OperationMode
-        except ImportError:
-            return None
-
-        arc = arc_agi.Arcade(operation_mode=OperationMode.OFFLINE, environments_dir=self.environments_dir)
-        env = arc.make(game_id.split("-")[0])
-        if env is None:
-            return None
-        env.reset()
-        game = env._game
-        if hasattr(game, "on_set_level"):
-            game.on_set_level(game.current_level)
-
-        # 只搜移动动作（跳过 ACTION6 点击，需要坐标）
-        all_actions = getattr(game, "available_actions", [1, 2, 3, 4])
-        move_actions = [a for a in all_actions if a != 6]
-
-        def state_key(g):
-            parts = [str(g.level_index), str(getattr(g, "_state", ""))]
-            for k, v in sorted(g.__dict__.items()):
-                if isinstance(v, (int, float, str, bool)):
-                    parts.append(f"{k}={v}")
-            return hashlib.md5("|".join(parts).encode("utf-8", "replace")).hexdigest()[:10]
-
-        t0 = time.time()
-        all_solution = []
-
-        for lvl in range(len(getattr(game, "_levels", []) or [])):
-            initial = generic_snapshot(game)
-            seen = {state_key(game)}
-            queue = deque([(initial, [])])
-            sol = None
-
-            while queue and time.time() - t0 < time_limit:
-                snap, path = queue.popleft()
-                for aid in move_actions:
-                    generic_restore(game, snap)
-                    try:
-                        action = getattr(GameAction, f"ACTION{aid}", None) or GameAction.from_id(aid)
-                        game.perform_action(ActionInput(id=action, data={}, reasoning=None), raw=True)
-                    except Exception:
-                        continue
-                    if game.level_index > lvl or str(getattr(game, "_state", "")).upper() == "WIN":
-                        sol = path + [aid]
-                        break
-                    key = state_key(game)
-                    if key not in seen:
-                        seen.add(key)
-                        if len(path) < 50:
-                            queue.append((generic_snapshot(game), path + [aid]))
-                if sol:
-                    break
-
-            if sol is None:
-                return None
-
-            for aid in sol:
-                action = getattr(GameAction, f"ACTION{aid}", None) or GameAction.from_id(aid)
-                game.perform_action(ActionInput(id=action, data={}, reasoning=None), raw=True)
+                game.perform_action(action_input_for_id(aid), raw=True)
                 all_solution.append((f"ACTION{aid}", 0, 0))
 
             if str(getattr(game, "_state", "")).upper() == "WIN":
