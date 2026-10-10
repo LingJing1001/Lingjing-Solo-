@@ -1,0 +1,18 @@
+{
+  "game_id": "dc22",
+  "environment_id": "dc22",
+  "scorecard_id": "3967872c-7fc6-4672-bd86-62328e4741ba",
+  "label": "fail",
+  "rep": 0,
+  "levels_completed": 0,
+  "state": "NOT_FINISHED",
+  "actions": 100,
+  "win": false,
+  "tags": [
+    "dc22",
+    "fail",
+    "rep0",
+    "phase-a"
+  ],
+  "collected_at": 1791593035.8827293
+}

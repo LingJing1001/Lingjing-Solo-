@@ -25,6 +25,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "integrations" / "ARC-AGI-3-Kaggle-Starter" / "vendor"))
+sys.path.insert(0, str(ROOT / "integrations" / "ARC-AGI-3-Kaggle-Starter" / "vendor" / "ARC-AGI-3-Agents"))
 sys.path.insert(0, str(ROOT / "integrations" / "ARC-AGI-3-Kaggle-Starter"))
 
 # 默认目标: 5 个游戏 × 2 rep = 10 episode，覆盖成功/失败
@@ -102,74 +103,76 @@ def collect_one_episode(
         result["status"] = "execute_failed"
         result["error"] = str(e)
         print(f"  execute 失败: {e}", flush=True)
-        # 仍尝试 close
-    finally:
-        # 4. close scorecard
-        try:
-            scorecard = arc.close_scorecard(card_id)
-            result["scorecard"] = scorecard.model_dump() if scorecard else None
-            result["status"] = "closed"
-            print(f"  close_scorecard: OK", flush=True)
-        except Exception as e:
-            result["status"] = "close_failed"
-            result["error"] = str(e)
-            print(f"  close 失败: {e}", flush=True)
-            return result
 
-    # 5. GET scorecard 验证
+    # 4. GET scorecard（close 之前，close 后 scorecard 被销毁 → 404）
     try:
         verify = arc.get_scorecard(card_id)
         result["verified"] = verify is not None
-        result["status"] = "verified" if verify else "get_failed"
         print(f"  get_scorecard: {'OK' if verify else 'FAIL'}", flush=True)
     except Exception as e:
         result["status"] = "get_failed"
         result["error"] = str(e)
         print(f"  GET 失败: {e}", flush=True)
 
+    # 5. close scorecard
+    try:
+        scorecard = arc.close_scorecard(card_id)
+        result["scorecard"] = scorecard.model_dump() if scorecard else None
+        result["status"] = "verified" if result.get("verified") else "get_failed"
+        print(f"  close_scorecard: OK", flush=True)
+    except Exception as e:
+        result["status"] = "close_failed"
+        result["error"] = str(e)
+        print(f"  close 失败: {e}", flush=True)
+        return result
+
     # 6. 保存 episode（全流程成功才保存）
     if result["status"] == "verified":
-        ep_dir = out_dir / f"{game_id}_{label}_rep{rep}"
+        ep_dir = out_dir.resolve() / f"{game_id}_{label}_rep{rep}"
         ep_dir.mkdir(parents=True, exist_ok=True)
+        print(f"  保存到: {ep_dir}", flush=True)
 
-        # manifest
-        manifest = {
-            "game_id": game_id,
-            "environment_id": result.get("environment_id"),
-            "scorecard_id": card_id,
-            "label": label,
-            "rep": rep,
-            "levels_completed": result.get("levels_completed", 0),
-            "state": result.get("state"),
-            "actions": result.get("actions", 0),
-            "win": result.get("win", False),
-            "tags": tags,
-            "collected_at": time.time(),
-        }
-        (ep_dir / "manifest.json").write_text(
-            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        try:
+            # manifest
+            manifest = {
+                "game_id": game_id,
+                "environment_id": result.get("environment_id"),
+                "scorecard_id": card_id,
+                "label": label,
+                "rep": rep,
+                "levels_completed": result.get("levels_completed", 0),
+                "state": result.get("state"),
+                "actions": result.get("actions", 0),
+                "win": result.get("win", False),
+                "tags": tags,
+                "collected_at": time.time(),
+            }
+            manifest_path = str(ep_dir / "manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(manifest, indent=2, ensure_ascii=False))
+            print(f"  manifest.json 写入: {manifest_path}", flush=True)
 
-        # scorecard
-        if result.get("scorecard"):
-            (ep_dir / "scorecard.json").write_text(
-                json.dumps(result["scorecard"], indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            # scorecard
+            if result.get("scorecard"):
+                sc_path = str(ep_dir / "scorecard.json")
+                with open(sc_path, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(result["scorecard"], indent=2, ensure_ascii=False, default=str))
+                print(f"  scorecard.json 写入: {sc_path}", flush=True)
 
-        # recording（由 env 的 recorder 自动保存，复制到 episode 目录）
-        recordings_dir = Path(os.environ.get("RECORDINGS_DIR", "recordings"))
-        recording_files = sorted(recordings_dir.glob(f"*{game_id}*collect*"))
-        if recording_files:
-            shutil.copy2(recording_files[-1], ep_dir / "recording.jsonl")
-            print(f"  保存 recording: {recording_files[-1].name}", flush=True)
-        else:
-            # 尝试找最近的 recording
-            recording_files = sorted(recordings_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+            # recording
+            recordings_dir = Path(os.environ.get("RECORDINGS_DIR", "recordings")).resolve()
+            recording_files = sorted(recordings_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
             if recording_files:
                 shutil.copy2(recording_files[0], ep_dir / "recording.jsonl")
-                print(f"  保存 recording: {recording_files[0].name}", flush=True)
+                print(f"  recording.jsonl 复制成功: {recording_files[0].name}", flush=True)
+            else:
+                print(f"  ⚠️ 未找到 recording 文件", flush=True)
 
-        print(f"  ✅ episode 保存: {ep_dir}", flush=True)
+            print(f"  ✅ episode 保存: {ep_dir}", flush=True)
+        except Exception as e:
+            print(f"  ❌ 保存失败: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
     else:
         print(f"  ❌ episode 丢弃（{result['status']}）", flush=True)
 
@@ -236,15 +239,9 @@ def main() -> int:
     )
     print(f"\n汇总保存: {args.out / 'collection_summary.json'}")
 
-    # 用 scorecard_reaper 清理坏数据
-    if verified:
-        print("\n=== 清理坏 scorecard ===")
-        try:
-            from tools.aop.scorecard_reaper import reap
-            reap(args.out, lambda cid: arc.get_scorecard(cid), quarantine=args.out / "quarantine")
-            print("  清理完成")
-        except Exception as e:
-            print(f"  清理失败: {e}")
+    # 注意：不运行 scorecard_reaper！close 后 scorecard 已销毁，GET 必 404，
+    # reaper 会把刚采集的 episode 误删到 quarantine。
+    # reaper 用于清理历史残留的坏 scorecard，不用于刚采集的 episode。
 
     return 0 if len(verified) >= 10 else 1
 

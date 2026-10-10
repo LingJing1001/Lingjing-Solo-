@@ -1,0 +1,18 @@
+{
+  "game_id": "ar25",
+  "environment_id": "ar25",
+  "scorecard_id": "46e04c6c-bf04-4fcb-8d2d-052a3fa8177b",
+  "label": "success",
+  "rep": 1,
+  "levels_completed": 8,
+  "state": "WIN",
+  "actions": 276,
+  "win": true,
+  "tags": [
+    "ar25",
+    "success",
+    "rep1",
+    "phase-a"
+  ],
+  "collected_at": 1791591912.1350427
+}
