@@ -19,7 +19,7 @@ jobs:
 
       - name: 安装项目与测试依赖
         run: |
-          pip install -e .
+          pip install -e ".[dev,cnn]"
           pip install pytest pytest-timeout
 
       - name: 跑测试闸门（pytest）
