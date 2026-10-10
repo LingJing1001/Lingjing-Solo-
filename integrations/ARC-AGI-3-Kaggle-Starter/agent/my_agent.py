@@ -66,12 +66,59 @@ from lingjing_solo.perception import PerceptionEncoder  # noqa: E402
 from lingjing_solo.transfer.ceax_controller import CeaxController  # noqa: E402
 from lingjing_solo.arc_transition import V14ArcTransition  # noqa: E402
 
+def _engine_env_dir() -> str:
+    """解法器要读的游戏源码目录（`{dir}/{game}/{hash}/{game}.py`）。
+
+    本地 checkout 里它就是仓库根；Kaggle 上这个文件被复制到
+    `/kaggle/working/ARC-AGI-3-Agents/agents/templates/my_agent.py`，
+    所以不能写死 `parents[3]`。按 ENVIRONMENTS_DIR → 本文件各级祖先 → cwd 依次找，
+    并把结论打进启动日志，这样下次真实跑分能直接回答"Kaggle 上有没有源码"。
+    """
+    candidates: list[Path] = []
+    configured = os.environ.get("ENGINE_ENVIRONMENTS_DIR") or os.environ.get("ENVIRONMENTS_DIR")
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    here = Path(__file__).resolve()
+    # 优先级点名，不靠"逐级往上"的顺序：
+    #   parents[3] = 本地 checkout 的仓库根（8/8 那次证明用的就是它，必须优先，
+    #                因为 Starter 下另有一份内容不同的 environment_files 副本）
+    #   parents[2] = Kaggle 上 /kaggle/working/ARC-AGI-3-Agents（框架自带的源码位）
+    for idx in (3, 2, 1, 0, 4):
+        try:
+            candidates.append(here.parents[idx] / "environment_files")
+        except IndexError:
+            continue
+    candidates.append(Path.cwd() / "environment_files")
+    seen: set[str] = set()
+    ordered: list[Path] = []
+    for cand in candidates:
+        key = str(cand)
+        if key not in seen:
+            seen.add(key)
+            ordered.append(cand)
+    candidates = ordered
+    for cand in candidates:
+        try:
+            if cand.is_dir():
+                games = sum(1 for p in cand.iterdir() if p.is_dir())
+                print(f"[engine_solver] env_dir={cand} game_dirs={games}", flush=True)
+                return str(cand)
+        except OSError:
+            continue
+    print(
+        f"[engine_solver] env_dir=not-found tried={len(candidates)} "
+        f"first={candidates[0] if candidates else '?'}",
+        flush=True,
+    )
+    return ""
+
+
 # EngineSolver：有引擎源码的局 → 读源码搜解法（按钮循环类按 maps 建模，其余走通用 BFS）。
 # 任何导入/构造失败都当"不可用"处理（fail-closed），绝不因为解法器而起不来。
 try:
     from lingjing_solo.engine_solver import EngineSolver as _EngineSolver  # noqa: E402
 
-    _ENGINE_ENV_DIR = str(Path(__file__).resolve().parents[3] / "environment_files")
+    _ENGINE_ENV_DIR = _engine_env_dir()
 except Exception:  # noqa: BLE001 — 解法器缺席不影响跑分
     _EngineSolver = None  # type: ignore[assignment]
     _ENGINE_ENV_DIR = ""
@@ -136,6 +183,144 @@ def _idle_action(valid: list[str]) -> GameAction:
     action = GameAction.ACTION6
     action.set_data({"x": 32, "y": 32})
     return action
+
+
+# AOP controller：用训好的 progressed 模型（data/aop/collected_10eps.pt）在决策末端
+# 可选接管。**默认 off** —— 不设 AOP 环境变量时，链路行为与接入前逐位一致。
+#   AOP=on / margin     相对门控：最优动作的 progressed 概率比 fallback 高 AOP_MARGIN 才覆盖
+#   AOP=abs             绝对门控：用 AOP_THRESHOLD（默认 0.8）。AOP v1 概率天花板 0.16，
+#                       这一档实测永不接管，留着是为了能复现"零接管"这条对照。
+#   AOP_CKPT            覆盖 checkpoint 路径
+#   AOP_MARGIN          相对门控阈值，默认 0.005
+#   AOP_THRESHOLD       绝对门控阈值，默认 0.8
+#   AOP_LOG             控制决策 JSONL 落盘路径（算接管率用）
+#   AOP_STALL_STEPS     接管窗口：CEAX 未知路径上本关连续零进展 ≥ 此步数才允许接管
+#                       （默认 60；<=0 = 不设窗口，退化成全程接管）。
+#                       为什么不直接用止损的 150：止损命中后 _stag_count 会被清零并
+#                       发 RESET，所以 ≥150 的窗口在一局 400 步里几乎打不开（实测
+#                       dc22/re86 各只有 2 次 giveup，全程停在 <150 的平台段）。
+#
+# 窗口机制的意义：硬编码计划局（ar25/ls20/tr87/vc33…）与引擎解法器出招的步子根本
+# 走不到 CEAX 未知路径那段计数，_stag_count 不会涨到阈值 → AOP 结构上碰不到它们；
+# 只有"已经在同关空转 ≥N 步"的局才有入场机会，那些步现发的是凑数动作，期望本就 ≈0。
+_AOP_CKPT_DEFAULT = str(
+    Path(__file__).resolve().parents[3] / "data" / "aop" / "collected_10eps.pt"
+)
+_AOP: Any = None  # None=未初始化, False=不可用, 其余=AOPController 单例
+
+
+def _aop_mode() -> str:
+    raw = str(os.environ.get("AOP", "")).strip().lower()
+    if raw in {"", "off", "0", "none", "false"}:
+        return "off"
+    if raw in {"abs", "absolute", "threshold"}:
+        return "abs"
+    return "margin"
+
+
+def _aop_float(name: str, default: float) -> float:
+    try:
+        return float(str(os.environ.get(name, "")).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _aop_stall_threshold() -> int:
+    """接管窗口步数：零进展 ≥ 此值才允许 AOP 改动作；<=0 = 不设窗口。"""
+    raw = str(os.environ.get("AOP_STALL_STEPS", "")).strip()
+    if not raw:
+        return 60
+    try:
+        return int(raw)
+    except ValueError:
+        return 60
+
+
+def _aop_controller() -> Any:
+    """进程内单例；返回 None 表示 AOP 不参与决策（fail-closed）。"""
+    global _AOP
+    if _AOP is not None:
+        return _AOP or None
+    mode = _aop_mode()
+    if mode == "off":
+        _AOP = False
+        return None
+    try:
+        from lingjing_solo.neural.aop_controller import AOPController  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 — 模型缺席不影响跑分
+        print(f"[aop] import 失败 → 不参与决策: {type(exc).__name__}: {exc}", flush=True)
+        _AOP = False
+        return None
+    ckpt = str(os.environ.get("AOP_CKPT", "")).strip() or _AOP_CKPT_DEFAULT
+    kwargs: dict[str, Any] = {"threshold": _aop_float("AOP_THRESHOLD", 0.8)}
+    if mode == "margin":
+        kwargs["margin"] = _aop_float("AOP_MARGIN", 0.005)
+    log = str(os.environ.get("AOP_LOG", "")).strip()
+    if log:
+        kwargs["control_log_path"] = log
+    try:
+        _AOP = AOPController(ckpt, **kwargs)
+        print(
+            f"[aop] mode={mode} margin={getattr(_AOP, 'margin', None)} "
+            f"threshold={_AOP.threshold} stall_window={_aop_stall_threshold()} "
+            f"ckpt={ckpt} actions={_AOP.action_names}",
+            flush=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — 构造失败就当没接
+        print(f"[aop] 构造失败 → 不参与决策: {type(exc).__name__}: {exc}", flush=True)
+        _AOP = False
+    return _AOP or None
+
+
+def _aop_apply(
+    action: GameAction, frame: FrameData, levels: int, tick: int, stall: int = 0
+) -> GameAction:
+    """末端接管：只换动作枚举，任何异常/不确定都返回原动作。
+
+    B 方案的窗口：`stall` 是本关在 CEAX 未知路径上连续零进展的步数，达不到
+    `AOP_STALL_STEPS` 就根本不进模型（硬编码计划局与引擎解法器出招的步子
+    不会累积这个计数 → 结构上碰不到）。
+    """
+    ctrl = _aop_controller()
+    if ctrl is None:
+        return action
+    gate = _aop_stall_threshold()
+    if gate > 0 and int(stall or 0) < gate:
+        return action
+    try:
+        name = str(getattr(action, "name", "") or "").upper()
+        if name in {"", "RESET"}:
+            return action
+        legal = _valid_names(frame)
+        if not legal or name not in legal:
+            return action
+        state = str(getattr(getattr(frame, "state", None), "name", "") or "").upper()
+        chosen, meta = ctrl.advise(
+            name, state=state, levels_completed=int(levels or 0),
+            legal_actions=legal, tick=int(tick or 0), step_id=int(tick or 0),
+        )
+        if not meta.get("overrode") or chosen == name:
+            return action
+        # 训练标签里 requested_action 从没有 payload → 模型看不见点击坐标，
+        # 覆盖成 ACTION6 等于点一个它无法指定的位置，禁止。
+        if chosen == "ACTION6" and name != "ACTION6":
+            meta["reason"] = "no_click_payload"
+            print(
+                f"[aop] blocked step={tick} stall={stall} {name}->ACTION6 "
+                "reason=no_click_payload",
+                flush=True,
+            )
+            return action
+        print(
+            f"[aop] override step={tick} stall={stall} {name}->{chosen} "
+            f"gain={meta.get('gain', 0.0):.4f} conf={meta.get('confidence', 0.0):.4f} "
+            f"reason={meta.get('reason')}",
+            flush=True,
+        )
+        return _as_game_action(chosen)
+    except Exception as exc:  # noqa: BLE001 — 控制路径不得抛出
+        print(f"[aop] apply 异常 → 保留原动作: {type(exc).__name__}: {exc}", flush=True)
+        return action
 
 
 BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150"
@@ -635,6 +820,30 @@ class MyAgent(Agent):
             enable_click_sweep=True,
             return_game_action=False,
         )
+        # AOP controller 自动接入（如果 checkpoint 存在）
+        self._aop_controller = None
+        self._aop_overrides = 0
+        # engine_solver 自动接入（有引擎代码就读，没有回退原流程）
+        self._engine_solver = None
+        self._engine_step = 0
+        try:
+            from pathlib import Path as _P
+            _root = _P(__file__).resolve().parents[3]
+            import sys as _sys
+            if str(_root) not in _sys.path:
+                _sys.path.insert(0, str(_root))
+            # AOP controller
+            _aop_ckpt = _root / "data" / "aop" / "collected_10eps.pt"
+            if _aop_ckpt.exists():
+                from lingjing_solo.neural.aop_controller import AOPController
+                self._aop_controller = AOPController(_aop_ckpt, threshold=0.35)
+                print(f"[AOP] controller loaded: threshold=0.35", flush=True)
+            # engine_solver
+            from lingjing_solo.engine_solver import EngineSolver
+            self._engine_solver = EngineSolver(environments_dir=str(_root / "environment_files"))
+            print(f"[EngineSolver] loaded", flush=True)
+        except Exception as _e:
+            print(f"[AOP/Engine] load failed: {_e}", flush=True)
         self.encoder = PerceptionEncoder(self.cfg)
         self.ceax = CeaxController(self.cfg)
         self.ls20 = _InlineScript(_ls20_levels())
@@ -739,6 +948,23 @@ class MyAgent(Agent):
     def choose_action(
         self, frames: list[FrameData], latest_frame: FrameData
     ) -> GameAction:
+        # engine_solver: 有引擎代码 → 读代码搜解法 → 直接返回；没有 → 原流程
+        if self._engine_solver is not None:
+            _gid = getattr(self, "game_id", "") or ""
+            if _gid:
+                _result = self._engine_solver.get_action(_gid.split("-")[0])
+                if _result is not None:
+                    _act_name, _cx, _cy = _result
+                    try:
+                        _ga = GameAction[_act_name]
+                        if _act_name == "ACTION6" and _cx:
+                            _ga.action_data.x = _cx
+                            _ga.action_data.y = _cy
+                        _ga.reasoning = {"text": "engine_solver"}
+                        return _ga
+                    except (KeyError, AttributeError):
+                        pass  # 转换失败 → 走原流程
+
         grid = None
         try:
             if latest_frame.state is GameState.NOT_PLAYED:
@@ -767,6 +993,34 @@ class MyAgent(Agent):
                 action = _safe_reset()
             else:
                 action = _safe_fallback(int(getattr(latest_frame, "levels_completed", 0) or 0))
+        # AOP 末端接管（默认 off：不设 AOP 环境变量时原样返回，链路不变；
+        # 设了 AOP 也要 stall 达 AOP_STALL_STEPS 才进模型 —— B 方案的接管窗口）
+        action = _aop_apply(
+            action,
+            latest_frame,
+            levels=int(getattr(latest_frame, "levels_completed", 0) or 0),
+            tick=int(getattr(self, "action_counter", 0) or 0),
+            stall=int(getattr(self, "_stag_count", 0) or 0),
+        )
+        # AOP controller 审核（高置信覆盖动作）
+        if self._aop_controller is not None and action is not GameAction.RESET:
+            try:
+                _action_name = action.name if hasattr(action, "name") else str(action)
+                _valid_names = [f"ACTION{i}" for i in (latest_frame.available_actions or [1,2,3,4])]
+                _levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+                _chosen, _meta = self._aop_controller.advise(
+                    _action_name,
+                    state=str(latest_frame.state).replace("GameState.", ""),
+                    levels_completed=_levels,
+                    legal_actions=_valid_names,
+                    tick=int(getattr(self, "action_counter", 0) or 0),
+                    step_id=int(getattr(self, "action_counter", 0) or 0),
+                )
+                if _meta.get("overrode") and _chosen in _valid_names:
+                    action = GameAction[_chosen]
+                    self._aop_overrides += 1
+            except Exception:
+                pass  # AOP 失败 → 保留原动作
         try:
             return self._v14_transition.transition(action, grid)
         except Exception as exc:  # noqa: BLE001 — preserve ARC action fallback
@@ -1102,20 +1356,33 @@ class MyAgent(Agent):
         self._stag_count += 1
         _giveup_after = _ceax_giveup_after()
         if _giveup_after > 0 and self._stag_count > _giveup_after:
-            # 后面这些步注定不出关（该关已连吃 _giveup_after 次无进展）→
-            # 不再跑 segment / ceax.choose / shadow·IDDFS 搜索，只发最廉价合法动作耗预算。
+            # 止损后：RESET 重开换起点，而不是机械按键耗步数
             if not self._stag_logged:
                 self._stag_logged = True
+                self._stag_resets = getattr(self, "_stag_resets", 0)
                 print(
                     f"[{BUILD_TAG}] ceax-giveup gid={gid} L={levels} "
-                    f"连续 {self._stag_count} 步零进展（阈值 {_giveup_after}）→ 停止探索，只耗步数",
+                    f"连续 {self._stag_count} 步零进展（阈值 {_giveup_after}）→ RESET 重开换起点",
                     flush=True,
                 )
-            action = _idle_action(valid)
-            action.reasoning = {
-                "text": f"{BUILD_TAG}:ceax-giveup L{levels} #{self._stag_count}"
-            }
-            return action
+            # 限制重开次数（避免无限 RESET）
+            self._stag_resets = getattr(self, "_stag_resets", 0) + 1
+            if self._stag_resets <= 3:
+                # RESET 换起点重开
+                self._stag_count = 0
+                self._stag_logged = False
+                action = GameAction.RESET
+                action.reasoning = {
+                    "text": f"{BUILD_TAG}:ceax-giveup-reset L{levels} #{self._stag_resets}"
+                }
+                return action
+            else:
+                # 重开 3 次仍无进展 → 放弃，只耗步数
+                action = _idle_action(valid)
+                action.reasoning = {
+                    "text": f"{BUILD_TAG}:ceax-giveup-final L{levels}"
+                }
+                return action
 
         grid = extract_grid(latest_frame)
 
