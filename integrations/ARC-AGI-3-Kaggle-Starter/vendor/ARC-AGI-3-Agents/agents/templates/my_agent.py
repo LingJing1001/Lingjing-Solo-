@@ -66,8 +66,159 @@ from lingjing_solo.perception import PerceptionEncoder  # noqa: E402
 from lingjing_solo.transfer.ceax_controller import CeaxController  # noqa: E402
 from lingjing_solo.arc_transition import V14ArcTransition  # noqa: E402
 
-BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition"
+BUILD_TAG = (
+    "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
+    "+r3fix+v14.2-transition+dual-perc-phys"
+)
 AGENT_BRAND = "lingjing-smart"
+
+# Null-effect keyboard actions seen this many times → conservative search prune.
+_NULL_EFFECT_PRUNE_THRESHOLD = 3
+
+
+def _ensure_adaptor_on_path() -> None:
+    """Hang repo ``arc_adaptor`` on sys.path (no machine-local F:/pro2)."""
+    candidates: list[Path] = []
+    env_src = os.environ.get("LINGJING_SRC")
+    if env_src:
+        p = Path(env_src).expanduser().resolve()
+        candidates.append(p.parent if p.name == "lingjing_solo" else p)
+    # agent/my_agent.py → Starter → integrations → repo root
+    if _FILE.parent.name == "agent":
+        starter = _FILE.parents[1]
+        candidates.extend([starter, starter.parent, starter.parents[1]])
+    candidates.extend([Path.cwd(), Path.cwd().parent])
+    seen: set[str] = set()
+    for root in candidates:
+        try:
+            root = root.resolve()
+        except OSError:
+            continue
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        if (root / "arc_adaptor").is_dir():
+            s = str(root)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+        if root.name == "arc_adaptor" and root.is_dir():
+            s = str(root.parent)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+
+
+def _resolve_environments_dir() -> Optional[Path]:
+    """Locate ``environment_files`` for offline Arcade clone search.
+
+    Order: env vars → Starter tree → repo → cwd. Returns None → fail-closed.
+    """
+    for var in ("LINGJING_ENVIRONMENTS_DIR", "LINGJING_ARC_ROOT", "ARC_ENVIRONMENTS_DIR"):
+        raw = (os.environ.get(var) or "").strip()
+        if not raw:
+            continue
+        p = Path(raw).expanduser().resolve()
+        if p.name != "environment_files" and (p / "environment_files").is_dir():
+            p = (p / "environment_files").resolve()
+        if p.is_dir():
+            return p
+    candidates: list[Path] = []
+    if _FILE.parent.name == "agent":
+        starter = _FILE.parents[1]
+        candidates.append(starter / "environment_files")
+        # integrations/ARC-AGI-3/environment_files or repo-level
+        candidates.append(starter.parent / "ARC-AGI-3" / "environment_files")
+        candidates.append(starter.parents[1] / "environment_files")
+    candidates.append(Path.cwd() / "environment_files")
+    for c in candidates:
+        try:
+            if c.is_dir():
+                return c.resolve()
+        except OSError:
+            continue
+    return None
+
+
+def _perc_click_candidates(
+    grid: Optional[np.ndarray],
+    prev_grid: Optional[np.ndarray],
+    encoder: Any,
+    topk: int = 8,
+) -> list[tuple[int, int]]:
+    """Perception-first ACTION6 proposals (object centers + delta samples)."""
+    if grid is None or encoder is None:
+        return []
+    out: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    def _push(x: int, y: int) -> None:
+        h, w = int(grid.shape[0]), int(grid.shape[1])
+        xx, yy = int(x), int(y)
+        if not (0 <= xx < w and 0 <= yy < h):
+            return
+        key = (xx, yy)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(key)
+
+    try:
+        delta = None
+        if prev_grid is not None and prev_grid.shape == grid.shape:
+            delta = encoder.compute_delta(prev_grid, grid)
+        objs = encoder.segment(grid, delta_pixels=delta if delta else None)
+        if not objs and delta is None:
+            objs = encoder.segment(grid, delta_pixels=None)
+        objs_sorted = sorted(objs, key=lambda o: len(getattr(o, "pixels", ()) or ()), reverse=True)
+        for obj in objs_sorted:
+            bb = getattr(obj, "bbox", None)
+            if not bb or len(bb) < 4:
+                continue
+            _push((int(bb[0]) + int(bb[2])) // 2, (int(bb[1]) + int(bb[3])) // 2)
+            if len(out) >= topk:
+                return out[:topk]
+        if delta:
+            step = max(1, len(delta) // topk)
+            for i in range(0, len(delta), step):
+                yi, xi = delta[i]
+                _push(int(xi), int(yi))
+                if len(out) >= topk:
+                    break
+    except Exception:
+        return out[:topk]
+    return out[:topk]
+
+
+def _v14_rank_clicks(
+    clicks: list[tuple[int, int]],
+    gradient: Optional[np.ndarray],
+    keep: int = 8,
+) -> list[tuple[int, int]]:
+    """Keep higher-gradient clicks when a V14 field gradient is available."""
+    if not clicks or gradient is None:
+        return clicks[:keep]
+    try:
+        g = np.asarray(gradient, dtype=np.float64)
+        if g.ndim != 2 or g.size == 0:
+            return clicks[:keep]
+        gh, gw = g.shape
+
+        def _score(xy: tuple[int, int]) -> float:
+            x, y = int(xy[0]), int(xy[1])
+            # display (x,y) → array [row=y, col=x]
+            yy = min(max(y, 0), gh - 1)
+            xx = min(max(x, 0), gw - 1)
+            return float(g[yy, xx])
+
+        ranked = sorted(clicks, key=_score, reverse=True)
+        if len(ranked) <= keep:
+            return ranked
+        # Conservative: drop only the bottom half beyond keep.
+        return ranked[:keep]
+    except Exception:
+        return clicks[:keep]
 
 # Evidence-based route table (do not put uncalibrated scripts here).
 ROUTE_INLINE = frozenset({"ls20", "ar25", "ft09", "tr87"})
@@ -286,10 +437,10 @@ def _r3_action_input(action_id: Any) -> Any:
 
 
 def _r3_click_proposer(game: Any) -> list:
-    """R3 提议器：从 game 提取帧 → click_heatmap 提议 → list[(x,y)]。"""
+    """R3 提议器：感知 top-K 优先，热图补充 → list[(x,y)]。"""
     try:
         import numpy as np
-        from arc_adaptor import click_heatmap as CH
+
         sprites = list(game.current_level._sprites)
         grid = np.zeros((64, 64), dtype=np.int8)
         for s in sprites:
@@ -300,8 +451,25 @@ def _r3_click_proposer(game: Any) -> list:
                         x, y = int(s.x) + c, int(s.y) + r
                         if 0 <= x < 64 and 0 <= y < 64:
                             grid[y, x] = int(px[r][c])
-        props = CH.propose_clicks(grid, topk=6)
-        return [(p["data"]["x"], p["data"]["y"]) for p in props]
+        clicks: list[tuple[int, int]] = []
+        try:
+            enc = PerceptionEncoder(SoloConfig())
+            clicks = _perc_click_candidates(grid, None, enc, topk=6)
+        except Exception:
+            clicks = []
+        if len(clicks) < 6:
+            try:
+                _ensure_adaptor_on_path()
+                from arc_adaptor import click_heatmap as CH
+
+                props = CH.propose_clicks(grid, topk=6)
+                for p in props:
+                    xy = (int(p["data"]["x"]), int(p["data"]["y"]))
+                    if xy not in clicks:
+                        clicks.append(xy)
+            except Exception:
+                pass
+        return clicks[:8]
     except Exception:
         return []
 
@@ -576,9 +744,12 @@ class MyAgent(Agent):
         self._env_ref: Any = getattr(self, "arc_env", None)
         self._v14_transition = V14ArcTransition()
         self._hybrid_click_budget: int = 20
+        self._null_effect_counts: dict[str, int] = {}
+        self._last_action_key: Optional[str] = None
         self._ft09_plan: Optional[list[tuple[int, int]]] = None
         self._ft09_idx: int = 0
         self._ft09_level: int = -1
+        _ensure_adaptor_on_path()
         gid = _norm_game(getattr(self, "game_id", ""))
         if gid in ROUTE_INLINE:
             route = f"INLINE:{gid}"
@@ -715,6 +886,8 @@ class MyAgent(Agent):
                 self.ar25.reset()
                 self._prev_grid = None
                 self._levels_seen = 0
+                self._null_effect_counts = {}
+                self._last_action_key = None
                 self._ft09_plan = None
                 self._ft09_idx = 0
                 self._ft09_level = -1
@@ -967,6 +1140,14 @@ class MyAgent(Agent):
         delta_px = 0
         if self._prev_grid is not None and grid is not None:
             delta_px = int((self._prev_grid != grid).sum())
+        # P2: track high-confidence null-effect keyboard actions for search prune.
+        if self.action_counter > 0 and self._last_action_key:
+            if delta_px == 0 and not (levels > self._levels_seen):
+                self._null_effect_counts[self._last_action_key] = (
+                    int(self._null_effect_counts.get(self._last_action_key, 0)) + 1
+                )
+            else:
+                self._null_effect_counts[self._last_action_key] = 0
         progressed = levels > self._levels_seen
         ghash = hash_grid(grid) if grid is not None else ""
         if self.action_counter > 0:
@@ -1040,7 +1221,11 @@ class MyAgent(Agent):
                                 print(f"[{BUILD_TAG}] shadow_solver path_len={len(found)}", flush=True)
                         # 通用 IDDFS 兜底（无专用求解器或专用求解器失败时）
                         if found is None:
-                            t_limit = 600.0 if self.action_counter == 0 else 500.0
+                            t_default = 600.0 if self.action_counter == 0 else 500.0
+                            try:
+                                t_limit = float(os.environ.get("LINGJING_R3_TLIMIT", t_default))
+                            except Exception:
+                                t_limit = t_default
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s (IDDFS)", flush=True)
                             found = self._iddfs_search(env_ref, t_limit=t_limit)
                         if found:
@@ -1064,19 +1249,29 @@ class MyAgent(Agent):
             item = self._r3_path.pop(0)
             if isinstance(item, tuple):
                 act_num, cx, cy = item
-                action = GameAction.ACTION6
-                action.set_data({"x": int(cx), "y": int(cy)})
-                action.reasoning = {"text": f"{BUILD_TAG}:r3-search-click L{levels}"}
-                return action
-            act_num = item
-            act_name = f"ACTION{act_num}"
-            if act_name in valid:
-                action = _as_game_action(act_name)
-                action.reasoning = {"text": f"{BUILD_TAG}:r3-search L{levels}"}
-                return action
-            self._r3_path.clear()
+                if "ACTION6" not in valid:
+                    self._r3_path.clear()
+                else:
+                    action = GameAction.ACTION6
+                    action.set_data({"x": int(cx), "y": int(cy)})
+                    action.reasoning = {"text": f"{BUILD_TAG}:r3-search-click L{levels}"}
+                    self._last_action_key = f"6:{int(cx)},{int(cy)}"
+                    if grid is not None:
+                        self._prev_grid = grid.copy()
+                    return action
+            else:
+                act_num = item
+                act_name = f"ACTION{act_num}"
+                if act_name in valid and not self._is_pruned_action(act_num):
+                    action = _as_game_action(act_name)
+                    action.reasoning = {"text": f"{BUILD_TAG}:r3-search L{levels}"}
+                    self._last_action_key = str(int(act_num))
+                    if grid is not None:
+                        self._prev_grid = grid.copy()
+                    return action
+                self._r3_path.clear()
 
-        # --- Hybrid click-first: for keyboard_click games, click visible nodes first ---
+        # --- Hybrid click-first: perception top-K, then heatmap, then largest object ---
         has_click = "ACTION6" in valid
         has_keyboard = any(a in valid for a in ("ACTION1", "ACTION2", "ACTION3", "ACTION4"))
         if (
@@ -1084,37 +1279,51 @@ class MyAgent(Agent):
             and has_keyboard
             and self._hybrid_click_budget > 0
             and gid not in ("ls20", "ar25")
-            and objects
+            and (objects or grid is not None)
         ):
-            # v4 热图提议优先，fallback 到最大 object 中心
             cx, cy = None, None
             click_src = "fallback"
-            try:
-                if not hasattr(self, "_ch"):
-                    from arc_adaptor import click_heatmap as _ch_mod
-                    self._ch = _ch_mod
-                _props = self._ch.propose_clicks(grid, topk=1)
-                if _props:
-                    cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
-                    click_src = "v4"
-            except Exception:
-                cx, cy = None, None
+            perc = _perc_click_candidates(
+                grid, self._prev_grid, self.encoder, topk=8
+            )
+            perc = _v14_rank_clicks(perc, self._v14_transition.gradient, keep=8)
+            if perc:
+                cx, cy = int(perc[0][0]), int(perc[0][1])
+                click_src = "perc"
             if cx is None:
+                try:
+                    _ensure_adaptor_on_path()
+                    if not hasattr(self, "_ch"):
+                        from arc_adaptor import click_heatmap as _ch_mod
+                        self._ch = _ch_mod
+                    _props = self._ch.propose_clicks(grid, topk=1)
+                    if _props:
+                        cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
+                        click_src = "v4"
+                except Exception:
+                    cx, cy = None, None
+            if cx is None and objects:
                 best_obj = max(objects, key=lambda o: len(o.pixels))
                 cx = (best_obj.bbox[0] + best_obj.bbox[2]) // 2
                 cy = (best_obj.bbox[1] + best_obj.bbox[3]) // 2
-            self._hybrid_click_budget -= 1
-            action = GameAction.ACTION6
-            action.set_data({"x": int(cx), "y": int(cy)})
-            action.reasoning = {"text": f"{BUILD_TAG}:hybrid-click L{levels} budget={self._hybrid_click_budget}"}
-            if self.action_counter < 5 or self.action_counter % 20 == 0:
-                print(
-                    f"[{BUILD_TAG}] hybrid-click step={self.action_counter} "
-                    f"gid={gid} src={click_src} "
-                    f"click=({cx},{cy}) budget={self._hybrid_click_budget}",
-                    flush=True,
-                )
-            return action
+            if cx is not None and cy is not None:
+                self._hybrid_click_budget -= 1
+                action = GameAction.ACTION6
+                action.set_data({"x": int(cx), "y": int(cy)})
+                action.reasoning = {
+                    "text": f"{BUILD_TAG}:hybrid-click L{levels} budget={self._hybrid_click_budget}"
+                }
+                self._last_action_key = f"6:{int(cx)},{int(cy)}"
+                if grid is not None:
+                    self._prev_grid = grid.copy()
+                if self.action_counter < 5 or self.action_counter % 20 == 0:
+                    print(
+                        f"[{BUILD_TAG}] hybrid-click step={self.action_counter} "
+                        f"gid={gid} src={click_src} "
+                        f"click=({cx},{cy}) budget={self._hybrid_click_budget}",
+                        flush=True,
+                    )
+                return action
 
         act_name, xy, why = self.ceax.choose(
             valid_actions=valid or ["ACTION1"],
@@ -1132,6 +1341,14 @@ class MyAgent(Agent):
         if grid is not None:
             self._prev_grid = grid.copy()
 
+        if action.is_complex():
+            data = getattr(action, "data", None) or {}
+            self._last_action_key = f"6:{int(data.get('x', 32))},{int(data.get('y', 32))}"
+        else:
+            an = str(getattr(action, "name", "ACTION1") or "ACTION1")
+            digits = "".join(ch for ch in an if ch.isdigit())
+            self._last_action_key = digits or "1"
+
         action.reasoning = {"text": f"{BUILD_TAG}:{why} L{levels}"}
         if self.action_counter < 3 or self.action_counter % 25 == 0 or progressed:
             snap = self.ceax.snapshot()
@@ -1141,6 +1358,42 @@ class MyAgent(Agent):
                 flush=True,
             )
         return action
+
+    def _is_pruned_action(self, act_num: Any) -> bool:
+        """True if live play saw this keyboard action as null-effect often enough."""
+        try:
+            key = str(int(act_num))
+        except Exception:
+            return False
+        return int(self._null_effect_counts.get(key, 0)) >= _NULL_EFFECT_PRUNE_THRESHOLD
+
+    def _filter_search_acts(
+        self,
+        kbd_acts: list,
+        click_acts: list,
+        frame_arr: Optional[np.ndarray] = None,
+    ) -> list:
+        """Merge keyboard + click candidates with perception/V14/null-effect prune."""
+        kbd = [a for a in kbd_acts if not self._is_pruned_action(a)]
+        clicks = list(click_acts)
+        if frame_arr is not None:
+            perc = _perc_click_candidates(
+                np.asarray(frame_arr), None, self.encoder, topk=8
+            )
+            perc = _v14_rank_clicks(perc, self._v14_transition.gradient, keep=8)
+            merged: list = []
+            seen: set = set()
+            for x, y in perc:
+                item = (6, int(x), int(y))
+                if item not in seen:
+                    seen.add(item)
+                    merged.append(item)
+            for item in clicks:
+                if item not in seen:
+                    seen.add(item)
+                    merged.append(item)
+            clicks = merged[:16]
+        return kbd + clicks
 
     # Calibrated 2026-09-22 against ft09-0d8bbf25 (6 levels, display coords).
     _FT09_HARDCODED: dict[int, list[tuple[int, int]]] = {
@@ -1210,15 +1463,20 @@ class MyAgent(Agent):
         去重键 = (关卡号, 已完成关数, 交付画面全动画层 bytes, sprite 签名)，见 `_key`。
         """
         import time as _time, collections as _coll, os as _os
+        env_root = _resolve_environments_dir()
+        if env_root is None:
+            print(f"[{BUILD_TAG}] bfs-skip: no environment_files (fail-closed → CEAX)", flush=True)
+            return None
         _old = _os.getcwd()
         try:
-            _os.chdir('C:/newtask-pi')
+            _os.chdir(str(env_root.parent))
+            _ensure_adaptor_on_path()
             from arc_agi import Arcade as _A, OperationMode as _OM
             from arcengine import ActionInput as _AI, GameState as _GS
             _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
             g0 = env_ref._game
             gid = getattr(g0, "game_id", "").split("-")[0]
-            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            arc = _A(environments_dir=str(env_root), operation_mode=_OM.OFFLINE)
             gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
             env = arc.make(gid_full)
             frame = env.reset()
@@ -1227,32 +1485,52 @@ class MyAgent(Agent):
             # 用 frame.available_actions (比 g.available_actions 可靠)
             try:
                 acts = [int(a) for a in frame.available_actions]
-            except:
+            except Exception:
                 try:
                     acts = [int(a) for a in g.available_actions]
-                except:
+                except Exception:
                     acts = [1, 2, 3, 4]
             # 键盘动作（去掉 6/7，需要坐标的点击/撤销单独处理）
             kbd_acts = [a for a in acts if a not in (6, 7)]
-            # 如果游戏有 ACTION6，用热图提议器生成 top-8 点击候选加入 BFS
-            click_acts = []
+            # 感知 top-K + 热图 top-8 点击候选
+            click_acts: list = []
+            frame_arr = None
             if 6 in acts:
                 try:
-                    sys.path.insert(0, "F:/pro2")
-                    from arc_adaptor import click_heatmap as _ch
                     import numpy as _np2
                     ff = frame.frame
                     if isinstance(ff, list):
-                        frame_arr = _np2.asarray(ff[0])  # 多帧取第一个
+                        frame_arr = _np2.asarray(ff[0])
                     else:
                         frame_arr = _np2.asarray(ff)
                         if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
-                            frame_arr = frame_arr[0]  # (2,64,64) → (64,64)
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
+                            frame_arr = frame_arr[0]
+                    click_acts = [
+                        (6, x, y)
+                        for x, y in _perc_click_candidates(
+                            frame_arr, None, self.encoder, topk=8
+                        )
+                    ]
+                    try:
+                        from arc_adaptor import click_heatmap as _ch
+                        props = _ch.propose_clicks(frame_arr, topk=8)
+                        for p in props:
+                            item = (6, int(p["data"]["x"]), int(p["data"]["y"]))
+                            if item not in click_acts:
+                                click_acts.append(item)
+                    except Exception:
+                        pass
+                    click_acts = [
+                        (6, x, y)
+                        for x, y in _v14_rank_clicks(
+                            [(c[1], c[2]) for c in click_acts],
+                            self._v14_transition.gradient,
+                            keep=8,
+                        )
+                    ]
                 except Exception:
                     pass
-            all_acts = kbd_acts + click_acts  # 混合动作空间
+            all_acts = self._filter_search_acts(kbd_acts, click_acts, frame_arr)
             import numpy as _np
 
             def _gb(f):
@@ -1364,17 +1642,22 @@ class MyAgent(Agent):
           - 每轮迭代加深 depth limit，找到最短解
           - 能搜到 depth=40（BFS 受 frontier 内存限制只到 25）
         """
-        import time as _time, os as _os, sys as _sys
+        import time as _time, os as _os
         import numpy as _np2
+        env_root = _resolve_environments_dir()
+        if env_root is None:
+            print(f"[{BUILD_TAG}] iddfs-skip: no environment_files (fail-closed → CEAX)", flush=True)
+            return None
         _old = _os.getcwd()
         try:
-            _os.chdir('C:/newtask-pi')
+            _os.chdir(str(env_root.parent))
+            _ensure_adaptor_on_path()
             from arc_agi import Arcade as _A, OperationMode as _OM
             from arcengine import ActionInput as _AI, GameState as _GS
             _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
             g0 = env_ref._game
             gid = getattr(g0, "game_id", "").split("-")[0]
-            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            arc = _A(environments_dir=str(env_root), operation_mode=_OM.OFFLINE)
             gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
             env = arc.make(gid_full)
             frame = env.reset()
@@ -1382,34 +1665,44 @@ class MyAgent(Agent):
             li0 = int(g._current_level_index)
             try:
                 acts = [int(a) for a in frame.available_actions]
-            except:
+            except Exception:
                 try:
                     acts = [int(a) for a in g.available_actions]
-                except:
+                except Exception:
                     acts = [1, 2, 3, 4]
             kbd_acts = [a for a in acts if a not in (6, 7)]
-            click_acts = []
+            click_acts: list = []
             has_click = 6 in acts
+            frame_arr0 = None
             if has_click:
                 try:
-                    _sys.path.insert(0, "F:/pro2")
-                    from arc_adaptor import click_heatmap as _ch
-                    import numpy as _np2
                     ff = frame.frame
                     if isinstance(ff, list):
-                        frame_arr = _np2.asarray(ff[0])
+                        frame_arr0 = _np2.asarray(ff[0])
                     else:
-                        frame_arr = _np2.asarray(ff)
-                        if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
-                            frame_arr = frame_arr[0]
-                    # 热图 top-8
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
+                        frame_arr0 = _np2.asarray(ff)
+                        if frame_arr0.ndim == 3 and frame_arr0.shape[0] <= 2:
+                            frame_arr0 = frame_arr0[0]
+                    click_acts = [
+                        (6, x, y)
+                        for x, y in _perc_click_candidates(
+                            frame_arr0, None, self.encoder, topk=8
+                        )
+                    ]
+                    try:
+                        from arc_adaptor import click_heatmap as _ch
+                        props = _ch.propose_clicks(frame_arr0, topk=8)
+                        for p in props:
+                            pos = (6, int(p["data"]["x"]), int(p["data"]["y"]))
+                            if pos not in click_acts:
+                                click_acts.append(pos)
+                    except Exception:
+                        pass
                     # 非背景像素采样 top-8（补充热图遗漏的有效位置）
                     try:
-                        hist = _np2.bincount(frame_arr.flatten(), minlength=16)
+                        hist = _np2.bincount(frame_arr0.flatten(), minlength=16)
                         bg = int(_np2.argmax(hist))
-                        nonbg = _np2.argwhere(frame_arr != bg)
+                        nonbg = _np2.argwhere(frame_arr0 != bg)
                         if len(nonbg) > 0:
                             step = max(1, len(nonbg) // 8)
                             for i in range(0, len(nonbg), step):
@@ -1423,11 +1716,10 @@ class MyAgent(Agent):
                         pass
                 except Exception:
                     pass
-            all_acts = kbd_acts + click_acts
+            all_acts = self._filter_search_acts(kbd_acts, click_acts, frame_arr0)
 
             # RidgeLinear IDA* 启发式：学 value(state) = 预测 level_index
             try:
-                _sys.path.insert(0, "F:/pro2")
                 from lingjing_solo.lincore.spectral import RidgeLinear as _RL
                 _ridge = _RL(dim=40, lam=0.1)
                 _has_ridge = True
@@ -1507,21 +1799,28 @@ class MyAgent(Agent):
                 return gg, frame_arr
 
             def _gen_clicks(frame_arr):
-                """热图 top-8 + 非背景像素采样 top-8 = 16 个点击候选。
-
-                热图提议器可能遗漏有效位置（如 dc22 的 (48,35)/(54,38)），
-                非背景像素采样补充热图没覆盖的位置。
-                """
+                """感知 top-K + 热图 + 非背景采样；V14 梯度排序截断。"""
                 if not has_click:
                     return []
-                clicks = []
-                # 热图 top-8
+                clicks: list = []
                 try:
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    clicks.extend([(6, p["data"]["x"], p["data"]["y"]) for p in props])
+                    for x, y in _perc_click_candidates(
+                        frame_arr, None, self.encoder, topk=8
+                    ):
+                        pos = (6, int(x), int(y))
+                        if pos not in clicks:
+                            clicks.append(pos)
                 except Exception:
                     pass
-                # 非背景像素采样 top-8（补充热图遗漏的位置）
+                try:
+                    from arc_adaptor import click_heatmap as _ch_local
+                    props = _ch_local.propose_clicks(frame_arr, topk=8)
+                    for p in props:
+                        pos = (6, int(p["data"]["x"]), int(p["data"]["y"]))
+                        if pos not in clicks:
+                            clicks.append(pos)
+                except Exception:
+                    pass
                 try:
                     hist = _np2.bincount(frame_arr.flatten(), minlength=16)
                     bg = int(_np2.argmax(hist))
@@ -1537,7 +1836,12 @@ class MyAgent(Agent):
                                 break
                 except Exception:
                     pass
-                return clicks
+                ranked = _v14_rank_clicks(
+                    [(c[1], c[2]) for c in clicks],
+                    self._v14_transition.gradient,
+                    keep=12,
+                )
+                return [(6, x, y) for x, y in ranked]
 
             _win_methods = ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']
             def _check_win(gg):
@@ -1594,8 +1898,10 @@ class MyAgent(Agent):
                     if _has_ridge:
                         feat = _extract_features(gg, frame_arr)
                         _ridge.update(feat, float(gg._current_level_index))
-                    # 动态点击候选：热图 + 非背景采样 + sprite 位置
-                    child_acts = kbd_acts + _gen_clicks(frame_arr)
+                    # 动态点击候选：感知 + 热图 + 非背景 + sprite；键盘空效果剪枝
+                    child_acts = self._filter_search_acts(
+                        kbd_acts, _gen_clicks(frame_arr), frame_arr
+                    )
                     if has_click:
                         try:
                             for s in gg.current_level.get_sprites():
