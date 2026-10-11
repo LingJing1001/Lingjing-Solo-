@@ -57,6 +57,28 @@ def action_loss(logits, targets, legal, class_weights):
     return nn.functional.cross_entropy(masked, targets, weight=class_weights)
 
 
+def counterfactual_rank_loss(logits, action_targets, labels):
+    """Rank candidate actions only when a group has informative outcomes."""
+    groups = {}
+    for index, label in enumerate(labels):
+        group_id = label.get("counterfactual_group_id")
+        if group_id:
+            groups.setdefault(group_id, []).append(index)
+    losses = []
+    for indexes in groups.values():
+        rewards = torch.tensor([
+            2.0 * float(bool(labels[i].get("state_delta", {}).get("progressed")))
+            + float(bool(labels[i].get("state_delta", {}).get("action_effective")))
+            for i in indexes
+        ], dtype=logits.dtype, device=logits.device)
+        if rewards.unique().numel() < 2:
+            continue
+        scores = logits[indexes, action_targets[indexes]]
+        target = int(rewards.argmax().item())
+        losses.append(nn.functional.cross_entropy(scores.unsqueeze(0), torch.tensor([target], device=logits.device)))
+    return torch.stack(losses).mean() if losses else logits.sum() * 0.0
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -103,6 +125,7 @@ def main() -> int:
             criterion(outputs["action_effective"], y_effective)
             + criterion(outputs["progressed"], y_progressed)
             + action_loss(outputs["action"], y_action, legal, class_weights)
+            + counterfactual_rank_loss(outputs["action"], y_action, train)
         )
         optimizer.zero_grad()
         loss.backward()
