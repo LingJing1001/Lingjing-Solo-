@@ -1,0 +1,591 @@
+{
+  "schema": "aop.data.qa.v1",
+  "source": "/tmp/aop-training-20261010/merged_labels.jsonl",
+  "rows": 6606,
+  "episodes": 58,
+  "games": 5,
+  "game_rows": {
+    "ar25": 1592,
+    "dc22": 1640,
+    "ls20": 1640,
+    "re86": 1400,
+    "vc33": 334
+  },
+  "action_counts": {
+    "ACTION1": 1334,
+    "ACTION2": 1411,
+    "ACTION3": 1411,
+    "ACTION4": 1365,
+    "ACTION5": 415,
+    "ACTION6": 406,
+    "ACTION7": 264
+  },
+  "legal_action_counts": {
+    "ACTION1": 6272,
+    "ACTION2": 6272,
+    "ACTION3": 6272,
+    "ACTION4": 6272,
+    "ACTION5": 2992,
+    "ACTION6": 3566,
+    "ACTION7": 1592
+  },
+  "requested_actions_missing_from_legal": [],
+  "per_episode": {
+    "ar25_action7_v2_rep0": {
+      "rows": 88,
+      "actions": {
+        "ACTION1": 11,
+        "ACTION2": 9,
+        "ACTION3": 18,
+        "ACTION4": 14,
+        "ACTION5": 14,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v2_rep1": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 10,
+        "ACTION2": 19,
+        "ACTION3": 12,
+        "ACTION4": 11,
+        "ACTION5": 12,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep0": {
+      "rows": 88,
+      "actions": {
+        "ACTION1": 11,
+        "ACTION2": 9,
+        "ACTION3": 18,
+        "ACTION4": 14,
+        "ACTION5": 14,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep1": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 10,
+        "ACTION2": 19,
+        "ACTION3": 12,
+        "ACTION4": 11,
+        "ACTION5": 12,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep2": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 10,
+        "ACTION2": 12,
+        "ACTION3": 12,
+        "ACTION4": 21,
+        "ACTION5": 9,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep3": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 13,
+        "ACTION2": 13,
+        "ACTION3": 10,
+        "ACTION4": 13,
+        "ACTION5": 15,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep4": {
+      "rows": 88,
+      "actions": {
+        "ACTION1": 10,
+        "ACTION2": 17,
+        "ACTION3": 17,
+        "ACTION4": 11,
+        "ACTION5": 11,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep5": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 13,
+        "ACTION2": 12,
+        "ACTION3": 18,
+        "ACTION4": 7,
+        "ACTION5": 14,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep6": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 19,
+        "ACTION2": 14,
+        "ACTION3": 7,
+        "ACTION4": 12,
+        "ACTION5": 12,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep7": {
+      "rows": 88,
+      "actions": {
+        "ACTION1": 16,
+        "ACTION2": 8,
+        "ACTION3": 20,
+        "ACTION4": 10,
+        "ACTION5": 12,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep8": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 13,
+        "ACTION2": 18,
+        "ACTION3": 5,
+        "ACTION4": 11,
+        "ACTION5": 17,
+        "ACTION7": 22
+      }
+    },
+    "ar25_action7_v3_rep9": {
+      "rows": 86,
+      "actions": {
+        "ACTION1": 15,
+        "ACTION2": 21,
+        "ACTION3": 14,
+        "ACTION4": 7,
+        "ACTION5": 7,
+        "ACTION7": 22
+      }
+    },
+    "ar25_success_rep0": {
+      "rows": 276,
+      "actions": {
+        "ACTION1": 37,
+        "ACTION2": 75,
+        "ACTION3": 92,
+        "ACTION4": 56,
+        "ACTION5": 16
+      }
+    },
+    "ar25_success_rep1": {
+      "rows": 276,
+      "actions": {
+        "ACTION1": 37,
+        "ACTION2": 75,
+        "ACTION3": 92,
+        "ACTION4": 56,
+        "ACTION5": 16
+      }
+    },
+    "dc22_action7_v2_rep0": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 25,
+        "ACTION2": 34,
+        "ACTION3": 27,
+        "ACTION4": 34
+      }
+    },
+    "dc22_action7_v2_rep1": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 33,
+        "ACTION2": 33,
+        "ACTION3": 29,
+        "ACTION4": 25
+      }
+    },
+    "dc22_action7_v3_rep0": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 25,
+        "ACTION2": 34,
+        "ACTION3": 27,
+        "ACTION4": 34
+      }
+    },
+    "dc22_action7_v3_rep1": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 33,
+        "ACTION2": 33,
+        "ACTION3": 29,
+        "ACTION4": 25
+      }
+    },
+    "dc22_action7_v3_rep2": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 45,
+        "ACTION2": 23,
+        "ACTION3": 25,
+        "ACTION4": 27
+      }
+    },
+    "dc22_action7_v3_rep3": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 36,
+        "ACTION2": 21,
+        "ACTION3": 34,
+        "ACTION4": 29
+      }
+    },
+    "dc22_action7_v3_rep4": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 28,
+        "ACTION2": 30,
+        "ACTION3": 31,
+        "ACTION4": 31
+      }
+    },
+    "dc22_action7_v3_rep5": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 31,
+        "ACTION2": 28,
+        "ACTION3": 35,
+        "ACTION4": 26
+      }
+    },
+    "dc22_action7_v3_rep6": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 30,
+        "ACTION2": 33,
+        "ACTION3": 29,
+        "ACTION4": 28
+      }
+    },
+    "dc22_action7_v3_rep7": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 29,
+        "ACTION2": 30,
+        "ACTION3": 33,
+        "ACTION4": 28
+      }
+    },
+    "dc22_action7_v3_rep8": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 29,
+        "ACTION2": 28,
+        "ACTION3": 33,
+        "ACTION4": 30
+      }
+    },
+    "dc22_action7_v3_rep9": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 34,
+        "ACTION2": 37,
+        "ACTION3": 28,
+        "ACTION4": 21
+      }
+    },
+    "dc22_fail_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION3": 2,
+        "ACTION4": 62,
+        "ACTION6": 36
+      }
+    },
+    "dc22_fail_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION3": 2,
+        "ACTION4": 62,
+        "ACTION6": 36
+      }
+    },
+    "ls20_action7_v2_rep0": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 37,
+        "ACTION2": 30,
+        "ACTION3": 23,
+        "ACTION4": 30
+      }
+    },
+    "ls20_action7_v2_rep1": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 27,
+        "ACTION2": 32,
+        "ACTION3": 29,
+        "ACTION4": 32
+      }
+    },
+    "ls20_action7_v3_rep0": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 37,
+        "ACTION2": 30,
+        "ACTION3": 23,
+        "ACTION4": 30
+      }
+    },
+    "ls20_action7_v3_rep1": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 27,
+        "ACTION2": 32,
+        "ACTION3": 29,
+        "ACTION4": 32
+      }
+    },
+    "ls20_action7_v3_rep2": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 22,
+        "ACTION2": 32,
+        "ACTION3": 42,
+        "ACTION4": 24
+      }
+    },
+    "ls20_action7_v3_rep3": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 35,
+        "ACTION2": 31,
+        "ACTION3": 24,
+        "ACTION4": 30
+      }
+    },
+    "ls20_action7_v3_rep4": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 21,
+        "ACTION2": 35,
+        "ACTION3": 36,
+        "ACTION4": 28
+      }
+    },
+    "ls20_action7_v3_rep5": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 32,
+        "ACTION2": 31,
+        "ACTION3": 35,
+        "ACTION4": 22
+      }
+    },
+    "ls20_action7_v3_rep6": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 38,
+        "ACTION2": 25,
+        "ACTION3": 32,
+        "ACTION4": 25
+      }
+    },
+    "ls20_action7_v3_rep7": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 34,
+        "ACTION2": 19,
+        "ACTION3": 36,
+        "ACTION4": 31
+      }
+    },
+    "ls20_action7_v3_rep8": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 31,
+        "ACTION2": 30,
+        "ACTION3": 30,
+        "ACTION4": 29
+      }
+    },
+    "ls20_action7_v3_rep9": {
+      "rows": 120,
+      "actions": {
+        "ACTION1": 24,
+        "ACTION2": 32,
+        "ACTION3": 36,
+        "ACTION4": 28
+      }
+    },
+    "ls20_success_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 39,
+        "ACTION2": 25,
+        "ACTION3": 19,
+        "ACTION4": 17
+      }
+    },
+    "ls20_success_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 39,
+        "ACTION2": 25,
+        "ACTION3": 19,
+        "ACTION4": 17
+      }
+    },
+    "re86_action7_v2_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 23,
+        "ACTION2": 21,
+        "ACTION3": 25,
+        "ACTION4": 13,
+        "ACTION5": 18
+      }
+    },
+    "re86_action7_v2_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 9,
+        "ACTION2": 29,
+        "ACTION3": 16,
+        "ACTION4": 26,
+        "ACTION5": 20
+      }
+    },
+    "re86_action7_v3_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 23,
+        "ACTION2": 21,
+        "ACTION3": 25,
+        "ACTION4": 13,
+        "ACTION5": 18
+      }
+    },
+    "re86_action7_v3_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 9,
+        "ACTION2": 29,
+        "ACTION3": 16,
+        "ACTION4": 26,
+        "ACTION5": 20
+      }
+    },
+    "re86_action7_v3_rep2": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 22,
+        "ACTION2": 23,
+        "ACTION3": 23,
+        "ACTION4": 11,
+        "ACTION5": 21
+      }
+    },
+    "re86_action7_v3_rep3": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 15,
+        "ACTION2": 21,
+        "ACTION3": 14,
+        "ACTION4": 25,
+        "ACTION5": 25
+      }
+    },
+    "re86_action7_v3_rep4": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 18,
+        "ACTION2": 28,
+        "ACTION3": 17,
+        "ACTION4": 17,
+        "ACTION5": 20
+      }
+    },
+    "re86_action7_v3_rep5": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 22,
+        "ACTION2": 18,
+        "ACTION3": 21,
+        "ACTION4": 22,
+        "ACTION5": 17
+      }
+    },
+    "re86_action7_v3_rep6": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 18,
+        "ACTION2": 17,
+        "ACTION3": 25,
+        "ACTION4": 23,
+        "ACTION5": 17
+      }
+    },
+    "re86_action7_v3_rep7": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 28,
+        "ACTION2": 16,
+        "ACTION3": 21,
+        "ACTION4": 20,
+        "ACTION5": 15
+      }
+    },
+    "re86_action7_v3_rep8": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 24,
+        "ACTION2": 21,
+        "ACTION3": 19,
+        "ACTION4": 19,
+        "ACTION5": 17
+      }
+    },
+    "re86_action7_v3_rep9": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 17,
+        "ACTION2": 17,
+        "ACTION3": 23,
+        "ACTION4": 17,
+        "ACTION5": 26
+      }
+    },
+    "re86_fail_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 30,
+        "ACTION2": 28,
+        "ACTION3": 21,
+        "ACTION4": 21
+      }
+    },
+    "re86_fail_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 30,
+        "ACTION2": 28,
+        "ACTION3": 21,
+        "ACTION4": 21
+      }
+    },
+    "vc33_success_rep0": {
+      "rows": 167,
+      "actions": {
+        "ACTION6": 167
+      }
+    },
+    "vc33_success_rep1": {
+      "rows": 167,
+      "actions": {
+        "ACTION6": 167
+      }
+    }
+  },
+  "missing_fields": {},
+  "duplicate_transition_rows": 0,
+  "reset_rows": 0,
+  "requested_action_legal_rate": 1.0
+}

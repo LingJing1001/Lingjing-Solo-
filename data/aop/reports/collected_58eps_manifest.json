@@ -1,0 +1,24 @@
+{
+  "schema": "aop.collection.manifest.v1",
+  "labels_path": "/tmp/aop-training-20261010/merged_labels.jsonl",
+  "labels_sha256": "cd0419f22aaa2a22fcaa13db13f8ea9f396bdb5d48b88981d3e45f6f3d07663e",
+  "labels_bytes": 215089615,
+  "rows": 6606,
+  "episodes": 58,
+  "games": ["ar25", "dc22", "ls20", "re86", "vc33"],
+  "action_counts": {
+    "ACTION1": 1334,
+    "ACTION2": 1411,
+    "ACTION3": 1411,
+    "ACTION4": 1365,
+    "ACTION5": 415,
+    "ACTION6": 406,
+    "ACTION7": 264
+  },
+  "raw_batches": [
+    "/tmp/aop-action7-batch-20261010-v2",
+    "/tmp/aop-action7-batch-20261010-v3"
+  ],
+  "raw_artifacts_committed": false,
+  "note": "Large local corpus is intentionally kept outside GitHub's 100 MB file limit; verify sha256 before training."
+}
