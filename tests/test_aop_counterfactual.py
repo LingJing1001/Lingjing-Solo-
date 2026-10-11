@@ -4,14 +4,14 @@ from tools.aop.counterfactual_qa import validate_groups
 from tools.aop.train import counterfactual_rank_loss
 
 
-def row(group, action, progressed=False, effective=True):
+def row(group, action, progressed=False, effective=True, visual_delta=None):
     return {
         'counterfactual_group_id': group,
         'requested_action': {'name': f'ACTION{action}'},
         'legal_actions': [1, 2],
         'replay_verified': True,
         'replay_state_hash': 'same',
-        'state_delta': {'progressed': progressed, 'action_effective': effective},
+        'state_delta': {'progressed': progressed, 'action_effective': effective, 'visual_delta': visual_delta},
     }
 
 
@@ -30,9 +30,17 @@ def test_counterfactual_rank_loss_skips_uninformative_groups():
     assert float(loss.detach()) == 0.0
 
 
+def test_counterfactual_rank_loss_uses_visual_delta_when_progress_is_equal():
+    labels = [row('g', 1, visual_delta=2), row('g', 2, visual_delta=12)]
+    logits = torch.zeros(2, 2, requires_grad=True)
+    targets = torch.tensor([0, 1])
+    loss = counterfactual_rank_loss(logits, targets, labels)
+    assert float(loss.detach()) > 0.0
+
+
 def test_counterfactual_rank_loss_uses_progress_outcome():
     labels = [row('g', 1, progressed=False), row('g', 2, progressed=True)]
-    logits = torch.tensor([[2.0, 0.0], [0.0, 0.0]], requires_grad=True)
+    logits = torch.zeros(2, 2, requires_grad=True)
     targets = torch.tensor([0, 1])
     loss = counterfactual_rank_loss(logits, targets, labels)
     assert float(loss.detach()) > 0.0

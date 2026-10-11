@@ -57,6 +57,14 @@ def action_loss(logits, targets, legal, class_weights):
     return nn.functional.cross_entropy(masked, targets, weight=class_weights)
 
 
+def visual_delta(before, after):
+    left = (before.get("frame") or {}).get("frame")
+    right = (after.get("frame") or {}).get("frame")
+    if not isinstance(left, list) or not isinstance(right, list):
+        return None
+    return sum(a != b for row_a, row_b in zip(left, right) for a, b in zip(row_a, row_b))
+
+
 def counterfactual_rank_loss(logits, action_targets, labels):
     """Rank candidate actions only when a group has informative outcomes."""
     groups = {}
@@ -67,8 +75,9 @@ def counterfactual_rank_loss(logits, action_targets, labels):
     losses = []
     for indexes in groups.values():
         rewards = torch.tensor([
-            2.0 * float(bool(labels[i].get("state_delta", {}).get("progressed")))
+            100.0 * float(bool(labels[i].get("state_delta", {}).get("progressed")))
             + float(bool(labels[i].get("state_delta", {}).get("action_effective")))
+            + 0.01 * float(labels[i].get("state_delta", {}).get("visual_delta") or 0.0)
             for i in indexes
         ], dtype=logits.dtype, device=logits.device)
         if rewards.unique().numel() < 2:
