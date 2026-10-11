@@ -127,8 +127,13 @@ _ENGINE: Any = None
 
 # 白名单：只给"卡住"的局开，且挂在各局专用计划之后 → 已 WIN 的局零回归风险。
 _ENGINE_SOLVER_GAMES = frozenset({
-    "bp35", "cn04", "dc22", "g50t", "ka59", "lf52", "lp85", "m0r0",
-    "re86", "s5i5", "sc25", "sk48", "sp80", "tu93", "wa30",
+    "cn04", "dc22", "g50t", "ka59", "lf52", "lp85", "m0r0",
+    "re86", "s5i5", "sk48", "sp80", "tu93",
+})
+# 校准 plan / INLINE 局：choose_action 入口禁止 engine_solver / AOP 抢占。
+_PLAN_PROTECTED_GAMES = frozenset({
+    "ls20", "ar25", "ft09", "tr87", "vc33", "sb26", "r11l", "cd82",
+    "tn36", "sc25", "bp35", "wa30",
 })
 
 
@@ -330,7 +335,7 @@ def _aop_apply(
 BUILD_TAG = (
     "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
     "+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only"
-    "+ceax-giveup150+dual-path-fix+aop-readiness-v2"
+    "+ceax-giveup150+dual-path-fix+aop-readiness-v2+plan-protect"
 )
 AGENT_BRAND = "lingjing-smart"
 
@@ -889,7 +894,7 @@ class MyAgent(Agent):
             enable_click_sweep=True,
             return_game_action=False,
         )
-        # AOP controller 自动接入（如果 checkpoint 存在）
+        # AOP controller：仅当显式 AOP=on/margin/abs 时加载；默认 off 不碰校准 plan。
         self._aop_controller = None
         self._aop_overrides = 0
         # engine_solver 自动接入（有引擎代码就读，没有回退原流程）
@@ -901,16 +906,35 @@ class MyAgent(Agent):
             import sys as _sys
             if str(_root) not in _sys.path:
                 _sys.path.insert(0, str(_root))
-            # AOP controller
-            _aop_ckpt = _root / "data" / "aop" / "collected_10eps.pt"
-            if _aop_ckpt.exists():
-                from lingjing_solo.neural.aop_controller import AOPController
-                self._aop_controller = AOPController(_aop_ckpt, threshold=0.35)
-                print(f"[AOP] controller loaded: threshold=0.35", flush=True)
-            # engine_solver
-            from lingjing_solo.engine_solver import EngineSolver
-            self._engine_solver = EngineSolver(environments_dir=str(_root / "environment_files"))
-            print(f"[EngineSolver] loaded", flush=True)
+            if _aop_mode() != "off":
+                _aop_ckpt = _P(
+                    str(os.environ.get("AOP_CKPT", "")).strip()
+                    or str(_root / "data" / "aop" / "checkpoints" / "collected_10eps_v2.pt")
+                )
+                if not _aop_ckpt.is_file():
+                    _aop_ckpt = _root / "data" / "aop" / "collected_10eps.pt"
+                if _aop_ckpt.is_file():
+                    from lingjing_solo.neural.aop_controller import AOPController
+                    self._aop_controller = AOPController(
+                        _aop_ckpt, threshold=_aop_float("AOP_THRESHOLD", 0.8)
+                    )
+                    print(
+                        f"[AOP] controller loaded mode={_aop_mode()} "
+                        f"threshold={_aop_float('AOP_THRESHOLD', 0.8)} ckpt={_aop_ckpt}",
+                        flush=True,
+                    )
+            # engine_solver：尊重 ENGINE_SOLVER=off；入口只服务白名单 unknown。
+            if str(os.environ.get("ENGINE_SOLVER", "")).strip().lower() in {
+                "off", "0", "none", "false",
+            }:
+                print("[EngineSolver] ENGINE_SOLVER=off → 不预热", flush=True)
+            else:
+                from lingjing_solo.engine_solver import EngineSolver
+                _env = _P(__file__).resolve().parents[1] / "environment_files"
+                if not _env.is_dir():
+                    _env = _root / "environment_files"
+                self._engine_solver = EngineSolver(environments_dir=str(_env))
+                print(f"[EngineSolver] loaded env={_env}", flush=True)
         except Exception as _e:
             print(f"[AOP/Engine] load failed: {_e}", flush=True)
         self.encoder = PerceptionEncoder(self.cfg)
@@ -1017,22 +1041,29 @@ class MyAgent(Agent):
     def choose_action(
         self, frames: list[FrameData], latest_frame: FrameData
     ) -> GameAction:
-        # engine_solver: 有引擎代码 → 读代码搜解法 → 直接返回；没有 → 原流程
-        if self._engine_solver is not None:
-            _gid = getattr(self, "game_id", "") or ""
-            if _gid:
-                _result = self._engine_solver.get_action(_gid.split("-")[0])
-                if _result is not None:
-                    _act_name, _cx, _cy = _result
-                    try:
-                        _ga = GameAction[_act_name]
-                        if _act_name == "ACTION6" and _cx:
-                            _ga.action_data.x = _cx
-                            _ga.action_data.y = _cy
-                        _ga.reasoning = {"text": "engine_solver"}
-                        return _ga
-                    except (KeyError, AttributeError):
-                        pass  # 转换失败 → 走原流程
+        # engine_solver：只对白名单 unknown 抢入口；校准 plan / INLINE 绝不抢占。
+        _gid_early = _norm_game(getattr(self, "game_id", "") or "")
+        if (
+            self._engine_solver is not None
+            and _gid_early in _ENGINE_SOLVER_GAMES
+            and _gid_early not in _PLAN_PROTECTED_GAMES
+            and _gid_early not in ROUTE_INLINE
+        ):
+            _result = self._engine_solver.get_action(_gid_early)
+            if _result is not None:
+                _act_name, _cx, _cy = _result
+                try:
+                    _ga = (
+                        GameAction[_act_name]
+                        if isinstance(_act_name, str)
+                        else GameAction.from_id(int(_act_name))
+                    )
+                    if str(getattr(_ga, "name", "")) == "ACTION6" and _cx is not None:
+                        _ga.set_data({"x": int(_cx), "y": int(_cy or 0)})
+                    _ga.reasoning = {"text": "engine_solver"}
+                    return _ga
+                except (KeyError, AttributeError, TypeError, ValueError):
+                    pass  # 转换失败 → 走原流程
 
         grid = None
         try:
@@ -1062,34 +1093,39 @@ class MyAgent(Agent):
                 action = _safe_reset()
             else:
                 action = _safe_fallback(int(getattr(latest_frame, "levels_completed", 0) or 0))
-        # AOP 末端接管（默认 off：不设 AOP 环境变量时原样返回，链路不变；
-        # 设了 AOP 也要 stall 达 AOP_STALL_STEPS 才进模型 —— B 方案的接管窗口）
-        action = _aop_apply(
-            action,
-            latest_frame,
-            levels=int(getattr(latest_frame, "levels_completed", 0) or 0),
-            tick=int(getattr(self, "action_counter", 0) or 0),
-            stall=int(getattr(self, "_stag_count", 0) or 0),
-        )
-        # AOP controller 审核（高置信覆盖动作）
-        if self._aop_controller is not None and action is not GameAction.RESET:
-            try:
-                _action_name = action.name if hasattr(action, "name") else str(action)
-                _valid_names = [f"ACTION{i}" for i in (latest_frame.available_actions or [1,2,3,4])]
-                _levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
-                _chosen, _meta = self._aop_controller.advise(
-                    _action_name,
-                    state=str(latest_frame.state).replace("GameState.", ""),
-                    levels_completed=_levels,
-                    legal_actions=_valid_names,
-                    tick=int(getattr(self, "action_counter", 0) or 0),
-                    step_id=int(getattr(self, "action_counter", 0) or 0),
-                )
-                if _meta.get("overrode") and _chosen in _valid_names:
-                    action = GameAction[_chosen]
-                    self._aop_overrides += 1
-            except Exception:
-                pass  # AOP 失败 → 保留原动作
+        # 校准 plan 局：跳过一切 AOP 末端改写，避免 ACTION7 等非法覆盖毁掉 WIN。
+        _protect = _gid_early in _PLAN_PROTECTED_GAMES or _gid_early in ROUTE_INLINE
+        if not _protect:
+            action = _aop_apply(
+                action,
+                latest_frame,
+                levels=int(getattr(latest_frame, "levels_completed", 0) or 0),
+                tick=int(getattr(self, "action_counter", 0) or 0),
+                stall=int(getattr(self, "_stag_count", 0) or 0),
+            )
+            # 实例 controller 仅在显式 AOP 开启时存在；再用合法名列表，禁止瞎覆盖。
+            if self._aop_controller is not None and action is not GameAction.RESET:
+                try:
+                    _action_name = str(getattr(action, "name", "") or "")
+                    _valid = _valid_names(latest_frame)
+                    _levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+                    _chosen, _meta = self._aop_controller.advise(
+                        _action_name,
+                        state=str(getattr(latest_frame.state, "name", latest_frame.state)),
+                        levels_completed=_levels,
+                        legal_actions=_valid,
+                        tick=int(getattr(self, "action_counter", 0) or 0),
+                        step_id=int(getattr(self, "action_counter", 0) or 0),
+                    )
+                    if (
+                        _meta.get("overrode")
+                        and _chosen in _valid
+                        and _chosen != "ACTION6"
+                    ):
+                        action = _as_game_action(_chosen)
+                        self._aop_overrides += 1
+                except Exception:
+                    pass
         try:
             return self._v14_transition.transition(action, grid)
         except Exception as exc:  # noqa: BLE001 — preserve ARC action fallback
