@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 import torch
 
+from .action_mask import choose_masked_action
 from .aop_encoder import encode_label
 from .aop_model import load_checkpoint
 
@@ -128,7 +129,8 @@ class AOPController:
                 out = self.model(batch)
             prog_probs = _softmax(out["progressed"])[:, 1].tolist()
             scored = sorted(zip(prog_probs, legal_actions), reverse=True)
-            best_prob, best_action = scored[0]
+            best_prob = scored[0][0]
+            best_action = choose_masked_action(out["action"][0], legal_actions, self.action_names)
             meta["confidence"] = best_prob
 
             if best_prob >= self.threshold and best_action in legal_actions:

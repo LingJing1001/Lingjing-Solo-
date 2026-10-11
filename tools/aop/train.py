@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
 
 import torch
@@ -14,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from lingjing_solo.neural.aop_encoder import encode_label  # noqa: E402
 from lingjing_solo.neural.aop_model import AOPModel, save_checkpoint  # noqa: E402
+from tools.aop.action_schema import action_names_from_labels, normalize_label  # noqa: E402
 from tools.aop.dataset import split_labels  # noqa: E402
 
 
@@ -25,7 +28,7 @@ def read_labels(path: Path) -> list[dict]:
                 row = json.loads(line)
                 if not isinstance(row, dict):
                     raise ValueError(f"line {line_no}: label must be an object")
-                rows.append(row)
+                rows.append(normalize_label(row))
     return rows
 
 
@@ -41,6 +44,21 @@ def targets(labels: list[dict], action_to_id: dict[str, int]):
     return features, effective, progressed, actions
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _git_commit() -> str | None:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("labels", type=Path)
@@ -53,7 +71,7 @@ def main() -> int:
         raise SystemExit("--epochs must be positive")
     labels = read_labels(args.labels)
     train, valid = split_labels(labels, args.validation_fraction)
-    names = sorted({x["requested_action"]["name"] for x in labels})
+    names = action_names_from_labels(labels)
     action_to_id = {name: i for i, name in enumerate(names)}
     model = AOPModel(16, max(2, len(names)))
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
@@ -71,7 +89,17 @@ def main() -> int:
         features, y_effective, y_progressed, y_action = targets(valid, action_to_id)
         outputs = model(features)
         val_loss = float((criterion(outputs["action_effective"], y_effective) + criterion(outputs["progressed"], y_progressed) + criterion(outputs["action"], y_action)).item())
-    save_checkpoint(args.output, model, {"action_names": names, "train_rows": len(train), "validation_rows": len(valid), "evidence": "synthetic_smoke" if args.synthetic else "converted_recording"})
+    save_checkpoint(args.output, model, {
+        "action_names": names,
+        "train_rows": len(train),
+        "validation_rows": len(valid),
+        "train_episodes": sorted({x["episode_id"] for x in train}),
+        "validation_episodes": sorted({x["episode_id"] for x in valid}),
+        "labels_sha256": _sha256(args.labels),
+        "git_commit": _git_commit(),
+        "training_command": " ".join(sys.argv),
+        "evidence": "synthetic_smoke" if args.synthetic else "converted_recording",
+    })
     print(f"TRAINED epochs={args.epochs} train_rows={len(train)} validation_rows={len(valid)} val_loss={val_loss:.6f} output={args.output}")
     return 0
 

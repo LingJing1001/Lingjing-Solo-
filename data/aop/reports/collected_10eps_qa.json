@@ -1,0 +1,122 @@
+{
+  "schema": "aop.data.qa.v1",
+  "source": "data/aop/labels/collected_10eps_labels.jsonl",
+  "rows": 1486,
+  "episodes": 10,
+  "games": 5,
+  "game_rows": {
+    "ar25": 552,
+    "dc22": 200,
+    "ls20": 200,
+    "re86": 200,
+    "vc33": 334
+  },
+  "action_counts": {
+    "ACTION1": 212,
+    "ACTION2": 256,
+    "ACTION3": 268,
+    "ACTION4": 312,
+    "ACTION5": 32,
+    "ACTION6": 406
+  },
+  "legal_action_counts": {
+    "ACTION1": 1152,
+    "ACTION2": 1152,
+    "ACTION3": 1152,
+    "ACTION4": 1152,
+    "ACTION5": 752,
+    "ACTION6": 1086,
+    "ACTION7": 552
+  },
+  "requested_actions_missing_from_legal": [],
+  "per_episode": {
+    "ar25_success_rep0": {
+      "rows": 276,
+      "actions": {
+        "ACTION1": 37,
+        "ACTION2": 75,
+        "ACTION3": 92,
+        "ACTION4": 56,
+        "ACTION5": 16
+      }
+    },
+    "ar25_success_rep1": {
+      "rows": 276,
+      "actions": {
+        "ACTION1": 37,
+        "ACTION2": 75,
+        "ACTION3": 92,
+        "ACTION4": 56,
+        "ACTION5": 16
+      }
+    },
+    "dc22_fail_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION3": 2,
+        "ACTION4": 62,
+        "ACTION6": 36
+      }
+    },
+    "dc22_fail_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION3": 2,
+        "ACTION4": 62,
+        "ACTION6": 36
+      }
+    },
+    "ls20_success_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 39,
+        "ACTION2": 25,
+        "ACTION3": 19,
+        "ACTION4": 17
+      }
+    },
+    "ls20_success_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 39,
+        "ACTION2": 25,
+        "ACTION3": 19,
+        "ACTION4": 17
+      }
+    },
+    "re86_fail_rep0": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 30,
+        "ACTION2": 28,
+        "ACTION3": 21,
+        "ACTION4": 21
+      }
+    },
+    "re86_fail_rep1": {
+      "rows": 100,
+      "actions": {
+        "ACTION1": 30,
+        "ACTION2": 28,
+        "ACTION3": 21,
+        "ACTION4": 21
+      }
+    },
+    "vc33_success_rep0": {
+      "rows": 167,
+      "actions": {
+        "ACTION6": 167
+      }
+    },
+    "vc33_success_rep1": {
+      "rows": 167,
+      "actions": {
+        "ACTION6": 167
+      }
+    }
+  },
+  "missing_fields": {},
+  "duplicate_transition_rows": 0,
+  "reset_rows": 0,
+  "requested_action_legal_rate": 1.0
+}

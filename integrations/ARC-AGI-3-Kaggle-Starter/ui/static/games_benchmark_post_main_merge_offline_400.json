@@ -1,26 +1,27 @@
 {
-  "generated_at": "2026-10-05T04:18:21.970133+00:00",
+  "generated_at": "2026-10-10T22:51:48.592097+00:00",
   "agent": "post_main_merge_offline_400",
   "max_steps": 400,
   "total_games": 25,
   "games_finished": 25,
   "running": false,
-  "elapsed_sec": 52.84,
+  "elapsed_sec": 53.79,
   "aggregate_score": 38.906930793650794,
   "aggregate_score_official": 38.906930793650794,
-  "total_levels_completed": 73,
+  "total_levels_completed": 71,
   "games_won": 9,
-  "games_zero_levels": 9,
+  "games_zero_levels": 11,
   "priority_fix": [
     "lf52",
+    "tu93",
     "re86",
+    "s5i5",
     "sk48",
     "g50t",
     "ka59",
     "cn04",
     "dc22",
-    "m0r0",
-    "sp80"
+    "m0r0"
   ],
   "games": [
     {
@@ -55,7 +56,7 @@
         115.0,
         115.0
       ],
-      "elapsed_sec": 0.24,
+      "elapsed_sec": 0.23,
       "error": null,
       "level_actions": [
         15,
@@ -100,7 +101,7 @@
         115.0,
         112.11072664359862
       ],
-      "elapsed_sec": 0.64,
+      "elapsed_sec": 0.71,
       "error": null,
       "level_actions": [
         9,
@@ -143,7 +144,7 @@
         115.0,
         115.0
       ],
-      "elapsed_sec": 0.42,
+      "elapsed_sec": 0.43,
       "error": null,
       "level_actions": [
         13,
@@ -185,7 +186,7 @@
         115.0,
         115.0
       ],
-      "elapsed_sec": 0.28,
+      "elapsed_sec": 0.3,
       "error": null,
       "level_actions": [
         3,
@@ -227,7 +228,7 @@
         115.0,
         115.0
       ],
-      "elapsed_sec": 0.16,
+      "elapsed_sec": 0.15,
       "error": null,
       "level_actions": [
         7,
@@ -267,7 +268,7 @@
         115.0,
         115.0
       ],
-      "elapsed_sec": 0.09,
+      "elapsed_sec": 0.12,
       "error": null,
       "level_actions": [
         5,
@@ -306,7 +307,7 @@
         115.0,
         115.0
       ],
-      "elapsed_sec": 0.18,
+      "elapsed_sec": 0.19,
       "error": null,
       "level_actions": [
         14,
@@ -382,7 +383,7 @@
         115.0,
         115.0
       ],
-      "elapsed_sec": 0.2,
+      "elapsed_sec": 0.21,
       "error": null,
       "level_actions": [
         4,
@@ -421,7 +422,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.15,
+      "elapsed_sec": 3.17,
       "error": null,
       "level_actions": [
         18,
@@ -466,7 +467,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.88,
+      "elapsed_sec": 3.91,
       "error": null,
       "level_actions": [
         26,
@@ -512,7 +513,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.13,
+      "elapsed_sec": 3.14,
       "error": null,
       "level_actions": [
         12,
@@ -543,7 +544,7 @@
         86,
         83
       ],
-      "levels_completed": 1,
+      "levels_completed": 0,
       "actions": 400,
       "state": "NOT_FINISHED",
       "game_score": 2.7777777777777777,
@@ -557,11 +558,11 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.05,
+      "elapsed_sec": 3.04,
       "error": null,
       "level_actions": [
         13,
-        387,
+        151,
         0,
         0,
         0,
@@ -604,7 +605,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.8,
+      "elapsed_sec": 3.89,
       "error": null,
       "level_actions": [
         15,
@@ -637,7 +638,7 @@
         23,
         111
       ],
-      "levels_completed": 1,
+      "levels_completed": 0,
       "actions": 400,
       "state": "NOT_FINISHED",
       "game_score": 2.2222222222222223,
@@ -652,11 +653,11 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.51,
+      "elapsed_sec": 3.54,
       "error": null,
       "level_actions": [
         18,
-        382,
+        307,
         0,
         0,
         0,
@@ -687,7 +688,7 @@
       ],
       "levels_completed": 1,
       "actions": 400,
-      "state": "NOT_FINISHED",
+      "state": "GAME_OVER",
       "game_score": 1.720888888888889,
       "level_scores": [
         77.44,
@@ -700,7 +701,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.36,
+      "elapsed_sec": 3.4,
       "error": null,
       "level_actions": [
         25,
@@ -742,7 +743,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.12,
+      "elapsed_sec": 3.16,
       "error": null,
       "level_actions": [
         400,
@@ -781,7 +782,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 2.89,
+      "elapsed_sec": 2.92,
       "error": null,
       "level_actions": [
         400,
@@ -820,7 +821,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.18,
+      "elapsed_sec": 3.21,
       "error": null,
       "level_actions": [
         400,
@@ -867,7 +868,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.17,
+      "elapsed_sec": 3.38,
       "error": null,
       "level_actions": [
         400,
@@ -912,7 +913,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.04,
+      "elapsed_sec": 3.17,
       "error": null,
       "level_actions": [
         400,
@@ -954,7 +955,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 2.1,
+      "elapsed_sec": 2.17,
       "error": null,
       "level_actions": [
         400,
@@ -994,10 +995,10 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 2.88,
+      "elapsed_sec": 2.9,
       "error": null,
       "level_actions": [
-        400,
+        152,
         0,
         0,
         0,
@@ -1037,7 +1038,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.19,
+      "elapsed_sec": 3.22,
       "error": null,
       "level_actions": [
         400,
@@ -1082,7 +1083,7 @@
         0.0,
         0.0
       ],
-      "elapsed_sec": 3.11,
+      "elapsed_sec": 3.17,
       "error": null,
       "level_actions": [
         400,
