@@ -161,12 +161,19 @@ def collect_one_episode(
 
             # recording
             recordings_dir = Path(os.environ.get("RECORDINGS_DIR", "recordings")).resolve()
-            recording_files = sorted(recordings_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if recording_files:
-                shutil.copy2(recording_files[0], ep_dir / "recording.jsonl")
-                print(f"  recording.jsonl 复制成功: {recording_files[0].name}", flush=True)
-            else:
-                print(f"  ⚠️ 未找到 recording 文件", flush=True)
+            # ARC writes recordings below the scorecard directory. Never select
+            # a global "latest" file: concurrent/repeated episodes can otherwise
+            # silently receive another episode's recording.
+            scorecard_recordings = recordings_dir / str(card_id)
+            recording_files = sorted(scorecard_recordings.glob("*.jsonl"),
+                                     key=lambda p: p.stat().st_mtime, reverse=True)
+            if len(recording_files) != 1:
+                raise RuntimeError(
+                    f"expected exactly one recording under {scorecard_recordings}, "
+                    f"found {len(recording_files)}"
+                )
+            shutil.copy2(recording_files[0], ep_dir / "recording.jsonl")
+            print(f"  recording.jsonl 复制成功: {recording_files[0].name}", flush=True)
 
             print(f"  ✅ episode 保存: {ep_dir}", flush=True)
         except Exception as e:

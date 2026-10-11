@@ -8,7 +8,7 @@
     "agent"
   ],
   "opaque": null,
-  "card_id": "72a9daef-8478-4a00-8c1e-fada321d206a",
+  "card_id": "a8d403a9-3b6b-4317-898b-92ff1530b062",
   "api_key": null,
   "score": 100.0,
   "environments": [
@@ -17,7 +17,7 @@
       "runs": [
         {
           "id": null,
-          "guid": "8af6fcd1-bb50-426f-9986-7e4467d9814e",
+          "guid": "b8b2a99e-ccc1-4178-b23f-bc0820e901a1",
           "score": 100.0,
           "levels_completed": 7,
           "actions": 167,

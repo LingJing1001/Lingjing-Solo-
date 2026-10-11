@@ -19,18 +19,28 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     written = 0
+    skipped_reset = 0
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.input.open(encoding="utf-8") as src, args.output.open("w", encoding="utf-8") as dst:
         for line_no, line in enumerate(src, 1):
             if not line.strip():
                 continue
             try:
-                label = row_to_label(json.loads(line))
-            except (json.JSONDecodeError, LabelError) as exc:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"line {line_no}: rejected recording row: {exc}") from exc
+            action = row.get("requested_action") if isinstance(row, dict) else None
+            action_name = action.get("name") if isinstance(action, dict) else None
+            if action_name == "RESET":
+                skipped_reset += 1
+                continue
+            try:
+                label = row_to_label(row)
+            except LabelError as exc:
                 raise SystemExit(f"line {line_no}: rejected recording row: {exc}") from exc
             dst.write(json.dumps(label.to_dict(), ensure_ascii=False, sort_keys=True) + "\n")
             written += 1
-    print(f"labels_written={written} output={args.output}")
+    print(f"labels_written={written} skipped_reset={skipped_reset} output={args.output}")
     return 0
 
 

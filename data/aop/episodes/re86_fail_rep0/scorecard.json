@@ -8,7 +8,7 @@
     "agent"
   ],
   "opaque": null,
-  "card_id": "2d59dae0-c8d9-418b-bef3-ef4be53e463c",
+  "card_id": "3c4dd54b-6098-47b1-b3dd-29ec6c0407b8",
   "api_key": null,
   "score": 0.0,
   "environments": [
@@ -17,11 +17,11 @@
       "runs": [
         {
           "id": null,
-          "guid": "374f7211-a1e7-47dc-a2e9-df216e6d1a0b",
+          "guid": "720ac654-d8c9-4cf6-8bb3-8524a8d79f5a",
           "score": 0.0,
           "levels_completed": 0,
-          "actions": 100,
-          "resets": 0,
+          "actions": 400,
+          "resets": 4,
           "state": "GAME_OVER",
           "completed": false,
           "level_scores": [
@@ -35,7 +35,7 @@
             0.0
           ],
           "level_actions": [
-            100,
+            400,
             0,
             0,
             0,
@@ -60,11 +60,11 @@
         }
       ],
       "score": 0.0,
-      "actions": 100,
+      "actions": 400,
       "levels_completed": 0,
       "completed": false,
       "level_count": 8,
-      "resets": 0
+      "resets": 4
     }
   ],
   "tags_scores": [
@@ -73,7 +73,7 @@
       "guid": null,
       "score": 0.0,
       "levels_completed": 0,
-      "actions": 100,
+      "actions": 400,
       "resets": null,
       "state": null,
       "completed": null,
@@ -90,5 +90,5 @@
   "total_environments": 1,
   "total_levels_completed": 0,
   "total_levels": 8,
-  "total_actions": 100
+  "total_actions": 400
 }

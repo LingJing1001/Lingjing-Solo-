@@ -8,39 +8,39 @@
     "agent"
   ],
   "opaque": null,
-  "card_id": "100f5fe7-6c6d-47ca-b08d-3e079583f618",
+  "card_id": "f4d5de50-b352-438c-bac5-6c037abc8ae6",
   "api_key": null,
-  "score": 21.428571428571427,
+  "score": 100.0,
   "environments": [
     {
       "id": "ls20-9607627b",
       "runs": [
         {
           "id": null,
-          "guid": "80a589c4-2426-453f-b622-8a3fd2ef34a3",
-          "score": 21.428571428571427,
-          "levels_completed": 3,
-          "actions": 100,
+          "guid": "7e68d7db-40cd-4cc9-9868-2599acb607b9",
+          "score": 100.0,
+          "levels_completed": 7,
+          "actions": 309,
           "resets": 0,
-          "state": "NOT_FINISHED",
-          "completed": false,
+          "state": "WIN",
+          "completed": true,
           "level_scores": [
             115.0,
             115.0,
             115.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
+            115.0,
+            115.0,
+            115.0,
+            115.0
           ],
           "level_actions": [
             13,
             45,
             39,
-            3,
-            0,
-            0,
-            0
+            43,
+            44,
+            72,
+            53
           ],
           "level_baseline_actions": [
             22,
@@ -56,10 +56,10 @@
           "message": null
         }
       ],
-      "score": 21.428571428571427,
-      "actions": 100,
-      "levels_completed": 3,
-      "completed": false,
+      "score": 100.0,
+      "actions": 309,
+      "levels_completed": 7,
+      "completed": true,
       "level_count": 7,
       "resets": 0
     }
@@ -68,9 +68,9 @@
     {
       "id": "keyboard",
       "guid": null,
-      "score": 21.428571428571427,
-      "levels_completed": 3,
-      "actions": 100,
+      "score": 100.0,
+      "levels_completed": 7,
+      "actions": 309,
       "resets": null,
       "state": null,
       "completed": null,
@@ -83,9 +83,9 @@
     }
   ],
   "competition_mode": false,
-  "total_environments_completed": 0,
+  "total_environments_completed": 1,
   "total_environments": 1,
-  "total_levels_completed": 3,
+  "total_levels_completed": 7,
   "total_levels": 7,
-  "total_actions": 100
+  "total_actions": 309
 }

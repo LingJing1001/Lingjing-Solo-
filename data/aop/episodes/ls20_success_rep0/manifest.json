@@ -1,18 +1,18 @@
 {
   "game_id": "ls20",
   "environment_id": "ls20",
-  "scorecard_id": "100f5fe7-6c6d-47ca-b08d-3e079583f618",
+  "scorecard_id": "f4d5de50-b352-438c-bac5-6c037abc8ae6",
   "label": "success",
   "rep": 0,
-  "levels_completed": 3,
-  "state": "NOT_FINISHED",
-  "actions": 100,
-  "win": false,
+  "levels_completed": 7,
+  "state": "WIN",
+  "actions": 309,
+  "win": true,
   "tags": [
     "ls20",
     "success",
     "rep0",
     "phase-a"
   ],
-  "collected_at": 1791596152.661877
+  "collected_at": 1791691593.9977255
 }
