@@ -336,8 +336,140 @@ BUILD_TAG = (
     "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
     "+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only"
     "+ceax-giveup150+dual-path-fix+aop-readiness-v2+plan-protect"
+    "+perc-r3cap+iddfs-hasclick-fix"
 )
 AGENT_BRAND = "lingjing-smart"
+
+
+def _r3_time_limit(default: float = 20.0) -> float:
+    """LINGJING_R3_TLIMIT caps IDDFS/shadow search seconds (full-25 must not burn 500s/unknown)."""
+    raw = str(os.environ.get("LINGJING_R3_TLIMIT", "")).strip()
+    if not raw:
+        return float(default)
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return float(default)
+
+
+def _perc_click_candidates(grid: Any, prev: Any = None, k: int = 8) -> list[tuple[int, int]]:
+    """Perception top-K click XY: object centers → delta pixels → rare-color samples."""
+    if grid is None:
+        return []
+    import numpy as _np
+
+    arr = _np.asarray(grid)
+    if arr.ndim != 2:
+        return []
+    h, w = int(arr.shape[0]), int(arr.shape[1])
+    out: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    def _add(x: int, y: int) -> None:
+        xy = (int(x), int(y))
+        if xy in seen or not (0 <= xy[0] < w and 0 <= xy[1] < h):
+            return
+        seen.add(xy)
+        out.append(xy)
+
+    try:
+        enc = PerceptionEncoder(SoloConfig())
+        objs = enc.segment(arr, delta_pixels=None) or []
+        objs = sorted(objs, key=lambda o: len(getattr(o, "pixels", []) or []), reverse=True)
+        for o in objs:
+            bb = getattr(o, "bbox", None)
+            if bb and len(bb) >= 4:
+                _add((int(bb[0]) + int(bb[2])) // 2, (int(bb[1]) + int(bb[3])) // 2)
+            if len(out) >= k:
+                return out[:k]
+    except Exception:
+        pass
+
+    if prev is not None:
+        try:
+            parr = _np.asarray(prev)
+            if parr.shape == arr.shape:
+                ys, xs = _np.where(arr != parr)
+                if len(xs):
+                    step = max(1, len(xs) // max(1, k))
+                    for i in range(0, len(xs), step):
+                        _add(int(xs[i]), int(ys[i]))
+                        if len(out) >= k:
+                            return out[:k]
+        except Exception:
+            pass
+
+    try:
+        hist = _np.bincount(arr.flatten().astype(_np.int64), minlength=16)
+        bg = int(_np.argmax(hist))
+        for color in _np.argsort(hist):  # rare → common
+            c = int(color)
+            n = int(hist[c]) if c < len(hist) else 0
+            if c == bg or n == 0 or n > 256:
+                continue
+            ys, xs = _np.where(arr == c)
+            if len(xs) == 0:
+                continue
+            _add(int(xs.mean()), int(ys.mean()))
+            step = max(1, len(xs) // 4)
+            for i in range(0, len(xs), step):
+                _add(int(xs[i]), int(ys[i]))
+                if len(out) >= k:
+                    return out[:k]
+    except Exception:
+        pass
+    return out[:k]
+
+
+def _frame_to_grid(frame_or_arr: Any) -> Any:
+    """Normalize Arcade frame / ndarray to 2D int grid for click proposers."""
+    import numpy as _np
+
+    if frame_or_arr is None:
+        return None
+    ff = getattr(frame_or_arr, "frame", frame_or_arr)
+    if isinstance(ff, list):
+        arr = _np.asarray(ff[0])
+    else:
+        arr = _np.asarray(ff)
+    if arr.ndim == 3 and arr.shape[0] <= 2:
+        arr = arr[0]
+    if arr.ndim != 2:
+        return None
+    return arr
+
+
+def _build_search_click_acts(frame_or_arr: Any, acts: list[int], k: int = 8) -> list[tuple[int, int, int]]:
+    """Heatmap + perc top-K click acts. Force-include ACTION6 when UI clicks exist even if mask omits 6."""
+    click_acts: list[tuple[int, int, int]] = []
+    seen: set[tuple[int, int, int]] = set()
+
+    def _push(x: int, y: int) -> None:
+        item = (6, int(x), int(y))
+        if item not in seen:
+            seen.add(item)
+            click_acts.append(item)
+
+    frame_arr = _frame_to_grid(frame_or_arr)
+    if frame_arr is None:
+        return click_acts
+
+    try:
+        _ensure_adaptor_on_path()
+        from arc_adaptor import click_heatmap as _ch
+
+        for p in _ch.propose_clicks(frame_arr, topk=k) or []:
+            _push(p["data"]["x"], p["data"]["y"])
+    except Exception:
+        pass
+
+    for x, y in _perc_click_candidates(frame_arr, prev=None, k=k):
+        _push(x, y)
+
+    # If ACTION6 missing from available_actions but we found clickable UI, still search clicks.
+    if 6 not in acts and not click_acts:
+        return []
+    return click_acts[: max(k * 2, 16)]
 
 
 def _ensure_adaptor_on_path() -> None:
@@ -1523,13 +1655,16 @@ class MyAgent(Agent):
                 objects = []
 
         # --- R3 state-space search for keyboard_click unknowns ---
-        # 排除有 inline 解法的游戏, 对所有未知游戏用 BFS 搜索
-        _INLINE_GAMES = ("ls20", "ar25", "ft09", "vc33", "sb26", "tn36", "r11l", "cd82", "tr87", "wa30")
+        # 校准 plan / INLINE / 已保护局禁止 R3 抢占（避免从 L0 重搜毁进度）
+        _SKIP_R3 = ROUTE_INLINE | _PLAN_PROTECTED_GAMES | {
+            "ls20", "ar25", "ft09", "vc33", "sb26", "tn36", "r11l", "cd82", "tr87",
+            "wa30", "sc25", "bp35",
+        }
         if (
-            gid not in _INLINE_GAMES
+            gid not in _SKIP_R3
             and (not self._r3_path)
         ):
-            # 前 3 步快速搜一次；CEAX 卡住 100 步 levels 没涨时再搜一次（更多预算）
+            # 开局搜一次；CEAX 卡住 100 步 levels 没涨时再搜（预算受 LINGJING_R3_TLIMIT 约束）
             stuck = levels == self._levels_seen
             should_r3 = self.action_counter == 0 or (stuck and self.action_counter == 100)
             if should_r3:
@@ -1551,9 +1686,10 @@ class MyAgent(Agent):
                         except Exception:
                             _has_sa = False
 
+                        _tl = _r3_time_limit(20.0)
                         if _has_sa and gid in _sa._SHADOW_MODULES:
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
-                            path = _sa.solve(gid, env_ref._game, t_limit=120.0)
+                            path = _sa.solve(gid, env_ref._game, t_limit=_tl)
                             if path:
                                 # 转换格式: int → int, dict → tuple, tuple → tuple
                                 found = []
@@ -1567,7 +1703,7 @@ class MyAgent(Agent):
                                 print(f"[{BUILD_TAG}] shadow_solver path_len={len(found)}", flush=True)
                         # 通用 IDDFS 兜底（无专用求解器或专用求解器失败时）
                         if found is None:
-                            t_limit = 600.0 if self.action_counter == 0 else 500.0
+                            t_limit = _tl
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s (IDDFS)", flush=True)
                             found = self._iddfs_search(env_ref, t_limit=t_limit)
                         if found:
@@ -1611,21 +1747,30 @@ class MyAgent(Agent):
             and has_keyboard
             and self._hybrid_click_budget > 0
             and gid not in ("ls20", "ar25")
+            and gid not in _PLAN_PROTECTED_GAMES
             and objects
         ):
-            # v4 热图提议优先，fallback 到最大 object 中心
+            # perc top-K → 热图 → 最大 object 中心（不碰校准 plan 局）
             cx, cy = None, None
             click_src = "fallback"
             try:
-                if not hasattr(self, "_ch"):
-                    from arc_adaptor import click_heatmap as _ch_mod
-                    self._ch = _ch_mod
-                _props = self._ch.propose_clicks(grid, topk=1)
-                if _props:
-                    cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
-                    click_src = "v4"
+                _pc = _perc_click_candidates(grid, prev=self._prev_grid, k=4)
+                if _pc:
+                    cx, cy = int(_pc[0][0]), int(_pc[0][1])
+                    click_src = "perc"
             except Exception:
                 cx, cy = None, None
+            if cx is None:
+                try:
+                    if not hasattr(self, "_ch"):
+                        from arc_adaptor import click_heatmap as _ch_mod
+                        self._ch = _ch_mod
+                    _props = self._ch.propose_clicks(grid, topk=1)
+                    if _props:
+                        cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
+                        click_src = "v4"
+                except Exception:
+                    cx, cy = None, None
             if cx is None:
                 best_obj = max(objects, key=lambda o: len(o.pixels))
                 cx = (best_obj.bbox[0] + best_obj.bbox[2]) // 2
@@ -1764,26 +1909,9 @@ class MyAgent(Agent):
                     acts = [int(a) for a in g.available_actions]
                 except:
                     acts = [1, 2, 3, 4]
-            # 键盘动作（去掉 6/7，需要坐标的点击/撤销单独处理）
+            # 键盘动作（去掉 6/7）；点击候选 = 热图 + perc（mask 漏 ACTION6 时仍可补）
             kbd_acts = [a for a in acts if a not in (6, 7)]
-            # 如果游戏有 ACTION6，用热图提议器生成 top-8 点击候选加入 BFS
-            click_acts = []
-            if 6 in acts:
-                try:
-                    _ensure_adaptor_on_path()
-                    from arc_adaptor import click_heatmap as _ch
-                    import numpy as _np2
-                    ff = frame.frame
-                    if isinstance(ff, list):
-                        frame_arr = _np2.asarray(ff[0])  # 多帧取第一个
-                    else:
-                        frame_arr = _np2.asarray(ff)
-                        if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
-                            frame_arr = frame_arr[0]  # (2,64,64) → (64,64)
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
-                except Exception:
-                    pass
+            click_acts = _build_search_click_acts(frame, acts, k=8)
             all_acts = kbd_acts + click_acts  # 混合动作空间
             import numpy as _np
 
@@ -1919,48 +2047,16 @@ class MyAgent(Agent):
             li0 = int(g._current_level_index)
             try:
                 acts = [int(a) for a in frame.available_actions]
-            except:
+            except Exception:
                 try:
                     acts = [int(a) for a in g.available_actions]
-                except:
+                except Exception:
                     acts = [1, 2, 3, 4]
             kbd_acts = [a for a in acts if a not in (6, 7)]
-            click_acts = []
-            has_click = 6 in acts
-            if has_click:
-                try:
-                    _ensure_adaptor_on_path()
-                    from arc_adaptor import click_heatmap as _ch
-                    import numpy as _np2
-                    ff = frame.frame
-                    if isinstance(ff, list):
-                        frame_arr = _np2.asarray(ff[0])
-                    else:
-                        frame_arr = _np2.asarray(ff)
-                        if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
-                            frame_arr = frame_arr[0]
-                    # 热图 top-8
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
-                    # 非背景像素采样 top-8（补充热图遗漏的有效位置）
-                    try:
-                        hist = _np2.bincount(frame_arr.flatten(), minlength=16)
-                        bg = int(_np2.argmax(hist))
-                        nonbg = _np2.argwhere(frame_arr != bg)
-                        if len(nonbg) > 0:
-                            step = max(1, len(nonbg) // 8)
-                            for i in range(0, len(nonbg), step):
-                                y, x = int(nonbg[i][0]), int(nonbg[i][1])
-                                pos = (6, x, y)
-                                if pos not in click_acts:
-                                    click_acts.append(pos)
-                                if len(click_acts) >= 16:
-                                    break
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+            click_acts = _build_search_click_acts(frame, acts, k=8)
+            has_click = (6 in acts) or bool(click_acts)
             all_acts = kbd_acts + click_acts
+            import numpy as _np2
 
             # RidgeLinear IDA* 启发式：学 value(state) = 预测 level_index
             try:
@@ -2043,37 +2139,8 @@ class MyAgent(Agent):
                 return gg, frame_arr
 
             def _gen_clicks(frame_arr):
-                """热图 top-8 + 非背景像素采样 top-8 = 16 个点击候选。
-
-                热图提议器可能遗漏有效位置（如 dc22 的 (48,35)/(54,38)），
-                非背景像素采样补充热图没覆盖的位置。
-                """
-                if not has_click:
-                    return []
-                clicks = []
-                # 热图 top-8
-                try:
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    clicks.extend([(6, p["data"]["x"], p["data"]["y"]) for p in props])
-                except Exception:
-                    pass
-                # 非背景像素采样 top-8（补充热图遗漏的位置）
-                try:
-                    hist = _np2.bincount(frame_arr.flatten(), minlength=16)
-                    bg = int(_np2.argmax(hist))
-                    nonbg = _np2.argwhere(frame_arr != bg)
-                    if len(nonbg) > 0:
-                        step = max(1, len(nonbg) // 8)
-                        for i in range(0, len(nonbg), step):
-                            y, x = int(nonbg[i][0]), int(nonbg[i][1])
-                            pos = (6, x, y)
-                            if pos not in clicks:
-                                clicks.append(pos)
-                            if len(clicks) >= 16:
-                                break
-                except Exception:
-                    pass
-                return clicks
+                """热图 + perc top-K（与开局动作集一致；mask 漏 6 时仍可补点击）。"""
+                return _build_search_click_acts(frame_arr, acts, k=8)
 
             _win_methods = ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']
             def _check_win(gg):
