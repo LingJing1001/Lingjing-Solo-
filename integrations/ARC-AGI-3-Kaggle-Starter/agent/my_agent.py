@@ -336,7 +336,7 @@ BUILD_TAG = (
     "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
     "+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only"
     "+ceax-giveup150+dual-path-fix+aop-readiness-v2+plan-protect"
-    "+perc-r3cap+iddfs-hasclick-fix"
+    "+perc-r3cap+iddfs-hasclick-fix+wa30-gbk-fix"
 )
 AGENT_BRAND = "lingjing-smart"
 
@@ -2053,6 +2053,9 @@ class MyAgent(Agent):
                 except Exception:
                     acts = [1, 2, 3, 4]
             kbd_acts = [a for a in acts if a not in (6, 7)]
+            if not kbd_acts and 6 not in acts:
+                # available_actions 偶发空/残缺（su15 等）→ 保底键盘集，避免全靠点击空转
+                kbd_acts = [1, 2, 3, 4]
             click_acts = _build_search_click_acts(frame, acts, k=8)
             has_click = (6 in acts) or bool(click_acts)
             all_acts = kbd_acts + click_acts
@@ -2302,8 +2305,13 @@ class MyAgent(Agent):
                 print(f"[{BUILD_TAG}] wa30 L{lv_idx} 克隆验证失败 → 回退", flush=True)
                 seq = None
             else:
-                print(f"[{BUILD_TAG}] wa30 L{lv_idx} 规划 {len(seq)} 步 ✅", flush=True)
+                # ASCII-only log: Windows GBK consoles raise on emoji and would
+                # discard a valid seq via the bare except below.
+                print(f"[{BUILD_TAG}] wa30 L{lv_idx} plan_ok steps={len(seq)}", flush=True)
                 return seq
         except Exception as exc:
-            print(f"[{BUILD_TAG}] wa30 规划异常: {type(exc).__name__}: {exc}", flush=True)
+            print(
+                f"[{BUILD_TAG}] wa30 plan_err {type(exc).__name__}: {exc}",
+                flush=True,
+            )
         return _WA30_PLANS.get(lv_idx)
