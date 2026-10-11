@@ -179,6 +179,26 @@ set LINGJING_R3_TLIMIT=20
 
 ---
 
-## 6. 一句话
+## 6. Kaggle 官网提交（2026-10-12）
 
-**`feature/aop-readiness-v2` = counterfactual tip + 双系统接缝 + plan-protect + perc/R3 加固；全量 25@800 = 42.80 / 10 WIN；打榜默认 AOP=off，下一刀补近通关 plan。**
+| 项 | 值 |
+|----|-----|
+| Kernel | [liaojiaxuan/arc-prize-2026-smart-router-v2-dpl](https://www.kaggle.com/code/liaojiaxuan/arc-prize-2026-smart-router-v2-dpl) |
+| Kernel version | **2**（COMPLETE） |
+| Competition submit ref | **57079926** |
+| Message | `aop-readiness-v2 plan-protect perc-r3cap local42.8/10WIN AOP=off` |
+| 提交时刻状态 | `PENDING`（Phase B 排队计分；当日额度已用尽） |
+| 本地对照 | scorecard **42.80** / **10 WIN** @800 |
+
+查分：
+
+```bash
+cd integrations/ARC-AGI-3-Kaggle-Starter
+.\.venv\Scripts\kaggle.exe competitions submissions arc-prize-2026-arc-agi-3
+```
+
+---
+
+## 7. 一句话
+
+**`feature/aop-readiness-v2` = counterfactual tip + 双系统接缝 + plan-protect + perc/R3 加固；全量 25@800 = 42.80 / 10 WIN；已提交 Kaggle kernel v2 / ref 57079926（PENDING）；打榜 AOP=off。**
