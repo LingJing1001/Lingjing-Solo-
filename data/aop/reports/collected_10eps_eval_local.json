@@ -1,0 +1,26 @@
+{
+  "schema": "aop.evaluation.v1",
+  "checkpoint": "data\\aop\\checkpoints\\collected_10eps_v2.pt",
+  "checkpoint_sha256": "3bf1b1af673995649f5787002f8125f18ba3be1231381ce947915c9a4001a3cb",
+  "labels": "data\\aop\\labels\\collected_10eps_labels.jsonl",
+  "labels_sha256": "2e4b54ec50df9462ad2ffaa1c4d4a9a6b6e891c51148d1330fdcffad8228a363",
+  "git_commit": "5e28b7508f65e2389bf05bc8a54b09f48b31d46c",
+  "model_version": "aop.model.v2",
+  "rows": 1486,
+  "masked_rows": 1486,
+  "unknown_legal_rows": 0,
+  "raw_action_accuracy": 0.21130551816958276,
+  "masked_action_accuracy": 0.4360699865410498,
+  "masked_legal_prediction_rate": 1.0,
+  "counts": {
+    "actual_ACTION1": 212,
+    "actual_ACTION2": 256,
+    "actual_ACTION3": 268,
+    "actual_ACTION4": 312,
+    "actual_ACTION5": 32,
+    "actual_ACTION6": 406,
+    "predicted_ACTION1": 10,
+    "predicted_ACTION4": 1142,
+    "predicted_ACTION6": 334
+  }
+}

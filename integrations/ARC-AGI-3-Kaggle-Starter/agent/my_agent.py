@@ -204,7 +204,11 @@ def _idle_action(valid: list[str]) -> GameAction:
 # 走不到 CEAX 未知路径那段计数，_stag_count 不会涨到阈值 → AOP 结构上碰不到它们；
 # 只有"已经在同关空转 ≥N 步"的局才有入场机会，那些步现发的是凑数动作，期望本就 ≈0。
 _AOP_CKPT_DEFAULT = str(
-    Path(__file__).resolve().parents[3] / "data" / "aop" / "collected_10eps.pt"
+    Path(__file__).resolve().parents[3]
+    / "data"
+    / "aop"
+    / "checkpoints"
+    / "collected_10eps_v2.pt"
 )
 _AOP: Any = None  # None=未初始化, False=不可用, 其余=AOPController 单例
 
@@ -323,8 +327,73 @@ def _aop_apply(
         return action
 
 
-BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150"
+BUILD_TAG = (
+    "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
+    "+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only"
+    "+ceax-giveup150+dual-path-fix+aop-readiness-v2"
+)
 AGENT_BRAND = "lingjing-smart"
+
+
+def _ensure_adaptor_on_path() -> None:
+    """Hang repo ``arc_adaptor`` on sys.path (no machine-local F:/pro2)."""
+    candidates: list[Path] = []
+    env_src = os.environ.get("LINGJING_SRC")
+    if env_src:
+        p = Path(env_src).expanduser().resolve()
+        candidates.append(p.parent if p.name == "lingjing_solo" else p)
+    if _FILE.parent.name == "agent":
+        starter = _FILE.parents[1]
+        candidates.extend([starter, starter.parent, starter.parents[1]])
+    candidates.extend([Path.cwd(), Path.cwd().parent])
+    seen: set[str] = set()
+    for root in candidates:
+        try:
+            root = root.resolve()
+        except OSError:
+            continue
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        if (root / "arc_adaptor").is_dir():
+            s = str(root)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+        if root.name == "arc_adaptor" and root.is_dir():
+            s = str(root.parent)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+
+
+def _resolve_environments_dir() -> Optional[Path]:
+    """Locate ``environment_files`` for offline Arcade clone search."""
+    for var in ("LINGJING_ENVIRONMENTS_DIR", "LINGJING_ARC_ROOT", "ARC_ENVIRONMENTS_DIR"):
+        raw = (os.environ.get(var) or "").strip()
+        if not raw:
+            continue
+        p = Path(raw).expanduser().resolve()
+        if p.name != "environment_files" and (p / "environment_files").is_dir():
+            p = (p / "environment_files").resolve()
+        if p.is_dir():
+            return p
+    candidates: list[Path] = []
+    if _FILE.parent.name == "agent":
+        starter = _FILE.parents[1]
+        candidates.append(starter / "environment_files")
+        candidates.append(starter.parent / "ARC-AGI-3" / "environment_files")
+        candidates.append(starter.parents[1] / "environment_files")
+    candidates.append(Path.cwd() / "environment_files")
+    for c in candidates:
+        try:
+            if c.is_dir():
+                return c.resolve()
+        except OSError:
+            continue
+    return None
+
 
 # Evidence-based route table (do not put uncalibrated scripts here).
 ROUTE_INLINE = frozenset({"ls20", "ar25", "ft09", "tr87"})
@@ -1632,15 +1701,20 @@ class MyAgent(Agent):
         去重键 = (关卡号, 已完成关数, 交付画面全动画层 bytes, sprite 签名)，见 `_key`。
         """
         import time as _time, collections as _coll, os as _os
+        env_root = _resolve_environments_dir()
+        if env_root is None:
+            print(f"[{BUILD_TAG}] bfs-skip: no environment_files (fail-closed → CEAX)", flush=True)
+            return None
         _old = _os.getcwd()
         try:
-            _os.chdir('C:/newtask-pi')
+            _os.chdir(str(env_root.parent))
+            _ensure_adaptor_on_path()
             from arc_agi import Arcade as _A, OperationMode as _OM
             from arcengine import ActionInput as _AI, GameState as _GS
             _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
             g0 = env_ref._game
             gid = getattr(g0, "game_id", "").split("-")[0]
-            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            arc = _A(environments_dir=str(env_root), operation_mode=_OM.OFFLINE)
             gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
             env = arc.make(gid_full)
             frame = env.reset()
@@ -1660,7 +1734,7 @@ class MyAgent(Agent):
             click_acts = []
             if 6 in acts:
                 try:
-                    sys.path.insert(0, "F:/pro2")
+                    _ensure_adaptor_on_path()
                     from arc_adaptor import click_heatmap as _ch
                     import numpy as _np2
                     ff = frame.frame
@@ -1788,15 +1862,20 @@ class MyAgent(Agent):
         """
         import time as _time, os as _os, sys as _sys
         import numpy as _np2
+        env_root = _resolve_environments_dir()
+        if env_root is None:
+            print(f"[{BUILD_TAG}] iddfs-skip: no environment_files (fail-closed → CEAX)", flush=True)
+            return None
         _old = _os.getcwd()
         try:
-            _os.chdir('C:/newtask-pi')
+            _os.chdir(str(env_root.parent))
+            _ensure_adaptor_on_path()
             from arc_agi import Arcade as _A, OperationMode as _OM
             from arcengine import ActionInput as _AI, GameState as _GS
             _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
             g0 = env_ref._game
             gid = getattr(g0, "game_id", "").split("-")[0]
-            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            arc = _A(environments_dir=str(env_root), operation_mode=_OM.OFFLINE)
             gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
             env = arc.make(gid_full)
             frame = env.reset()
@@ -1814,7 +1893,7 @@ class MyAgent(Agent):
             has_click = 6 in acts
             if has_click:
                 try:
-                    _sys.path.insert(0, "F:/pro2")
+                    _ensure_adaptor_on_path()
                     from arc_adaptor import click_heatmap as _ch
                     import numpy as _np2
                     ff = frame.frame
@@ -1849,7 +1928,6 @@ class MyAgent(Agent):
 
             # RidgeLinear IDA* 启发式：学 value(state) = 预测 level_index
             try:
-                _sys.path.insert(0, "F:/pro2")
                 from lingjing_solo.lincore.spectral import RidgeLinear as _RL
                 _ridge = _RL(dim=40, lam=0.1)
                 _has_ridge = True
