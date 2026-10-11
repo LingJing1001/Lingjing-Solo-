@@ -357,6 +357,11 @@ _WA30_PLANS: dict[int, list[int]] = {
         5, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 2, 4, 5, 4, 4, 4, 4, 4, 5, 3, 4, 3, 4,
         3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3,
         4],
+    # L3-L6: 外部 beam solver 产出，链式复核验证 PASS（_diag_20261011/wa30_l456_chain_verify_out.txt）
+    3: [1, 1, 4, 5, 2, 4, 4, 5, 1, 5, 2, 5, 2, 5, 2, 5, 3, 3, 5, 3, 1, 5, 4, 5, 4, 1, 4, 5, 3, 1, 1, 3, 5, 3, 2, 5, 4, 4, 4, 5, 4, 2, 5, 3, 3, 4, 4, 5, 2, 2, 3, 5, 1, 4, 2, 5, 2, 5, 1, 1, 3, 4, 1, 1, 2, 1, 3, 1],
+    4: [2, 2, 2, 2, 4, 2, 3, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 5, 4, 4, 4, 4, 4, 1, 4, 1, 1, 1, 1, 4, 4, 4, 4, 4, 1, 3, 5, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 1, 4, 4, 4, 4, 4, 4, 2, 2, 2, 4, 4, 4, 4, 4, 2, 5, 1, 1, 1, 1, 3, 3, 3, 3, 1, 3, 3, 3, 3, 3, 3, 1, 1, 1, 3, 3, 3, 2, 5],
+    5: [1, 3, 1, 1, 5, 1, 1, 1, 4, 4, 4, 4, 4, 4, 1, 4, 5, 4, 5, 3, 3, 3, 3, 1, 1, 3, 1, 5, 2, 4, 4, 2, 2, 2, 4, 1, 4, 4, 4, 4, 4, 2, 3, 5, 1, 3, 3, 3, 3, 3, 1, 1, 3, 5],
+    6: [4, 5, 3, 3, 3, 3, 2, 3, 1, 1, 1, 1, 5, 4, 4, 4, 4, 4, 4, 4, 5, 3, 3, 3, 2, 3, 3, 2, 5, 1, 4, 5, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 5, 3, 3, 3, 3, 3, 3, 3, 1, 3, 3, 5],
 }
 # sb26: 专用点击计划（sb26_click_solver.py 校准，8 关真机回放验证 WIN，全程 124 步）。
 # 语义：选中-放置两段点击 + ACTION5 织布提交；条目 (action_id, x, y)，(5,0,0)=提交。
@@ -867,6 +872,12 @@ class MyAgent(Agent):
         self._stag_level: int = -1
         self._stag_count: int = 0
         self._stag_logged: bool = False
+        # su15 动态求解器缓存（分析 environment_files/su15 游戏机制，A* 搜索过关）
+        self._su15_plans: dict[int, list[tuple[int, int]]] = {}
+        self._su15_idx: int = 0
+        self._su15_level: int = -1
+        self._su15_solved: bool = False
+        self._su15_solver_mod: Any = None
         gid = _norm_game(getattr(self, "game_id", ""))
         if gid in ROUTE_INLINE:
             route = f"INLINE:{gid}"
@@ -935,6 +946,33 @@ class MyAgent(Agent):
             f"max_actions={self.MAX_ACTIONS}",
             flush=True,
         )
+
+        # su15: 预求解所有关 → 按实际步数设 MAX_ACTIONS（跑过了不浪费，跑不过不死等）
+        if gid == "su15":
+            try:
+                import su15_solver as _su15_sol  # noqa: E402
+                self._su15_solver_mod = _su15_sol
+                self._su15_solved = True
+                _total = 0
+                _ok = 0
+                for _lvl in range(9):
+                    _sol = _su15_sol.solve_level(_lvl, max_nodes=200000, weight=1.3, time_budget=300)
+                    if _sol:
+                        self._su15_plans[_lvl] = [(int(x), int(y)) for x, y in _sol]
+                        _total += len(_sol)
+                        _ok += 1
+                if _ok == 9:
+                    self.MAX_ACTIONS = _total + 2
+                    print(f"[{BUILD_TAG}] su15-solver: 9/9 solved, {_total} clicks, "
+                          f"MAX_ACTIONS={self.MAX_ACTIONS}", flush=True)
+                elif _ok > 0:
+                    self.MAX_ACTIONS = _total + 15
+                    print(f"[{BUILD_TAG}] su15-solver: {_ok}/9 solved, {_total} clicks, "
+                          f"MAX_ACTIONS={self.MAX_ACTIONS} (CEAX fallback for unsolved)", flush=True)
+                else:
+                    print(f"[{BUILD_TAG}] su15-solver: 0/9 solved, CEAX fallback", flush=True)
+            except Exception as _e:
+                print(f"[{BUILD_TAG}] su15-solver pre-solve failed: {_e}", flush=True)
 
     @property
     def name(self) -> str:
@@ -1196,6 +1234,20 @@ class MyAgent(Agent):
             # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
             self._tn36_exhausted = levels
 
+        # --- su15 动态求解（预求解已填 self._su15_plans，此处纯回放） ---
+        if gid == "su15" and levels in self._su15_plans:
+            if self._su15_level != levels:
+                self._su15_level = levels
+                self._su15_idx = 0
+            plan = self._su15_plans[levels]
+            if self._su15_idx < len(plan):
+                xy = plan[self._su15_idx]
+                self._su15_idx += 1
+                action = GameAction.ACTION6
+                action.set_data({"x": int(xy[0]), "y": int(xy[1])})
+                action.reasoning = {"text": f"{BUILD_TAG}:su15 L{levels} #{self._su15_idx}/{len(plan)}"}
+                return action
+
         # --- bp35 L1 专用计划（state/bp35_l1_export.py 校准，真机多 seed 回放 15 击过关） ---
         if gid == "bp35" and levels in _BP35_PLANS and self._bp35_exhausted != levels:
             if self._bp35_level != levels:
@@ -1448,7 +1500,7 @@ class MyAgent(Agent):
 
                         if _has_sa and gid in _sa._SHADOW_MODULES:
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
-                            path = _sa.solve(gid, env_ref._game, t_limit=120.0)
+                            path = _sa.solve(gid, env_ref._game, t_limit=120.0, env=env_ref)
                             if path:
                                 # 转换格式: int → int, dict → tuple, tuple → tuple
                                 found = []
