@@ -35,13 +35,26 @@ def read_labels(path: Path) -> list[dict]:
 def targets(labels: list[dict], action_to_id: dict[str, int]):
     action_count = max(1, len(action_to_id))
     features = torch.stack([
-        encode_label(x, action_id=action_to_id[x["requested_action"]["name"]], action_count=action_count)
+        encode_label(
+            x,
+            action_id=action_to_id[x["requested_action"]["name"]],
+            action_count=action_count,
+        )
         for x in labels
     ])
     effective = torch.tensor([int(bool(x["state_delta"]["action_effective"])) for x in labels])
     progressed = torch.tensor([int(bool(x["state_delta"]["progressed"])) for x in labels])
     actions = torch.tensor([action_to_id[x["requested_action"]["name"]] for x in labels])
-    return features, effective, progressed, actions
+    legal = torch.tensor([
+        [name in (x.get("legal_actions") or []) for name in action_to_id]
+        for x in labels
+    ], dtype=torch.bool)
+    return features, effective, progressed, actions, legal
+
+
+def action_loss(logits, targets, legal, class_weights):
+    masked = logits.masked_fill(~legal, torch.finfo(logits.dtype).min)
+    return nn.functional.cross_entropy(masked, targets, weight=class_weights)
 
 
 def _sha256(path: Path) -> str:
@@ -76,19 +89,33 @@ def main() -> int:
     model = AOPModel(16, max(2, len(names)))
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
+    class_counts = torch.bincount(
+        torch.tensor([action_to_id[x["requested_action"]["name"]] for x in train]),
+        minlength=len(names),
+    ).float()
+    class_weights = (class_counts.clamp_min(1.0).sqrt().reciprocal())
+    class_weights = class_weights / class_weights.mean()
     for _ in range(args.epochs):
         model.train()
-        features, y_effective, y_progressed, y_action = targets(train, action_to_id)
+        features, y_effective, y_progressed, y_action, legal = targets(train, action_to_id)
         outputs = model(features)
-        loss = (criterion(outputs["action_effective"], y_effective) + criterion(outputs["progressed"], y_progressed) + criterion(outputs["action"], y_action))
+        loss = (
+            criterion(outputs["action_effective"], y_effective)
+            + criterion(outputs["progressed"], y_progressed)
+            + action_loss(outputs["action"], y_action, legal, class_weights)
+        )
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
     model.eval()
     with torch.no_grad():
-        features, y_effective, y_progressed, y_action = targets(valid, action_to_id)
+        features, y_effective, y_progressed, y_action, legal = targets(valid, action_to_id)
         outputs = model(features)
-        val_loss = float((criterion(outputs["action_effective"], y_effective) + criterion(outputs["progressed"], y_progressed) + criterion(outputs["action"], y_action)).item())
+        val_loss = float((
+            criterion(outputs["action_effective"], y_effective)
+            + criterion(outputs["progressed"], y_progressed)
+            + action_loss(outputs["action"], y_action, legal, class_weights)
+        ).item())
     save_checkpoint(args.output, model, {
         "action_names": names,
         "train_rows": len(train),

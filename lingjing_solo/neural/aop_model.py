@@ -12,7 +12,7 @@ class AOPModel(nn.Module):
         super().__init__()
         if input_width <= 0 or action_classes <= 1:
             raise ValueError("invalid model dimensions")
-        self.config = {"input_width": input_width, "action_classes": action_classes, "dropout": dropout, "version": "aop.model.v1"}
+        self.config = {"input_width": input_width, "action_classes": action_classes, "dropout": dropout, "version": "aop.model.v2"}
         self.body = nn.Sequential(
             nn.Linear(input_width, 128), nn.LayerNorm(128), nn.SiLU(), nn.Dropout(dropout),
             nn.Linear(128, 256), nn.LayerNorm(256), nn.SiLU(), nn.Dropout(dropout),

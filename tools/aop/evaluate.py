@@ -52,17 +52,28 @@ def evaluate(checkpoint: str | Path, labels_path: str | Path) -> dict[str, Any]:
             actual = row["requested_action"]["name"]
             if actual not in action_to_id:
                 raise ValueError(f"label action not present in checkpoint: {actual}")
-            feature = encode_label(row, action_id=action_to_id[actual], action_count=len(names)).unsqueeze(0)
-            logits = model(feature)["action"][0]
-            raw = names[int(logits.argmax().item())]
-            counts["rows"] += 1
-            counts["raw_correct"] += int(raw == actual)
             legal = row.get("legal_actions") or []
-            try:
-                masked = choose_masked_action(logits, legal, names)
-            except ValueError:
+            candidate_names = [name for name in names if name in legal]
+            if not candidate_names:
                 unknown_legal_rows += 1
                 continue
+            candidate_rows = []
+            for candidate in names:
+                candidate_row = dict(row)
+                candidate_action = dict(row["requested_action"])
+                candidate_action["name"] = candidate
+                candidate_action["id"] = action_to_id[candidate] + 1
+                candidate_action["payload"] = {}
+                candidate_row["requested_action"] = candidate_action
+                candidate_rows.append(encode_label(candidate_row, action_id=action_to_id[candidate], action_count=len(names)))
+            logits = model(torch.stack(candidate_rows))["action"]
+            candidate_scores = logits[torch.arange(len(names)), torch.arange(len(names))]
+            raw = names[int(candidate_scores.argmax().item())]
+            counts["rows"] += 1
+            counts["raw_correct"] += int(raw == actual)
+            legal_ids = [action_to_id[name] for name in candidate_names]
+            masked_id = legal_ids[int(candidate_scores[legal_ids].argmax().item())]
+            masked = names[masked_id]
             counts["masked_legal_rows"] += int(masked in legal)
             counts["masked_correct"] += int(masked == actual)
             masked_counts[f"actual_{actual}"] += 1

@@ -17,7 +17,12 @@ def split_labels(labels: Iterable[dict[str, Any]], validation_fraction: float = 
         raise ValueError("need at least two episodes for a leakage-safe split")
     episodes = sorted(by_episode)
     valid_count = max(1, round(len(episodes) * validation_fraction))
-    valid_ids = set(episodes[-valid_count:])
+    # Spread validation episodes across the deterministic episode order instead
+    # of taking the lexicographic tail (which can be one game/batch only).
+    valid_ids = {
+        episodes[min(len(episodes) - 1, (index * len(episodes)) // valid_count)]
+        for index in range(valid_count)
+    }
     train = [x for ep in episodes if ep not in valid_ids for x in by_episode[ep]]
     valid = [x for ep in episodes if ep in valid_ids for x in by_episode[ep]]
     return train, valid

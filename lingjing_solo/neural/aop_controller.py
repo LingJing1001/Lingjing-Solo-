@@ -127,10 +127,15 @@ class AOPController:
             batch = torch.stack(features_list)  # (n, 16)
             with torch.no_grad():
                 out = self.model(batch)
-            prog_probs = _softmax(out["progressed"])[:, 1].tolist()
-            scored = sorted(zip(prog_probs, legal_actions), reverse=True)
-            best_prob = scored[0][0]
-            best_action = choose_masked_action(out["action"][0], legal_actions, self.action_names)
+            candidate_ids = torch.tensor(
+                [self.action_to_id.get(act, 0) for act in legal_actions],
+                dtype=torch.long,
+            )
+            candidate_scores = out["action"][torch.arange(len(legal_actions)), candidate_ids]
+            candidate_probs = torch.softmax(candidate_scores, dim=0)
+            best_index = int(candidate_probs.argmax().item())
+            best_prob = float(candidate_probs[best_index].item())
+            best_action = legal_actions[best_index]
             meta["confidence"] = best_prob
 
             if best_prob >= self.threshold and best_action in legal_actions:
