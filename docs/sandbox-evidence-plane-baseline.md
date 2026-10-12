@@ -23,7 +23,7 @@ The adapter consumes these files read-only and emits `episode_events.v1.jsonl`; 
 - [x] Python version and baseline commit captured above.
 - [x] Existing recording validator is reused by `RecordingAdapter`.
 - [x] A successful/partial fixture and RESET-capable fixture are present in the repository.
-- [ ] Existing AOP/DPL/SICA full test baseline is clean: current interpreter lacks optional `torch` (`ModuleNotFoundError` during `tests/test_aop_readiness.py` and `tests/test_aop_training.py` collection).
+- [x] Existing AOP/DPL/SICA full test baseline is clean: `397 passed, 1 skipped` in the current interpreter.
 - [x] This phase does not claim ARC score improvement and does not enter authority control.
 
 ## Current implementation audit — 2026-10-12
@@ -42,8 +42,16 @@ The original Phase 1 commit was not fully complete: the adapter emitted a hard-c
 - [x] Recording frames are projected into `lingjing_solo.dpl.types` through the repository's formal projector.
 - [ ] Production authority / external UGC — intentionally out of scope.
 
+## Phase 3 GateBench status
 
-- [x] `EpisodeEvent v1` schema and fail-closed tests.
+- [x] Requires non-empty holdout and at least two environments.
+- [x] Writes `baseline.json`, `candidate.json`, `metrics.json`, `failures.jsonl`, `manifest.json`, and `report.md`.
+- [x] Manifest includes run identity, source commit, holdout count, environment list, and artifact hashes.
+- [x] False accept/reject, replay nondeterminism, gate drift, and combination failure metrics are reported.
+- [x] Empty holdout, one-environment input, empty cases, and invalid combination counts fail closed.
+- [x] CLI smoke run produced a three-environment offline packet under `/tmp/gatebench-run`.
+- [ ] The smoke packet is synthetic/offline fixture evidence, not a real ARC score or candidate promotion decision.
+
 - [x] Deterministic recording adapter, provenance, replay hash, and manifest.
 - [x] GateBench metric calculation and report writer.
 - [x] Shadow candidate registry with cross-environment/evidence thresholds and rollback snapshot.

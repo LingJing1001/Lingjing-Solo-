@@ -10,7 +10,8 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from lingjing_solo.evidence.metrics import GateBenchCase, compute_metrics, markdown_report
+from lingjing_solo.evidence.benchmark import build_gatebench_packet, write_gatebench_packet
+from lingjing_solo.evidence.metrics import GateBenchCase
 
 
 def main() -> int:
@@ -20,18 +21,19 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--combination-failures", type=int, default=0)
     parser.add_argument("--combination-total", type=int, default=0)
+    parser.add_argument("--holdout-cases", type=int, required=True)
+    parser.add_argument("--run-id", default="offline-gatebench")
+    parser.add_argument("--source-commit", default="unknown")
     args = parser.parse_args()
     try:
         raw = json.loads(args.cases.read_text(encoding="utf-8"))
         cases = [GateBenchCase(**item) for item in raw]
-        metrics = compute_metrics(cases, holdout_delta=args.holdout_delta, combination_failures=args.combination_failures, combination_total=args.combination_total)
+        packet = build_gatebench_packet(cases, holdout_delta=args.holdout_delta, holdout_cases=args.holdout_cases, combination_failures=args.combination_failures, combination_total=args.combination_total, run_id=args.run_id, source_commit=args.source_commit)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f"REJECTED: {exc}")
         return 1
-    args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "metrics.json").write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (args.out / "report.md").write_text(markdown_report(metrics), encoding="utf-8")
-    print(f"GATEBENCH cases={metrics['cases']} environments={metrics['environments']} output={args.out}")
+    write_gatebench_packet(packet, args.out)
+    print(f"GATEBENCH cases={packet['metrics']['cases']} environments={len(packet['environments'])} output={args.out}")
     return 0
 
 
