@@ -93,7 +93,7 @@ BUILD_TAG:    …+aop-readiness-v2+plan-protect+perc-r3cap…
 | re86 | 0 | 800 | NOT_FINISHED | unknown |
 | s5i5 | 0 | 800 | NOT_FINISHED | unknown |
 | sb26 | 8 | 124 | **WIN** | plan-protect 后恢复 |
-| sc25 | 4 | 800 | NOT_FINISHED | L0–L3 plan；L4+ 未补 |
+| sc25 | 4→**5*** | 800 | NOT_FINISHED | *近补 `_SC25_PLANS[4]`（L5），@800 复测 levels=5；原全量日志仍为 4 |
 | sk48 | 0 | 800 | NOT_FINISHED | unknown |
 | sp80 | 0 | 800 | NOT_FINISHED | unknown |
 | su15 | 1 | 800 | NOT_FINISHED | CEAX 破 1 关 |
@@ -101,7 +101,7 @@ BUILD_TAG:    …+aop-readiness-v2+plan-protect+perc-r3cap…
 | tr87 | 6 | 122 | **WIN** | INLINE plan |
 | tu93 | 0 | 800 | NOT_FINISHED | unknown |
 | vc33 | 7 | 167 | **WIN** | 校准 plan |
-| wa30 | 3 | 800 | NOT_FINISHED | L0–L2；L3 在线规划失败 |
+| wa30 | 3→**4*** | 800 | NOT_FINISHED | *近补 `_WA30_PLANS[3]`（L3 软墙+NPC，92 步），@800 复测 levels=4；原全量日志仍为 3 |
 
 ### 2.4 抽样复验（修复后）
 
@@ -110,7 +110,8 @@ BUILD_TAG:    …+aop-readiness-v2+plan-protect+perc-r3cap…
 | 7 校准局 | `@800` AOP=off | **7/7 WIN**，aggregate 100.0 |
 | lp85 + ls20 | `@800` | 均 WIN |
 | cn04 / dc22 | `@800` R3=40s | 仍 0 关；IDDFS 已有 clicks（不再 NameError） |
-| wa30 | `@800`（GBK 日志修复后） | 仍 3 关；L3 规划本身失败（非日志问题） |
+| wa30 | `@800`（GBK 日志修复后） | 原 3 关；现 `_WA30_PLANS[3]` → **4 关**（solve10 冷回放） |
+| sc25 | `@800` L5 plan | **5 关**（`_SC25_PLANS[4]`） |
 
 ---
 
@@ -147,7 +148,7 @@ BUILD_TAG:    …+aop-readiness-v2+plan-protect+perc-r3cap…
 
 - `environment_files/*/metadata.json`：仅 Windows 路径分隔符与下载时间噪音，**不入库**  
 - AOP 默认仍 **off**；未开 takeover 打榜  
-- sc25 L5+ / wa30 L3+ / bp35 L2 / unknown 破零：**尚未**形成新确定性 plan
+- sc25 L5（`_SC25_PLANS[4]`）/ wa30 L3（`_WA30_PLANS[3]`）已入库；sc25 L6+ / wa30 L4+ / bp35 L1+ / unknown 破零仍待补
 
 ---
 
@@ -171,10 +172,10 @@ set LINGJING_R3_TLIMIT=20
 
 ## 5. 下一步（提分）
 
-1. **sc25 L5+ / wa30 L3+ / bp35 L2**：补确定性 plan（最大边际）  
+1. **sc25 L6+ / wa30 L4+ / bp35 L1+**：续关确定性 plan（最大边际）  
 2. **unknown 破零**：加长 R3 或接 shadow 专解（40s 内 cn04/dc22 仍 0）  
 3. **su15**：已有 1 关，挖第 2 关  
-4. 每次改动后重跑全量 25@800，守住 **10 WIN / ≥42.8**  
+4. 重跑全量 25@800，把 sc25=5 / wa30=4 入账，守住 **10 WIN / ≥42.8**  
 5. AOP：继续收数；holdout 过线前禁止 authority
 
 ---
