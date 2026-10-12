@@ -34,13 +34,41 @@ def obs(frame, tick):
             'frame_id': d.get('guid'), 'frame': d}
 
 
+def recording_action_id(action_input):
+    """Normalize recorder action payloads to the numeric GameAction ID."""
+    value = action_input.get('id') if isinstance(action_input, dict) else action_input
+    if isinstance(value, str) and value.startswith('ACTION'):
+        value = value.removeprefix('ACTION')
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def make_action(action_id, frame=None, action6_xy=None):
+    """Build an SDK action, including the required payload for complex ACTION6."""
+    action = GameAction.from_id(action_id)
+    if action_id == 6:
+        if action6_xy is None:
+            raise ValueError('ACTION6 requires an explicit x,y payload; refusing an empty complex-action request')
+        x, y = action6_xy
+        game_id = (dump(frame) or {}).get('game_id', '') if frame is not None else ''
+        action.set_data({'game_id': game_id, 'x': x, 'y': y})
+    return action
+
+
+def step_action(env, action, reasoning=None):
+    """Send both the enum and its serialized payload through the SDK boundary."""
+    return env.step(action, data=action.action_data.model_dump(), reasoning=reasoning)
+
+
 def recording_transition(out, card, candidate):
     files = sorted((out / 'remote_recordings' / str(card)).glob('*.jsonl'), key=lambda p: p.stat().st_mtime, reverse=True)
     if len(files) != 1:
         return None
     records = [json.loads(line)['data'] for line in files[0].read_text().splitlines() if line.strip()]
     for index, data in enumerate(records):
-        if (data.get('action_input') or {}).get('id') == f'ACTION{candidate}' and index > 0:
+        if recording_action_id(data.get('action_input')) == candidate and index > 0:
             return records[index - 1], data
     return None
 
@@ -64,14 +92,14 @@ def choose_prefix(arc, game, seed, length):
             candidates=[x for x in legal if x not in (0,6)] or legal
             if not candidates: return None
             aid=rng.choice(candidates); actions.append(aid)
-            frame=env.step(GameAction.from_id(aid), reasoning={'probe':'counterfactual scout','tick':tick})
+            frame=step_action(env, make_action(aid), {'probe':'counterfactual scout','tick':tick})
         if frame is None: return None
         return {'actions':actions,'before':obs(frame,length),'hash':stable_hash(dump(frame))}
     finally:
         try: arc.close_scorecard(card)
         except Exception: pass
 
-def branch(arc, game, prefix, candidate, group_id, branch_no, out):
+def branch(arc, game, prefix, candidate, group_id, branch_no, out, action6_xy=None):
     card=arc.open_scorecard(tags=['aop','counterfactual',game,group_id,f'candidate{candidate}'])
     try:
         env=arc.make(game, scorecard_id=card, save_recording=True)
@@ -80,14 +108,16 @@ def branch(arc, game, prefix, candidate, group_id, branch_no, out):
         frame=env.reset()
         for tick,aid in enumerate(prefix['actions']):
             if frame is None or aid not in list(frame.available_actions or []): return None
-            frame=env.step(GameAction.from_id(aid), reasoning={'probe':'counterfactual replay','group':group_id,'tick':tick})
+            frame=step_action(env, make_action(aid), {'probe':'counterfactual replay','group':group_id,'tick':tick})
         if frame is None: return None
         before=obs(frame,len(prefix['actions']))
         replay_hash=stable_hash(dump(frame))
         if replay_hash != prefix['hash']: return None
         legal=list(frame.available_actions or [])
         if candidate not in legal: return None
-        after_frame=env.step(GameAction.from_id(candidate), reasoning={'probe':'counterfactual candidate','group':group_id,'candidate':candidate})
+        after_frame=step_action(env, make_action(candidate, frame, action6_xy), {'probe':'counterfactual candidate','group':group_id,'candidate':candidate})
+        if after_frame is None:
+            return None
         after=obs(after_frame,len(prefix['actions'])+1)
         transition=recording_transition(out, card, candidate)
         if transition is not None:
@@ -124,35 +154,59 @@ def branch(arc, game, prefix, candidate, group_id, branch_no, out):
         except Exception: pass
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--out',type=Path,required=True); ap.add_argument('--groups-per-game',type=int,default=3)
+    ap=argparse.ArgumentParser(); ap.add_argument('--out',type=Path,required=True); ap.add_argument('--groups-per-game',type=int,default=3); ap.add_argument('--focus-actions',default='',help='comma-separated ACTION IDs; retain prefixes where one is legal'); ap.add_argument('--games',default=','.join(GAMES),help='comma-separated game IDs'); ap.add_argument('--prefix-lengths',default='50,75,100,125',help='comma-separated scout prefix lengths'); ap.add_argument('--action6-x',type=int); ap.add_argument('--action6-y',type=int)
     args=ap.parse_args(); args.out.mkdir(parents=True,exist_ok=True)
-    arc=arc_agi.Arcade(arc_api_key=os.environ['ARC_API_KEY'],operation_mode=OperationMode.ONLINE, recordings_dir=str(args.out/'remote_recordings'))
-    rows=[]; groups=[]; prefixes=[50,75,100,125]
-    for gi,game in enumerate(GAMES):
+    api_key=os.environ.get('ARC_API_KEY')
+    if not api_key:
+        raise SystemExit('ARC_API_KEY is missing. Run this collector in the foreground with the credential-bearing environment; do not launch it as an unqualified background process.')
+    focus={int(x.strip().removeprefix('ACTION')) for x in args.focus_actions.split(',') if x.strip()}
+    action6_xy=(args.action6_x,args.action6_y) if args.action6_x is not None and args.action6_y is not None else None
+    if 6 in focus and action6_xy is None:
+        raise SystemExit('ACTION6 collection requires --action6-x and --action6-y; empty payloads cause ARC HTTP 500')
+    arc=arc_agi.Arcade(arc_api_key=api_key,operation_mode=OperationMode.ONLINE, recordings_dir=str(args.out/'remote_recordings'))
+    rows=[]; groups=[]; prefixes=[int(x.strip()) for x in args.prefix_lengths.split(',') if x.strip()]
+    # Persist each accepted group immediately so a bounded remote run remains useful.
+    labels_path = args.out / 'counterfactual_labels.jsonl'
+    labels_path.write_text('', encoding='utf-8')
+    if not prefixes or any(x < 1 for x in prefixes):
+        raise SystemExit('--prefix-lengths must contain positive integers')
+    games=[x.strip() for x in args.games.split(',') if x.strip()]
+    unknown=sorted(set(games)-set(GAMES))
+    if unknown:
+        raise SystemExit(f'unknown games: {unknown}')
+    for gi,game in enumerate(games):
       for n in range(args.groups_per_game):
         length=prefixes[n % len(prefixes)]; gid=f'{game}_g{n}_p{length}'
         try:
           prefix=choose_prefix(arc,game,20261010+gi*100+n,length)
           if not prefix: continue
-          candidates=[x for x in prefix['before']['legal_actions'] if x not in (0,)]
+          if focus and not focus.intersection(prefix['before']['legal_actions']): continue
+          legal_candidates=[x for x in prefix['before']['legal_actions'] if x not in (0,)]
+          if focus:
+            focused=[x for x in legal_candidates if x in focus]
+            comparator=[x for x in legal_candidates if x not in focus]
+            candidates=focused + comparator[:1]
+          else:
+            candidates=legal_candidates
           branch_rows=[]
           for b,candidate in enumerate(candidates):
             try:
-              row=branch(arc,game,prefix,candidate,gid,b,args.out)
+              row=branch(arc,game,prefix,candidate,gid,b,args.out,action6_xy)
             except Exception as exc:
               print(json.dumps({'group':gid,'candidate':candidate,'error':type(exc).__name__}), file=sys.stderr)
               row=None
             if row is not None: branch_rows.append(row)
           if len(branch_rows)>=2:
             rows.extend(branch_rows); groups.append({'group_id':gid,'game':game,'prefix':prefix['actions'],'candidates':[r['candidate_action_id'] for r in branch_rows],'state_hash':prefix['hash']})
-            with (args.out/'counterfactual_labels.jsonl').open('a') as f:
-              for row in branch_rows: f.write(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\\n')
+            with labels_path.open('a', encoding='utf-8') as f:
+              for row in branch_rows:
+                f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + '\n')
+              f.flush()
+              os.fsync(f.fileno())
         except Exception as exc:
           print(json.dumps({'group':gid,'error':type(exc).__name__,'message':str(exc)[:160]}), file=sys.stderr)
 
-    with (args.out/'counterfactual_labels.jsonl').open('w') as f:
-      for row in rows: f.write(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n')
-    (args.out/'groups.json').write_text(json.dumps(groups,indent=2))
+    (args.out/'groups.json').write_text(json.dumps(groups, indent=2), encoding='utf-8')
     print(json.dumps({'rows':len(rows),'groups':len(groups),'games':sorted({g['game'] for g in groups}),'output':str(args.out/'counterfactual_labels.jsonl')},ensure_ascii=False))
     return 0 if rows else 1
 if __name__=='__main__': raise SystemExit(main())

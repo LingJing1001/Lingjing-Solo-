@@ -1,5 +1,6 @@
 import torch
 
+from tools.aop.counterfactual_collect import make_action, recording_action_id, step_action
 from tools.aop.counterfactual_qa import validate_groups
 from tools.aop.train import counterfactual_rank_loss
 
@@ -44,3 +45,33 @@ def test_counterfactual_rank_loss_uses_progress_outcome():
     targets = torch.tensor([0, 1])
     loss = counterfactual_rank_loss(logits, targets, labels)
     assert float(loss.detach()) > 0.0
+
+
+def test_recording_action_id_normalizes_numeric_and_named_payloads():
+    assert recording_action_id({'id': 6, 'name': 'ACTION6'}) == 6
+    assert recording_action_id({'id': 'ACTION7'}) == 7
+    assert recording_action_id(5) == 5
+
+
+def test_action6_requires_payload_and_serializes_complex_action():
+    import pytest
+
+    with pytest.raises(ValueError, match='requires an explicit x,y payload'):
+        make_action(6)
+    action = make_action(6, action6_xy=(15, 31))
+    assert action.action_data.x == 15
+    assert action.action_data.y == 31
+
+
+def test_step_action_forwards_complex_payload_to_sdk_boundary():
+    class FakeEnv:
+        def step(self, action, data=None, reasoning=None):
+            self.received = (action, data, reasoning)
+            return 'ok'
+
+    env = FakeEnv()
+    action = make_action(6, action6_xy=(15, 31))
+    assert step_action(env, action, {'probe': 'test'}) == 'ok'
+    assert env.received[1] is not None
+    assert env.received[1]['x'] == 15
+    assert env.received[1]['y'] == 31
