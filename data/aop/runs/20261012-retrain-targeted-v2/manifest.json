@@ -1,0 +1,84 @@
+{
+  "schema": "aop.run.manifest.v2",
+  "run_id": "20261012-retrain-targeted-v2",
+  "source_dataset": "data/aop/runs/20261010-v4/datasets/merged_v4_labels.jsonl",
+  "collection": {
+    "method": "same-state counterfactual branches",
+    "groups_requested_per_game": 6,
+    "groups_accepted": 21,
+    "games": [
+      "ar25",
+      "dc22",
+      "ls20",
+      "re86"
+    ],
+    "rows": 107,
+    "comparable_groups": 21,
+    "informative_groups": 0,
+    "qa": "data/aop/runs/20261012-targeted-cf-v2/raw/qa.json",
+    "known_gap": "No outcome-diverse groups; counterfactual ranking loss contributes zero on this batch."
+  },
+  "split_policy": {
+    "validation_fraction": 0.2,
+    "grouping": "counterfactual_group_id when present, otherwise episode_id",
+    "train_rows": 8903,
+    "validation_rows": 2262,
+    "train_groups": 160,
+    "validation_groups": 45,
+    "group_overlap": 0
+  },
+  "training": {
+    "epochs": 20,
+    "checkpoint": "checkpoints/aop_targeted_11165_20ep.pt",
+    "git_commit": "6c389d001ab3ab4cb7ec69fb95be766abe9ff580",
+    "dataset_sha256": "d36cc791aae87f1cd9d6bfe23675e64923b7008b2fed3f917fb2450a2865e631"
+  },
+  "artifacts": {
+    "targeted_labels": {
+      "path": "data/aop/runs/20261012-targeted-cf-v2/raw/counterfactual_labels.jsonl",
+      "sha256": "13eb26b11b8b3e36f7dfae625522d111a1461fa3f79f503207c65a37a0ced536",
+      "bytes": 2720845
+    },
+    "targeted_qa": {
+      "path": "data/aop/runs/20261012-targeted-cf-v2/raw/qa.json",
+      "sha256": "ebbd6cedb3e09928dc7d766c015a6737d267427293748565f2fd1185eb0277e4",
+      "bytes": 12766
+    },
+    "merged_dataset": {
+      "path": "data/aop/runs/20261012-targeted-cf-v2/datasets/merged_11165_labels.jsonl",
+      "sha256": "d36cc791aae87f1cd9d6bfe23675e64923b7008b2fed3f917fb2450a2865e631",
+      "bytes": 341048740
+    },
+    "merged_qa": {
+      "path": "data/aop/runs/20261012-targeted-cf-v2/reports/merged_11165_qa.json",
+      "sha256": "1b5c68f83b5b6ccb7dbb32fc03a12f8f16a7c567b32e0539b99d6b3762030c7d",
+      "bytes": 31171
+    },
+    "holdout_labels": {
+      "path": "data/aop/runs/20261012-retrain-targeted-v2/reports/holdout_labels.jsonl",
+      "sha256": "88b9f7e53cc0f3accb1ccd560bcb2e99a0d46f8aca3d77a73d18282a9ddaef07",
+      "bytes": 63217747
+    },
+    "holdout_evaluation": {
+      "path": "data/aop/runs/20261012-retrain-targeted-v2/reports/eval_holdout_2262.json",
+      "sha256": "fff473e71bf9dbc7da8cb3f19bf50019e4b61a29833e091d055a41aa5c2f6d12",
+      "bytes": 1018
+    },
+    "full_evaluation": {
+      "path": "data/aop/runs/20261012-retrain-targeted-v2/reports/eval_full_11165.json",
+      "sha256": "f1b37ccb0c476ecdbfc37fe27f13a1f5927038fcf075b665abbbc6eeaf97aa80",
+      "bytes": 1087
+    },
+    "checkpoint": {
+      "path": "data/aop/runs/20261012-retrain-targeted-v2/checkpoints/aop_targeted_11165_20ep.pt",
+      "sha256": "7f5008de17413d1640e8847dcfd552340662b9a58c592ba33c4c772d5f2a5dcb",
+      "bytes": 296941
+    }
+  },
+  "deployment": "not_deployed",
+  "audit_findings": [
+    "Fixed counterfactual branch leakage in validation split.",
+    "Targeted batch remains off-policy and is not outcome-informative.",
+    "Evaluation uses action-conditioned diagonal scoring with legal masking; AOP takeover remains disabled."
+  ]
+}

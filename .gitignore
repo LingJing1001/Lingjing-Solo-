@@ -34,6 +34,9 @@ state/
 data/aop/raw/
 data/aop/normalized.recording.jsonl
 data/aop/labels.jsonl
+# Continuous AOP runtime state, logs, and rolling labels stay on the host.
+data/aop/continuous/
+data/aop/labels/merged_58eps_targeted_20261011.jsonl
 # Large persisted AOP run artifacts stay on the host; commit only provenance.
 data/aop/runs/*
 !data/aop/runs/*/

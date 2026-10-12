@@ -1,0 +1,14 @@
+{
+  "run_id": "20261012-retrain-targeted-v3",
+  "source_labels": "data/aop/runs/20261012-targeted-cf-v2/datasets/merged_11165_labels.jsonl",
+  "source_sha256": "d36cc791aae87f1cd9d6bfe23675e64923b7008b2fed3f917fb2450a2865e631",
+  "checkpoint": "data/aop/runs/20261012-retrain-targeted-v3/checkpoints/aop_targeted_11165_group_split_20ep.pt",
+  "checkpoint_sha256": "cb1630b3c38fe6113338452d8bc76605e08e84ea1a9783a1f07955c39a2f3af5",
+  "evaluation": "data/aop/runs/20261012-retrain-targeted-v3/reports/eval_full.json",
+  "evaluation_sha256": "cc1d26c44d704a0a569a1a1b03b16c8adac27811712e152350b05cc9d7bd68bc",
+  "epochs": 20,
+  "validation_fraction": 0.2,
+  "split_policy": "counterfactual_group_id when present, otherwise episode_id",
+  "new_remote_collection": "not_accepted: ACTION6 returned HTTP 500 and no valid new labels were persisted",
+  "aop_takeover": "disabled"
+}

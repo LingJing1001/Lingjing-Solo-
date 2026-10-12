@@ -1,0 +1,27 @@
+{
+  "schema": "aop.run.manifest.v1",
+  "run_id": "20261012-retrain-restored-v1",
+  "source_run": "data/aop/runs/20261010-v4",
+  "dataset": "../20261010-v4/datasets/merged_v4_labels.jsonl",
+  "dataset_sha256": "630b8d8c5400c05f3f966399521485f1f488d2875433599da05aea0007bb5da0",
+  "training": {
+    "epochs": 20,
+    "validation_fraction": 0.2,
+    "train_rows": 8886,
+    "validation_rows": 2172,
+    "validation_episodes": 20,
+    "git_commit": "6c389d001ab3ab4cb7ec69fb95be766abe9ff580",
+    "val_loss": 1.510331
+  },
+  "checkpoint": "checkpoints/aop_restored_11058_20ep.pt",
+  "checkpoint_sha256": "193eaf868046ee4b80b3098651ad1914818b9b2b278cd061f4fdce0475f6473c",
+  "evaluation": "reports/eval_full_11058.json",
+  "metrics": {
+    "rows": 11058,
+    "raw_action_accuracy": 0.04376921685657443,
+    "masked_action_accuracy": 0.24751311267860374,
+    "masked_legal_prediction_rate": 1.0,
+    "unknown_legal_rows": 0
+  },
+  "deployment": "not_deployed"
+}
