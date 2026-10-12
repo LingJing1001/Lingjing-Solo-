@@ -34,6 +34,12 @@ state/
 data/aop/raw/
 data/aop/normalized.recording.jsonl
 data/aop/labels.jsonl
+# Large persisted AOP run artifacts stay on the host; commit only provenance.
+data/aop/runs/*
+!data/aop/runs/*/
+data/aop/runs/*/*
+!data/aop/runs/*/README.md
+!data/aop/runs/*/manifest.json
 models/aop/checkpoints/
 *.pt
 *.pth

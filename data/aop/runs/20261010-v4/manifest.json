@@ -1,0 +1,16 @@
+{
+  "schema": "aop.run.manifest.v1",
+  "run_id": "20261010-v4",
+  "source_tmp_dirs": ["/tmp/aop-training-20261010", "/tmp/aop-targeted-20261011"],
+  "canonical_dataset": "datasets/merged_v4_labels.jsonl",
+  "qa_report": "reports/merged_v4_qa.json",
+  "checkpoint": "checkpoints/aop_v2_candidate_fixed_20ep.pt",
+  "files": {
+    "datasets/merged_v4_labels.jsonl": {"bytes": 338327895, "sha256": "630b8d8c5400c05f3f966399521485f1f488d2875433599da05aea0007bb5da0"},
+    "reports/merged_v4_qa.json": {"bytes": 19140, "sha256": "e84025d98f512e88a11a56f3585fddff8305b9e472ce64255a12f15dd740bfa5"},
+    "checkpoints/aop_v2_candidate_fixed_20ep.pt": {"bytes": 292685, "sha256": "83cb19fa868342fea75fbaf7ba6b7d13a6aaba83a526fa928c8a6b8eda28c38f"},
+    "collection/counterfactual_labels.jsonl": {"bytes": 1589598, "sha256": "b8df5e15fc78a74ff62cf6834c943c7897acc3623f98c1eb2079c43d96ebaa1c"},
+    "collection/groups.json": {"bytes": 11918, "sha256": "8a9fa5a76e27d8d1df724fded7cfe2c93ea728735180c7de99336eda30df3cd4"},
+    "collection/qa.json": {"bytes": 7927, "sha256": "c500ea0802087c0016f20ebbea74dc018896fe0928aa7a9b13824093c3d1870e"}
+  }
+}
