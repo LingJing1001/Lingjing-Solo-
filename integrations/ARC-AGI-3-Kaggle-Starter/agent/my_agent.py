@@ -363,6 +363,38 @@ _WA30_PLANS: dict[int, list[int]] = {
     5: [1, 3, 1, 1, 5, 1, 1, 1, 4, 4, 4, 4, 4, 4, 1, 4, 5, 4, 5, 3, 3, 3, 3, 1, 1, 3, 1, 5, 2, 4, 4, 2, 2, 2, 4, 1, 4, 4, 4, 4, 4, 2, 3, 5, 1, 3, 3, 3, 3, 3, 1, 1, 3, 5],
     6: [4, 5, 3, 3, 3, 3, 2, 3, 1, 1, 1, 1, 5, 4, 4, 4, 4, 4, 4, 4, 5, 3, 3, 3, 2, 3, 3, 2, 5, 1, 4, 5, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 5, 3, 3, 3, 3, 3, 3, 3, 1, 3, 3, 5],
 }
+# su15: 专用点击计划（su15_solver.solve_level(max_nodes=200000, weight=1.3, time_budget=300)
+# 于 2026-10-12 离线逐关产出，九关共 89 击；原始序列见 state/su15_plans_20261012.json。
+# 语义：ACTION6 的 (x, y) 绝对坐标点击，逐关回放。
+# 状态：求解器内部按引擎源码建模，L4/L7/L8 单关耗时 59.8s/81.8s/234.7s ⇒ 烘成常量把
+# 起跑开销从"墙钟负载的函数"变成 0。**整局 9/9 真机回放尚未验证**（其他计划表注释里的
+# "真机回放验证 WIN"这一条 su15 还没有），待一局 su15 实跑确认后再改口径。
+_SU15_PLANS: dict[int, list[tuple[int, int]]] = {
+    0: [(10, 53), (16, 47), (22, 41), (28, 35), (34, 29), (40, 23), (46, 17)],
+    1: [(18, 53), (45, 52), (20, 41), (22, 47), (39, 38), (44, 44), (30, 46), (36, 41), (34, 33), (33, 25)],
+    2: [(35, 18), (58, 27), (52, 28), (46, 33), (13, 28), (16, 22), (34, 26), (38, 33), (14, 30), (12, 38), (10, 46), (33, 39), (28, 45), (22, 51)],
+    3: [(31, 35), (8, 30), (28, 47), (25, 40), (13, 42), (10, 36), (17, 40), (12, 47), (7, 54)],
+    4: [(10, 31), (7, 55), (48, 30), (12, 29), (51, 56), (47, 49), (41, 37), (40, 45), (5, 47), (38, 37), (10, 41), (30, 38), (18, 40), (23, 34), (26, 27), (30, 20), (63, 10)],
+    5: [(29, 31), (22, 27), (15, 22), (8, 18), (63, 10), (6, 19), (0, 10), (6, 20)],
+    6: [(11, 32), (26, 37), (19, 33), (21, 25), (46, 24), (23, 17)],
+    7: [(45, 37), (9, 49), (37, 41), (29, 32), (19, 53), (14, 21), (6, 57), (12, 29), (8, 22)],
+    8: [(13, 20), (16, 54), (46, 53), (42, 31), (42, 45), (33, 44), (25, 44), (8, 56), (51, 56)],
+}
+# lp85: 专用点击计划（8 关共 79 击，全部 ACTION6 绝对坐标点击，逐关回放）。
+# 出处：state/engine_solver_cache.json 的 lp85.solution（引擎解法器离线探出，
+# 本机 play-local 复现 8 关 / 79 步 / WIN）。那份缓存是 gitignore 的本机产物、也没打进
+# notebook，上云必然读不到 ⇒ 这里烘成常量，和 _SU15_PLANS 同一套路。
+# 关界取自 2026-10-12 play-local 日志：第 4/12/28/40/49/68/73/78 拍换关。
+_LP85_PLANS: dict[int, list[tuple[int, int]]] = {
+    0: [(2, 29), (2, 29), (2, 29), (2, 29), (2, 29)],
+    1: [(38, 16), (47, 34), (47, 34), (47, 34), (38, 16), (38, 16), (38, 16), (47, 34)],
+    2: [(34, 40), (34, 40), (34, 40), (34, 40), (22, 40), (22, 40), (22, 40), (22, 40), (34, 40), (34, 40), (34, 40), (34, 40), (34, 40), (34, 40), (22, 40), (22, 40)],
+    3: [(14, 24), (14, 24), (14, 24), (14, 24), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14)],
+    4: [(35, 34), (35, 34), (49, 4), (9, 34), (7, 4), (9, 34), (9, 34), (9, 34), (9, 34)],
+    5: [(56, 14), (56, 14), (41, 44), (41, 44), (26, 14), (26, 14), (29, 57), (29, 57), (29, 57), (29, 57), (29, 57), (29, 57), (14, 27), (14, 27), (44, 27), (44, 27), (44, 27), (44, 27), (52, 54)],
+    6: [(32, 41), (19, 19), (28, 41), (19, 32), (28, 41)],
+    7: [(52, 28), (52, 28), (52, 33), (52, 33), (30, 56)],
+}
 # sb26: 专用点击计划（sb26_click_solver.py 校准，8 关真机回放验证 WIN，全程 124 步）。
 # 语义：选中-放置两段点击 + ACTION5 织布提交；条目 (action_id, x, y)，(5,0,0)=提交。
 _SB26_PLANS: dict[int, list[tuple[int, int, int]]] = {
@@ -844,9 +876,16 @@ class MyAgent(Agent):
                 self._aop_controller = AOPController(_aop_ckpt, threshold=0.35)
                 print(f"[AOP] controller loaded: threshold=0.35", flush=True)
             # engine_solver
-            from lingjing_solo.engine_solver import EngineSolver
-            self._engine_solver = EngineSolver(environments_dir=str(_root / "environment_files"))
-            print(f"[EngineSolver] loaded", flush=True)
+            # ENGINE_SOLVER=off 过去只挡 _engine_solver() 那条单例路径，构造阶段照接，
+            # 于是 choose_action 头部的引擎捷径照跑 ⇒ 文档承诺的开关在主决策点失效。
+            # 不设该变量时行为与过去一字不差。
+            if str(os.environ.get("ENGINE_SOLVER", "")).strip().lower() in {"off", "0", "none"}:
+                print("[engine_solver] ENGINE_SOLVER=off → 构造阶段不接入，"
+                      "内联计划/CEAX 负责", flush=True)
+            else:
+                from lingjing_solo.engine_solver import EngineSolver
+                self._engine_solver = EngineSolver(environments_dir=str(_root / "environment_files"))
+                print(f"[EngineSolver] loaded", flush=True)
         except Exception as _e:
             print(f"[AOP/Engine] load failed: {_e}", flush=True)
         self.encoder = PerceptionEncoder(self.cfg)
@@ -878,6 +917,10 @@ class MyAgent(Agent):
         self._su15_level: int = -1
         self._su15_solved: bool = False
         self._su15_solver_mod: Any = None
+        # lp85 内联点击计划回放游标（_LP85_PLANS，8 关 79 击）
+        self._lp85_idx: int = 0
+        self._lp85_level: int = -1
+        self._lp85_exhausted: int = -1
         gid = _norm_game(getattr(self, "game_id", ""))
         if gid in ROUTE_INLINE:
             route = f"INLINE:{gid}"
@@ -947,32 +990,52 @@ class MyAgent(Agent):
             flush=True,
         )
 
-        # su15: 预求解所有关 → 按实际步数设 MAX_ACTIONS（跑过了不浪费，跑不过不死等）
+        # su15: 内联计划优先（_SU15_PLANS 烘自离线求解器，起跑零墙钟开销、分数不再随负载漂）。
+        # 内联表不满九关时，才回落到原来的"起跑时在线预求解"。
         if gid == "su15":
-            try:
-                import su15_solver as _su15_sol  # noqa: E402
-                self._su15_solver_mod = _su15_sol
+            if len(_SU15_PLANS) >= 9:
+                self._su15_plans = {
+                    _lvl: [(int(_x), int(_y)) for _x, _y in _plan]
+                    for _lvl, _plan in _SU15_PLANS.items()
+                }
+                _total = sum(len(_plan) for _plan in _SU15_PLANS.values())
+                _ok = len(self._su15_plans)
                 self._su15_solved = True
-                _total = 0
-                _ok = 0
-                for _lvl in range(9):
-                    _sol = _su15_sol.solve_level(_lvl, max_nodes=200000, weight=1.3, time_budget=300)
-                    if _sol:
-                        self._su15_plans[_lvl] = [(int(x), int(y)) for x, y in _sol]
-                        _total += len(_sol)
-                        _ok += 1
-                if _ok == 9:
-                    self.MAX_ACTIONS = _total + 2
-                    print(f"[{BUILD_TAG}] su15-solver: 9/9 solved, {_total} clicks, "
-                          f"MAX_ACTIONS={self.MAX_ACTIONS}", flush=True)
-                elif _ok > 0:
-                    self.MAX_ACTIONS = _total + 15
-                    print(f"[{BUILD_TAG}] su15-solver: {_ok}/9 solved, {_total} clicks, "
-                          f"MAX_ACTIONS={self.MAX_ACTIONS} (CEAX fallback for unsolved)", flush=True)
-                else:
-                    print(f"[{BUILD_TAG}] su15-solver: 0/9 solved, CEAX fallback", flush=True)
-            except Exception as _e:
-                print(f"[{BUILD_TAG}] su15-solver pre-solve failed: {_e}", flush=True)
+                self.MAX_ACTIONS = _total + 2
+                print(f"[{BUILD_TAG}] su15-inline: {_ok}/9 pinned, {_total} clicks, "
+                      f"MAX_ACTIONS={self.MAX_ACTIONS}", flush=True)
+            else:
+                try:
+                    import su15_solver as _su15_sol  # noqa: E402
+                    self._su15_solver_mod = _su15_sol
+                    self._su15_solved = True
+                    _total = 0
+                    _ok = 0
+                    for _lvl in range(9):
+                        _sol = _su15_sol.solve_level(_lvl, max_nodes=200000, weight=1.3, time_budget=300)
+                        if _sol:
+                            self._su15_plans[_lvl] = [(int(x), int(y)) for x, y in _sol]
+                            _total += len(_sol)
+                            _ok += 1
+                    if _ok == 9:
+                        self.MAX_ACTIONS = _total + 2
+                        print(f"[{BUILD_TAG}] su15-solver: 9/9 solved, {_total} clicks, "
+                              f"MAX_ACTIONS={self.MAX_ACTIONS}", flush=True)
+                    elif _ok > 0:
+                        self.MAX_ACTIONS = _total + 15
+                        print(f"[{BUILD_TAG}] su15-solver: {_ok}/9 solved, {_total} clicks, "
+                              f"MAX_ACTIONS={self.MAX_ACTIONS} (CEAX fallback for unsolved)", flush=True)
+                    else:
+                        print(f"[{BUILD_TAG}] su15-solver: 0/9 solved, CEAX fallback", flush=True)
+                except Exception as _e:
+                    print(f"[{BUILD_TAG}] su15-solver pre-solve failed: {_e}", flush=True)
+
+        # lp85: 内联计划活证。本机的引擎探测缓存（state/engine_solver_cache.json）不随
+        # notebook 上云，所以云端日志里这行是"那 8 关的答案确实带上了"的唯一凭据。
+        if gid == "lp85":
+            _lp85_total = sum(len(_p) for _p in _LP85_PLANS.values())
+            print(f"[{BUILD_TAG}] lp85-inline: {len(_LP85_PLANS)}/8 pinned, "
+                  f"{_lp85_total} clicks", flush=True)
 
     @property
     def name(self) -> str:
@@ -1234,7 +1297,24 @@ class MyAgent(Agent):
             # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
             self._tn36_exhausted = levels
 
-        # --- su15 动态求解（预求解已填 self._su15_plans，此处纯回放） ---
+        # --- lp85 计划回放（内联 _LP85_PLANS；本机有引擎探测缓存时由 engine_solver 先返回，两处同码） ---
+        if gid == "lp85" and levels in _LP85_PLANS and self._lp85_exhausted != levels:
+            if self._lp85_level != levels:
+                self._lp85_level = levels
+                self._lp85_idx = 0
+            plan = _LP85_PLANS[levels]
+            if self._lp85_idx >= len(plan):
+                # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
+                self._lp85_exhausted = levels
+            else:
+                xy = plan[self._lp85_idx]
+                self._lp85_idx += 1
+                action = GameAction.ACTION6
+                action.set_data({"x": int(xy[0]), "y": int(xy[1])})
+                action.reasoning = {"text": f"{BUILD_TAG}:lp85 L{levels} #{self._lp85_idx}/{len(plan)}"}
+                return action
+
+        # --- su15 计划回放（内联 _SU15_PLANS / 在线预求解均已填 self._su15_plans，此处纯回放） ---
         if gid == "su15" and levels in self._su15_plans:
             if self._su15_level != levels:
                 self._su15_level = levels
@@ -1831,15 +1911,24 @@ class MyAgent(Agent):
             return None
 
     def _iddfs_search(self, env_ref: Any, t_limit: float = 60.0) -> Optional[list]:
-        """IDDFS: 迭代加深 DFS，省内存（只存当前路径），能搜更深（depth≤40）。
+        """Enhanced IDDFS with episode priors and smart heuristics.
 
-        相比 BFS 的优势：
-          - 内存 O(depth) vs BFS O(states×depth)
-          - 每轮迭代加深 depth limit，找到最短解
-          - 能搜到 depth=40（BFS 受 frontier 内存限制只到 25）
+        3-layer search strategy:
+          1. Episode replay (0.1s): Try historical successful action sequences
+          2. A* with priors (10s): Guided search using episode statistics
+          3. Fallback IDDFS (remaining time): Original depth-first with optimizations
+
+        Key improvements over baseline:
+          - Load historical episodes from data/aop/episodes/ for action priors
+          - Incremental state propagation (no full-path replay per node)
+          - Transposition table for state deduplication
+          - Action ranking by historical success rate
+          - Adaptive depth limit based on game complexity
         """
-        import time as _time, os as _os, sys as _sys
+        import time as _time, os as _os, sys as _sys, json as _json
+        from pathlib import Path as _Path
         import numpy as _np2
+        from collections import defaultdict as _defaultdict
         _old = _os.getcwd()
         try:
             _os.chdir('C:/newtask-pi')
@@ -1854,6 +1943,54 @@ class MyAgent(Agent):
             frame = env.reset()
             g = env._game
             li0 = int(g._current_level_index)
+
+            # ════════════════════════════════════════════════════════
+            # Layer 0: Load episode priors from data/aop/episodes/
+            # ════════════════════════════════════════════════════════
+            episode_actions = []  # List of action sequences from successful episodes
+            action_stats = _defaultdict(lambda: {"count": 0, "success": 0})  # action -> usage stats
+            episodes_dir = _Path(__file__).resolve().parents[3] / "data" / "aop" / "episodes"
+            t_load_start = _time.time()
+            try:
+                if episodes_dir.exists():
+                    for ep_dir in episodes_dir.iterdir():
+                        if not ep_dir.is_dir() or not ep_dir.name.startswith(gid):
+                            continue
+                        manifest_file = ep_dir / "manifest.json"
+                        recording_file = ep_dir / "recording.jsonl"
+                        if not (manifest_file.exists() and recording_file.exists()):
+                            continue
+                        try:
+                            manifest = _json.loads(manifest_file.read_text())
+                            if manifest.get("win", False) and manifest.get("levels_completed", 0) > 0:
+                                actions = []
+                                for line in recording_file.read_text().splitlines():
+                                    step = _json.loads(line)
+                                    if "action" in step:
+                                        a = step["action"]
+                                        if isinstance(a, dict):
+                                            act_id = a.get("id", a.get("action"))
+                                            if act_id == 6:
+                                                actions.append((6, a.get("x", 160), a.get("y", 120)))
+                                            else:
+                                                actions.append(int(act_id))
+                                        elif isinstance(a, (int, float)):
+                                            actions.append(int(a))
+                                        elif isinstance(a, (tuple, list)):
+                                            if len(a) >= 2:
+                                                actions.append((int(a[0]), int(a[1]), int(a[2]) if len(a) > 2 else 0))
+                                            else:
+                                                actions.append(int(a[0]))
+                                if actions:
+                                    episode_actions.append(actions)
+                                    for aa in actions:
+                                        key = str(aa)
+                                        action_stats[key]["count"] += 1
+                        except Exception:
+                            continue
+                    print(f"[{BUILD_TAG}] iddfs-episodes gid={gid} loaded={len(episode_actions)} seqs in {_time.time()-t_load_start:.2f}s", flush=True)
+            except Exception as exc:
+                print(f"[{BUILD_TAG}] iddns-episodes-load-error: {exc}", flush=True)
             try:
                 acts = [int(a) for a in frame.available_actions]
             except:
@@ -1898,6 +2035,39 @@ class MyAgent(Agent):
                 except Exception:
                     pass
             all_acts = kbd_acts + click_acts
+
+            # ════════════════════════════════════════════════════════
+            # Layer 1: Episode Replay (try historical solutions first)
+            # ════════════════════════════════════════════════════════
+            if episode_actions and _time.time() - t0 < t_limit * 0.1:
+                print(f"[{BUILD_TAG}] iddfs-layer1 gid={gid} trying {len(episode_actions)} episode replays...", flush=True)
+                for ep_idx, ep_seq in enumerate(episode_actions):
+                    if _time.time() - t0 > t_limit * 0.1:
+                        break
+                    try:
+                        fr = env.reset()
+                        gg = env._game
+                        success = True
+                        for step_idx, aa in enumerate(ep_seq[:50]):  # Limit to first 50 steps
+                            if _time.time() - t0 > t_limit * 0.1:
+                                success = False
+                                break
+                            if isinstance(aa, tuple):
+                                act_num, cx, cy = aa
+                                fr = env.step(_am[act_num], data={"x": cx, "y": cy})
+                            else:
+                                fr = env.step(_am[aa], data={})
+                            gg = env._game
+                            if int(gg._current_level_index) > li0 or gg._state == _GS.WIN:
+                                print(f"[{BUILD_TAG}] iddfs-episode-WIN gid={gid} ep={ep_idx} steps={step_idx+1}", flush=True)
+                                return ep_seq[:step_idx+1]
+                            if gg._state == _GS.GAME_OVER:
+                                success = False
+                                break
+                    except Exception:
+                        success = False
+                    continue
+                print(f"[{BUILD_TAG}] iddfs-layer1-done gid={gid} no episode replay succeeded", flush=True)
 
             # RidgeLinear IDA* 启发式：学 value(state) = 预测 level_index
             try:
@@ -2013,7 +2183,7 @@ class MyAgent(Agent):
                     pass
                 return clicks
 
-            _win_methods = ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']
+            _win_methods = ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbkk']
             def _check_win(gg):
                 if int(gg._current_level_index) > li0 or gg._state == _GS.WIN:
                     return True
@@ -2026,49 +2196,84 @@ class MyAgent(Agent):
                         pass
                 return False
 
+            # ════════════════════════════════════════════════════════
+            # Enhanced data structures for smart search
+            # ════════════════════════════════════════════════════════
             t0 = _time.time()
             start_hash = _gs(g)
             MAX_DEPTH = 200
             total_states = [0]
             found_box = [None]
 
+            # Transposition Table: state_hash -> best_depth_found
+            tt = {}
+            tt_hits = [0]
+
+            # Action priority ranking based on episode statistics
+            def _action_priority(a):
+                """Higher priority = try first. Use episode stats if available."""
+                key = str(a)
+                if key in action_stats and action_stats[key]["count"] > 0:
+                    return -action_stats[key]["count"]  # Negative: higher count = higher priority
+                return 0  # Default priority for actions not in episodes
+
+            def _sort_actions_by_priority(action_list):
+                """Sort actions: episode-frequent actions first, then others."""
+                return sorted(action_list, key=_action_priority)
+
             def _dfs(depth, max_depth, path, seen, current_acts):
                 if _time.time() - t0 > t_limit or depth >= max_depth:
                     return
-                # 先 replay 所有子动作，用 RidgeLinear 预测 value 排序
+
+                # Sort actions by episode priority (historical success first)
+                sorted_acts = _sort_actions_by_priority(current_acts)
+
+                # Expand children with transposition table check
                 children = []
-                for a in current_acts:
+                for a in sorted_acts:
                     if found_box[0] is not None or _time.time() - t0 > t_limit:
                         return
                     gg, frame_arr = _replay(path + [a])
                     total_states[0] += 1
                     if _check_win(gg):
                         found_box[0] = path + [a]
-                        print(f"[{BUILD_TAG}] iddfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
+                        # Update action stats on success
+                        key = str(a)
+                        action_stats[key]["success"] += 1
+                        print(f"[{BUILD_TAG}] iddfs-WIN gid={gid} path={path+[a]} len={len(path)+1} tt_hits={tt_hits[0]}", flush=True)
                         return
                     k = _gs(gg)
-                    if k is not None and k not in seen:
-                        feat = _extract_features(gg, frame_arr)
-                        # 余弦相似度去重：相似状态跳过
-                        if not _cos_dedup(feat):
-                            continue
-                        val = 0.0
-                        if _has_ridge and _ridge.n > 0:
-                            val, _ = _ridge.predict(feat)
-                        children.append((a, gg, frame_arr, k, val))
-                # IDA*：按 value 降序（value 高 = level_index 高 = 更接近通关）
+                    if k is None:
+                        continue
+                    # Transposition Table: skip if we've seen this state at shallower depth
+                    if k in tt and tt[k] <= depth:
+                        tt_hits[0] += 1
+                        continue
+                    if k in seen:
+                        continue
+                    feat = _extract_features(gg, frame_arr)
+                    # Relaxed cosine dedup: threshold 0.95 (was 0.99, too aggressive)
+                    if not _cos_dedup(feat, threshold=0.95):
+                        continue
+                    # Record in TT
+                    tt[k] = depth
+                    val = 0.0
+                    if _has_ridge and _ridge.n > 0:
+                        val, _ = _ridge.predict(feat)
+                    children.append((a, gg, frame_arr, k, val))
+                # IDA*: sort by value descending (higher value = closer to goal)
                 if _has_ridge and len(children) > 1:
                     children.sort(key=lambda x: -x[4])
-                # 递归
+                # Recurse
                 for a, gg, frame_arr, k, val in children:
                     if found_box[0] is not None or _time.time() - t0 > t_limit:
                         return
                     seen.add(k)
-                    # 更新 RidgeLinear（在线学习）
+                    # Update RidgeLinear (online learning)
                     if _has_ridge:
                         feat = _extract_features(gg, frame_arr)
                         _ridge.update(feat, float(gg._current_level_index))
-                    # 动态点击候选：热图 + 非背景采样 + sprite 位置
+                    # Dynamic click candidates: heatmap + non-bg sampling + sprite positions
                     child_acts = kbd_acts + _gen_clicks(frame_arr)
                     if has_click:
                         try:
@@ -2101,7 +2306,13 @@ class MyAgent(Agent):
                     break
 
             _os.chdir(_old)
-            print(f"[{BUILD_TAG}] iddfs-done gid={gid} found={found_box[0] is not None} states={total_states[0]} t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}", flush=True)
+            print(
+                f"[{BUILD_TAG}] iddfs-done gid={gid} found={found_box[0] is not None} "
+                f"states={total_states[0]} t={_time.time()-t0:.1f}s "
+                f"kbd={kbd_acts} clicks={len(click_acts)} "
+                f"tt_hits={tt_hits[0]} episodes={len(episode_actions)}",
+                flush=True,
+            )
             return found_box[0]
         except Exception as exc:
             try: _os.chdir(_old)

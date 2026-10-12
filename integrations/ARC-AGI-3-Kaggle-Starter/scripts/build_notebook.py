@@ -16,10 +16,70 @@ You don't normally need to call this directly — `make submit` runs it for you.
 from __future__ import annotations
 
 import ast
+import io
 import json
 import os
+import tokenize
 from pathlib import Path
 from textwrap import dedent
+
+# Kaggle's SaveKernel rejects any kernel whose source is >= 1 MB, and it measures
+# the JSON-normalised (ASCII-escaped) form, where each CJK character costs 6
+# bytes. The agent + lingjing_solo sources carry a lot of Chinese comments, so
+# the notebook used to be rejected at ~1.06 MB. Comments are the only fat we can
+# cut without touching behaviour, and every cut is AST-verified below.
+_KERNEL_SOURCE_LIMIT = 1_048_576
+
+
+def _strip_comments(src: str) -> str:
+    """Drop ``#`` comments, keeping one output line per input line.
+
+    Truncates each commented line at the comment's column instead of using
+    ``tokenize.untokenize``, so line numbers in the shipped source stay identical
+    to the local files (``file:line`` references keep meaning the same thing).
+    Returns ``src`` unchanged on any tokenize error.
+    """
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(src).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
+        return src
+    lines = src.splitlines(keepends=True)
+    for tok in reversed(toks):
+        if tok.type != tokenize.COMMENT:
+            continue
+        row, col = tok.start          # 1-based row, 0-based column
+        if row > len(lines):
+            continue
+        head = lines[row - 1][:col].rstrip()
+        nl = "\n" if lines[row - 1].endswith("\n") else ""
+        lines[row - 1] = head + nl
+    return "".join(lines)
+
+
+def _ast_equal(a: str, b: str) -> bool:
+    """True when two sources parse to identical ASTs (comments invisible there)."""
+    try:
+        return ast.dump(ast.parse(a)) == ast.dump(ast.parse(b))
+    except SyntaxError:
+        return False
+
+
+# Filled while splicing: bytes saved by comment stripping, and file count.
+_STRIP_STATS = {"bytes": 0, "files": 0}
+
+
+def _embed_source(rel: str, source: str) -> str:
+    """Comment-strip one embedded module, refusing to ship a semantic change."""
+    stripped = _strip_comments(source)
+    if stripped == source:
+        return source
+    if not _ast_equal(source, stripped):
+        raise SystemExit(f"[build_notebook] ABORT: comment strip changed AST of {rel}")
+    if len(stripped.splitlines()) != len(source.splitlines()):
+        raise SystemExit(f"[build_notebook] ABORT: comment strip moved lines in {rel}")
+    _STRIP_STATS["bytes"] += len(source) - len(stripped)
+    _STRIP_STATS["files"] += 1
+    return stripped
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHANGE THIS ONE LINE TO PICK YOUR KAGGLE ACCELERATOR
@@ -138,7 +198,7 @@ def _collect_lingjing_files() -> list[tuple[str, str]]:
         path = module_paths[module]
         rel = path.relative_to(LINGJING_SRC).as_posix()
         source = package_shims.get(rel, path.read_text(encoding="utf-8-sig"))
-        out.append((rel, source))
+        out.append((rel, _embed_source(rel, source)))
     if not any(r.endswith(".py") for r, _ in out):
         raise SystemExit(f"No .py files found under {LINGJING_SRC}")
     return out
@@ -169,13 +229,35 @@ def _lingjing_write_cell(files: list[tuple[str, str]]) -> dict:
 def build() -> dict:
     if not AGENT_SRC.exists():
         raise SystemExit(f"Could not find {AGENT_SRC}")
-    agent_body = AGENT_SRC.read_text(encoding="utf-8")
+    agent_body = _embed_source("agent/my_agent.py", AGENT_SRC.read_text(encoding="utf-8"))
     lj_files = _collect_lingjing_files()
 
+    # The competition-data mount is not always ready when the first cell runs:
+    # the 2026-10-12 Phase A log showed pip rejecting the wheels dir with
+    # "Location '...' is ignored: it is either a non-existing path", while the
+    # teammate's byte-identical cell installed fine. Wait for the mount, then
+    # pip -- and print [TRACE] evidence, because Phase A is the only run whose
+    # log we can actually read back from Kaggle.
     install_cell = code_cell(
-        "!pip install --no-index --find-links \\\n"
-        "    /kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels \\\n"
-        "    arc-agi python-dotenv numpy"
+        dedent(
+            """\
+            import os, time
+            _WHEELS = '/kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels'
+            _waited = 0
+            while _waited < 60 and not os.path.isdir(_WHEELS):
+                time.sleep(2); _waited += 2
+            if os.path.isdir(_WHEELS):
+                print(f'[TRACE] wheels dir OK after {_waited}s, files={len(os.listdir(_WHEELS))}', flush=True)
+                os.system(f\"pip install --no-index --find-links {_WHEELS} arc-agi python-dotenv numpy\")
+            else:
+                print('[TRACE] wheels dir MISSING after 60s -> skip offline pip, rely on image packages', flush=True)
+            try:
+                import arc_agi
+                print(f'[TRACE] import arc_agi OK file={arc_agi.__file__}', flush=True)
+            except Exception as _e:
+                print(f'[TRACE] import arc_agi FAIL {type(_e).__name__}: {_e}', flush=True)
+            """
+        )
     )
 
     # We write the agent to /tmp/ (not /kaggle/working/) so it does NOT appear
@@ -186,6 +268,46 @@ def build() -> dict:
         "%%writefile /tmp/my_agent.py\n" + agent_body
     )
     write_lingjing_cell = _lingjing_write_cell(lj_files)
+
+    # Phase B's stdout is not retrievable from Kaggle at all (verified 2026-10-12
+    # on three routes: `competitions episodes` returns "No episodes found" even
+    # for submissions that scored, the kernel "Logs" tab only ever shows the
+    # Save-and-run-all run, and the submissions row opens nothing). Phase A's log
+    # IS readable, so Phase A is where the execution evidence has to be printed.
+    # Everything is wrapped so a probe failure can never break the commit.
+    self_check_cell = code_cell(
+        dedent(
+            """\
+            import os, sys
+            if not os.getenv('KAGGLE_IS_COMPETITION_RERUN'):
+                def _t(msg):
+                    print(f'[TRACE] {msg}', flush=True)
+                _CFGS = '/kaggle/input/competitions/arc-prize-2026-arc-agi-3'
+                for _p in (f'{_CFGS}/environment_files', '/tmp/lingjing_solo/environment_files'):
+                    try:
+                        _t(f'dir {_p} exists={os.path.isdir(_p)}'
+                           + (f' games={len(os.listdir(_p))}' if os.path.isdir(_p) else ''))
+                    except Exception as _e:
+                        _t(f'dir {_p} probe FAIL {_e!r}')
+                sys.path.insert(0, '/tmp')
+                try:
+                    import my_agent as _ma
+                    _t(f"BUILD_TAG={getattr(_ma, 'BUILD_TAG', '?')}")
+                    for _nm in ('_LP85_PLANS', '_SU15_PLANS'):
+                        _d = getattr(_ma, _nm, {})
+                        _t(f'{_nm} levels={len(_d)} clicks={sum(len(v) for v in _d.values())}')
+                except Exception as _e:
+                    _t(f'import my_agent FAIL {type(_e).__name__}: {_e}')
+                for _m in ('torch', 'scipy', 'sklearn', 'pandas', 'numpy'):
+                    try:
+                        __import__(_m)
+                        _t(f'dep {_m} OK')
+                    except Exception as _e:
+                        _t(f'dep {_m} MISSING ({_e})')
+                _t('phaseA self-check done')
+            """
+        )
+    )
 
     run_cell_source = dedent(
         """\
@@ -310,6 +432,7 @@ def build() -> dict:
             install_cell,
             write_lingjing_cell,
             write_agent_cell,
+            self_check_cell,
             run_cell,
             dummy_submission_cell,
         ],
@@ -319,7 +442,24 @@ def build() -> dict:
 
 def main() -> None:
     NOTEBOOK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    NOTEBOOK_PATH.write_text(json.dumps(build(), indent=1), encoding="utf-8")
+    notebook = build()
+    text = json.dumps(notebook, indent=1, ensure_ascii=False)
+    # Kaggle measures the JSON-normalised form with non-ASCII escaped to \uXXXX,
+    # which costs 6 bytes per CJK character -- that is the number the 1 MB cap
+    # is checked against, not the file size on disk.
+    escaped = len(json.dumps(notebook).encode("utf-8"))
+    raw = len(text.encode("utf-8"))
+    print(f"[build_notebook] comments stripped: {_STRIP_STATS['bytes']} chars "
+          f"across {_STRIP_STATS['files']} files")
+    print(f"[build_notebook] size: on-disk {raw} B, as-measured-by-Kaggle {escaped} B "
+          f"(limit {_KERNEL_SOURCE_LIMIT}, {"OK" if escaped < _KERNEL_SOURCE_LIMIT else "OVER"})")
+    if escaped >= _KERNEL_SOURCE_LIMIT:
+        raise SystemExit(
+            f"[build_notebook] ABORT: kernel source would be rejected "
+            f"({escaped} >= {_KERNEL_SOURCE_LIMIT} bytes as measured by Kaggle). "
+            f"Trim embedded sources before pushing."
+        )
+    NOTEBOOK_PATH.write_text(text, encoding="utf-8")
     print(f"[build_notebook] Wrote {NOTEBOOK_PATH.relative_to(ROOT)}  "
           f"(accelerator: {ACCELERATOR})")
 
