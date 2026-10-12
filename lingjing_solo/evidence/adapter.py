@@ -100,7 +100,14 @@ class RecordingAdapter:
 
 
 class SandboxAdapter(RecordingAdapter):
-    """Named Phase-2 facade; it currently accepts only fixed local recordings."""
+    """Phase-2 adapter with the repository's formal frame-to-DPL evaluator."""
+
+    def __init__(self, recording: Path, *, environment_id: str, environment_version: str, seed: int, source_commit: str, dpl_evaluator: DplEvaluator | None = None) -> None:
+        if dpl_evaluator is None:
+            from .dpl_projection import evaluate_recording_frame
+
+            dpl_evaluator = evaluate_recording_frame
+        super().__init__(recording, environment_id=environment_id, environment_version=environment_version, seed=seed, source_commit=source_commit, dpl_evaluator=dpl_evaluator)
 
 
 def _json_safe(value: Any) -> None:

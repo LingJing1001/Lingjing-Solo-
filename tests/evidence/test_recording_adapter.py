@@ -4,9 +4,28 @@ from pathlib import Path
 import pytest
 
 from lingjing_solo.evidence.adapter import RecordingAdapter, SandboxAdapter
+from lingjing_solo.evidence.dpl_projection import evaluate_recording_frame, frame_to_array, project_recording_frame
 
 
 FIXTURE = Path("data/aop/episodes/ls20_success_rep0/recording.jsonl")
+
+
+def test_formal_projection_projects_real_recording_frame():
+    raw = json.loads(next(FIXTURE.open(encoding="utf-8")))
+    frame = raw["data"]["frame"]
+    array = frame_to_array(frame)
+    projected = project_recording_frame(frame)
+    assert array.shape == (64, 64)
+    assert projected.input_shape == (64, 64)
+    assert projected.D1.available is True
+    result = evaluate_recording_frame({"frame": frame, "levels_completed": 0}, {"frame": frame, "levels_completed": 0}, {"name": "RESET", "id": "RESET"})
+    assert result["projection"]["frame_shape"] == [64, 64]
+    assert result["gate"]["evidence"]["effective_dim"] == 2
+
+
+def test_formal_projection_rejects_non_numeric_frame():
+    with pytest.raises(ValueError, match="numeric"):
+        frame_to_array([["not-a-frame"]])
 
 
 def test_recording_adapter_is_deterministic_and_preserves_source(tmp_path):
@@ -33,8 +52,8 @@ def test_adapter_rejects_empty_or_malformed_recording(tmp_path):
 def test_sandbox_adapter_preserves_reset_as_new_segment(tmp_path):
     source = tmp_path / "reset.jsonl"
     rows = [
-        {"observation": {"tick": 0, "legal_actions": [{"id": "RESET"}], "state": "before-reset"}, "data": {"episode_id": "fixture", "tick": 1, "action_input": {"id": "RESET"}, "state": "after-reset"}},
-        {"observation": {"tick": 0, "legal_actions": [{"id": 1}], "state": "reset-state"}, "data": {"episode_id": "fixture", "tick": 1, "action_input": {"id": "ACTION1"}, "state": "after-action"}},
+        {"observation": {"tick": 0, "legal_actions": [{"id": "RESET"}], "state": "before-reset", "frame": [[0, 1], [1, 0]]}, "data": {"episode_id": "fixture", "tick": 1, "action_input": {"id": "RESET"}, "state": "after-reset", "frame": [[0, 1], [1, 0]]}},
+        {"observation": {"tick": 0, "legal_actions": [{"id": 1}], "state": "reset-state", "frame": [[1, 0], [0, 1]]}, "data": {"episode_id": "fixture", "tick": 1, "action_input": {"id": "ACTION1"}, "state": "after-action", "frame": [[1, 0], [0, 1]]}},
     ]
     source.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     result_dir = tmp_path / "reset-out"

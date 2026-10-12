@@ -9,7 +9,7 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from lingjing_solo.evidence.adapter import RecordingAdapter
+from lingjing_solo.evidence.adapter import SandboxAdapter
 
 
 def main() -> int:
@@ -22,7 +22,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     try:
-        result = RecordingAdapter(args.recording, environment_id=args.environment_id, environment_version=args.environment_version, seed=args.seed, source_commit=args.source_commit).build(args.out)
+        result = SandboxAdapter(args.recording, environment_id=args.environment_id, environment_version=args.environment_version, seed=args.seed, source_commit=args.source_commit).build(args.out)
     except (OSError, ValueError) as exc:
         print(f"REJECTED: {exc}")
         return 1

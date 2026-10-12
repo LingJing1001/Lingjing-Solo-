@@ -28,7 +28,7 @@ The adapter consumes these files read-only and emits `episode_events.v1.jsonl`; 
 
 ## Current implementation audit — 2026-10-12
 
-The original Phase 1 commit was not fully complete: the adapter emitted a hard-coded recording gate result and had no executable DPL evaluator boundary. Its schema, deterministic conversion, metrics, and shadow registry were real and tested, but the DPL claim was incomplete. Phase 2 now provides the `SandboxAdapter` facade and an injected `dpl_evaluator` contract. The adapter records `dpl_status=not_configured` unless a real evaluator is supplied; it never fabricates a DPL pass.
+The original Phase 1 commit was not fully complete: the adapter emitted a hard-coded recording gate result and had no executable DPL evaluator boundary. Its schema, deterministic conversion, metrics, and shadow registry were real and tested, but the DPL claim was incomplete. Phase 2 now provides the `SandboxAdapter` facade and a formal recording-frame -> DPL projection using `lingjing_solo.dpl.projection.project()` plus `lingjing_solo.dpl.gates.check()`. Gate outcomes are recorded as observed; the adapter never fabricates a DPL pass.
 
 ## Phase 2 SandboxAdapter status
 
@@ -36,10 +36,10 @@ The original Phase 1 commit was not fully complete: the adapter emitted a hard-c
 - [x] Existing normalizer and recording gate reused.
 - [x] Actual requested action and settled before/after ticks preserved.
 - [x] `RESET` creates a new segment.
-- [x] Injected DPL evaluator invoked once per event and its JSON result recorded.
+- [x] Injected/formal DPL evaluator invoked once per event and its JSON result recorded.
 - [x] Non-finite DPL results rejected.
-- [x] CLI remains shadow-only and reports `dpl_status=not_configured` unless wired to a real DPL projection.
-- [ ] Live DPL projection from recording frames into `lingjing_solo.dpl.types` — not yet implemented because the repository has no recording-to-DPL projection function.
+- [x] CLI uses the formal DPL projection and remains shadow-only; its gate result is recorded as observed.
+- [x] Recording frames are projected into `lingjing_solo.dpl.types` through the repository's formal projector.
 - [ ] Production authority / external UGC — intentionally out of scope.
 
 
