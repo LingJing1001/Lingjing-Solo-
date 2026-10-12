@@ -78,7 +78,7 @@ BUILD_TAG:    …+aop-readiness-v2+plan-protect+perc-r3cap…
 | 游戏 | levels | actions | state | 备注 |
 |------|--------|---------|-------|------|
 | ar25 | 8 | 276 | **WIN** | INLINE plan |
-| bp35 | 1 | 800 | NOT_FINISHED | L0 plan；L1+ 未补 |
+| bp35 | 1→**2*** | 800 | NOT_FINISHED | *近补 `_BP35_PLANS[1]`（L2 平台迷宫 49 步）+ 色5 护栏；@800 复测 levels=2 |
 | cd82 | 6 | 73 | **WIN** | 校准 plan |
 | cn04 | 0 | 800 | NOT_FINISHED | unknown |
 | dc22 | 0 | 800 | NOT_FINISHED | unknown |
@@ -148,7 +148,7 @@ BUILD_TAG:    …+aop-readiness-v2+plan-protect+perc-r3cap…
 
 - `environment_files/*/metadata.json`：仅 Windows 路径分隔符与下载时间噪音，**不入库**  
 - AOP 默认仍 **off**；未开 takeover 打榜  
-- sc25 L5（`_SC25_PLANS[4]`）/ wa30 L3（`_WA30_PLANS[3]`）已入库；sc25 L6+ / wa30 L4+ / bp35 L1+ / unknown 破零仍待补
+- sc25→5 / wa30→4 / bp35→2 已入库；续关与 unknown 破零仍待补
 
 ---
 
@@ -172,10 +172,10 @@ set LINGJING_R3_TLIMIT=20
 
 ## 5. 下一步（提分）
 
-1. **sc25 L6+ / wa30 L4+ / bp35 L1+**：续关确定性 plan（最大边际）  
+1. **sc25 L6+ / wa30 L5+ / bp35 L3+**：续关确定性 plan（最大边际）  
 2. **unknown 破零**：加长 R3 或接 shadow 专解（40s 内 cn04/dc22 仍 0）  
 3. **su15**：已有 1 关，挖第 2 关  
-4. 重跑全量 25@800，把 sc25=5 / wa30=4 入账，守住 **10 WIN / ≥42.8**  
+4. 重跑全量 25@800，把 sc25=5 / wa30=4 / bp35=2 入账，守住 **10 WIN / ≥42.8**  
 5. AOP：继续收数；holdout 过线前禁止 authority
 
 ---

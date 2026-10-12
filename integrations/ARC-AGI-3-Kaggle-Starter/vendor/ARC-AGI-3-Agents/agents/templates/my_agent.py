@@ -684,10 +684,25 @@ _SC25_PLANS: dict[int, list[tuple[int, int, int]]] = {
 # 离线求解 state/bp35_l1_solve.py + state/bp35_l1_model.py；导出/复验 state/bp35_l1_export.py
 # （seed 0/1/7/12345/默认 五路真机回放均 levels_completed 0→1，15 步，5 个点击像素点击前均为色 14）。
 _BP35_NODE_COLOUR = 14
+# L0 点色 14 节点；L1+ 点色 5 可碎平台（倒置重力迷宫）。护栏按关选期望色。
+_BP35_CLICK_COLOUR: dict[int, int] = {0: 14, 1: 5}
 _BP35_PLANS: dict[int, list[tuple[int, int, int]]] = {
     0: [(4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 45, 33), (3, 0, 0), (3, 0, 0),
         (6, 27, 39), (6, 27, 33), (3, 0, 0), (6, 27, 33), (4, 0, 0), (6, 33, 33),
         (3, 0, 0), (3, 0, 0)],
+    # L2（index 1）：倒置重力平台迷宫。右廊开顶→中段左穿→x=3 过 y=18 尖刺缝→
+    # y=16 右清顶→x=8 下到 y=11→左到 x=5→点 (5,9) 坠宝石。49 步；scripts/bp35_l2_* 冷回放 3/3。
+    1: [(6, 36, 30), (6, 42, 30), (6, 48, 30), (6, 36, 24), (6, 42, 24), (6, 48, 24),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0),
+        (6, 30, 36), (6, 24, 36), (6, 18, 36), (6, 12, 36), (6, 30, 42), (6, 24, 42),
+        (6, 18, 42), (6, 12, 42),
+        (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (6, 12, 30),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 30, 30), (6, 30, 30), (6, 18, 30),
+        (3, 0, 0), (3, 0, 0), (6, 18, 30), (6, 18, 30),
+        (6, 24, 36), (6, 30, 36), (6, 36, 36), (6, 42, 36), (6, 48, 36),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0),
+        (6, 48, 30), (6, 48, 30), (3, 0, 0), (3, 0, 0), (6, 42, 36), (3, 0, 0),
+        (6, 30, 30)],
 }
 # 同一关允许"中途脱轨后重新上膛"几次。2026-09-29 实测：死亡后 agent 发的 RESET 只重开当前关，
 # `levels_completed` 不回退（state/bp35_l2_death_effect.py），所以旧接线里"换关才复位"的分支
@@ -1466,7 +1481,8 @@ class MyAgent(Agent):
                 aid, x, y = plan[self._bp35_idx]
                 emit = True
                 if aid == 6:
-                    # 去同步护栏：点击格必须是色 14 节点，否则轨迹已与离线分岔，弃计划交 CEAX
+                    # 去同步护栏：点击格须匹配本关期望色（L0=14 节点，L1+=5 平台），否则弃计划
+                    want = _BP35_CLICK_COLOUR.get(levels, _BP35_NODE_COLOUR)
                     obs = None
                     grid = extract_grid(latest_frame)
                     if grid is not None:
@@ -1475,12 +1491,12 @@ class MyAgent(Agent):
                                 obs = int(grid[y, x])
                         except Exception:
                             obs = None
-                    if obs != _BP35_NODE_COLOUR:
+                    if obs != want:
                         emit = False
                         self._bp35_exhausted = levels
                         print(
                             f"[{BUILD_TAG}] bp35-guard L{levels} #{self._bp35_idx + 1} "
-                            f"pixel=({x},{y}) want={_BP35_NODE_COLOUR} "
+                            f"pixel=({x},{y}) want={want} "
                             f"got={obs} -> CEAX fallback",
                             flush=True,
                         )
