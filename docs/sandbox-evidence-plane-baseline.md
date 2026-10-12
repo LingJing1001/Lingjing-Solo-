@@ -26,7 +26,22 @@ The adapter consumes these files read-only and emits `episode_events.v1.jsonl`; 
 - [ ] Existing AOP/DPL/SICA full test baseline is clean: current interpreter lacks optional `torch` (`ModuleNotFoundError` during `tests/test_aop_readiness.py` and `tests/test_aop_training.py` collection).
 - [x] This phase does not claim ARC score improvement and does not enter authority control.
 
-## Evidence-plane acceptance status
+## Current implementation audit — 2026-10-12
+
+The original Phase 1 commit was not fully complete: the adapter emitted a hard-coded recording gate result and had no executable DPL evaluator boundary. Its schema, deterministic conversion, metrics, and shadow registry were real and tested, but the DPL claim was incomplete. Phase 2 now provides the `SandboxAdapter` facade and an injected `dpl_evaluator` contract. The adapter records `dpl_status=not_configured` unless a real evaluator is supplied; it never fabricates a DPL pass.
+
+## Phase 2 SandboxAdapter status
+
+- [x] Read-only source hash before/after conversion.
+- [x] Existing normalizer and recording gate reused.
+- [x] Actual requested action and settled before/after ticks preserved.
+- [x] `RESET` creates a new segment.
+- [x] Injected DPL evaluator invoked once per event and its JSON result recorded.
+- [x] Non-finite DPL results rejected.
+- [x] CLI remains shadow-only and reports `dpl_status=not_configured` unless wired to a real DPL projection.
+- [ ] Live DPL projection from recording frames into `lingjing_solo.dpl.types` — not yet implemented because the repository has no recording-to-DPL projection function.
+- [ ] Production authority / external UGC — intentionally out of scope.
+
 
 - [x] `EpisodeEvent v1` schema and fail-closed tests.
 - [x] Deterministic recording adapter, provenance, replay hash, and manifest.
