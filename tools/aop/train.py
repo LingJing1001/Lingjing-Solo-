@@ -53,8 +53,41 @@ def targets(labels: list[dict], action_to_id: dict[str, int]):
 
 
 def action_loss(logits, targets, legal, class_weights):
+    if logits.shape != legal.shape:
+        raise ValueError("candidate scores and legal mask must have identical shape")
+    if not legal.gather(1, targets.unsqueeze(1)).all():
+        raise ValueError("requested action is not legal")
     masked = logits.masked_fill(~legal, torch.finfo(logits.dtype).min)
     return nn.functional.cross_entropy(masked, targets, weight=class_weights)
+
+
+def candidate_forward(model, labels: list[dict], action_to_id: dict[str, int]):
+    """Score every candidate exactly as the evaluator/controller does at runtime."""
+    if not labels or len(action_to_id) < 2:
+        raise ValueError("candidate scoring requires labels and at least two actions")
+    names = list(action_to_id)
+    action_count = len(names)
+    features = []
+    for label in labels:
+        for name in names:
+            candidate = dict(label)
+            candidate["requested_action"] = {"name": name, "id": action_to_id[name] + 1, "payload": {}}
+            features.append(encode_label(candidate, action_id=action_to_id[name], action_count=action_count))
+    outputs = model(torch.stack(features))
+    rows = len(labels)
+    actions = len(names)
+    action_cube = outputs["action"].reshape(rows, actions, actions)
+    indexes = torch.arange(actions)
+    candidate_scores = action_cube[:, indexes, indexes]
+    actual = torch.tensor([action_to_id[x["requested_action"]["name"]] for x in labels])
+    row_indexes = torch.arange(rows)
+    effective = outputs["action_effective"].reshape(rows, actions, 2)[row_indexes, actual]
+    progressed = outputs["progressed"].reshape(rows, actions, 2)[row_indexes, actual]
+    legal = torch.tensor(
+        [[name in (x.get("legal_actions") or []) for name in names] for x in labels],
+        dtype=torch.bool,
+    )
+    return effective, progressed, candidate_scores, actual, legal
 
 
 def visual_delta(before, after):
@@ -117,16 +150,19 @@ def evaluate(model, labels, action_to_id, class_weights) -> dict:
     if not labels:
         raise ValueError("evaluation labels must not be empty")
     criterion = nn.CrossEntropyLoss()
-    features, y_effective, y_progressed, y_action, legal = targets(labels, action_to_id)
+    y_effective = torch.tensor([int(bool(x["state_delta"]["action_effective"])) for x in labels])
+    y_progressed = torch.tensor([int(bool(x["state_delta"]["progressed"])) for x in labels])
     with torch.no_grad():
-        outputs = model(features)
-        raw_action = outputs["action"].argmax(dim=1)
-        masked_logits = outputs["action"].masked_fill(~legal, torch.finfo(outputs["action"].dtype).min)
+        effective_logits, progressed_logits, candidate_scores, y_action, legal = candidate_forward(
+            model, labels, action_to_id
+        )
+        raw_action = candidate_scores.argmax(dim=1)
+        masked_logits = candidate_scores.masked_fill(~legal, torch.finfo(candidate_scores.dtype).min)
         masked_action = masked_logits.argmax(dim=1)
         loss = (
-            criterion(outputs["action_effective"], y_effective)
-            + criterion(outputs["progressed"], y_progressed)
-            + action_loss(outputs["action"], y_action, legal, class_weights)
+            criterion(effective_logits, y_effective)
+            + criterion(progressed_logits, y_progressed)
+            + action_loss(candidate_scores, y_action, legal, class_weights)
         )
     names = list(action_to_id)
     per_action = {}
@@ -143,8 +179,8 @@ def evaluate(model, labels, action_to_id, class_weights) -> dict:
         "val_loss": float(loss.item()),
         "action_raw_accuracy": float((raw_action == y_action).float().mean().item()),
         "action_masked_accuracy": float((masked_action == y_action).float().mean().item()),
-        "action_effective_accuracy": float((outputs["action_effective"].argmax(dim=1) == y_effective).float().mean().item()),
-        "progressed_accuracy": float((outputs["progressed"].argmax(dim=1) == y_progressed).float().mean().item()),
+        "action_effective_accuracy": float((effective_logits.argmax(dim=1) == y_effective).float().mean().item()),
+        "progressed_accuracy": float((progressed_logits.argmax(dim=1) == y_progressed).float().mean().item()),
         "per_action": {name: per_action[name] for name in names},
     }
 
@@ -186,19 +222,23 @@ def main() -> int:
         torch.tensor([action_to_id[x["requested_action"]["name"]] for x in train]),
         minlength=len(names),
     ).float()
-    class_weights = (class_counts.clamp_min(1.0).sqrt().reciprocal())
-    class_weights = class_weights / class_weights.mean()
+    class_weights = class_counts.clamp_min(1.0).sqrt().reciprocal()
+    class_weights[class_counts == 0] = 0.0
+    class_weights = class_weights / class_weights[class_counts > 0].mean()
     model.eval()
     baseline = evaluate(model, valid, action_to_id, class_weights)
     for _ in range(args.epochs):
         model.train()
-        features, y_effective, y_progressed, y_action, legal = targets(train, action_to_id)
-        outputs = model(features)
+        y_effective = torch.tensor([int(bool(x["state_delta"]["action_effective"])) for x in train])
+        y_progressed = torch.tensor([int(bool(x["state_delta"]["progressed"])) for x in train])
+        effective_logits, progressed_logits, candidate_scores, y_action, legal = candidate_forward(
+            model, train, action_to_id
+        )
         loss = (
-            criterion(outputs["action_effective"], y_effective)
-            + criterion(outputs["progressed"], y_progressed)
-            + action_loss(outputs["action"], y_action, legal, class_weights)
-            + counterfactual_rank_loss(outputs["action"], y_action, train)
+            criterion(effective_logits, y_effective)
+            + criterion(progressed_logits, y_progressed)
+            + action_loss(candidate_scores, y_action, legal, class_weights)
+            + counterfactual_rank_loss(candidate_scores, y_action, train)
         )
         optimizer.zero_grad()
         loss.backward()

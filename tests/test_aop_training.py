@@ -76,6 +76,26 @@ def test_evaluation_reports_raw_masked_and_per_action_metrics():
     assert 0.0 <= metrics["action_masked_accuracy"] <= 1.0
 
 
+def test_runtime_candidate_scoring_does_not_count_candidate_echo_as_correct():
+    class EchoCandidate(torch.nn.Module):
+        def forward(self, features):
+            candidate = (features[:, 12] > 0.5).long()
+            action = torch.zeros((len(features), 2))
+            action[torch.arange(len(features)), candidate] = 10.0
+            binary = torch.zeros((len(features), 2))
+            return {"action": action, "action_effective": binary, "progressed": binary}
+
+    first = label("holdout-a", 0)
+    second = label("holdout-b", 0)
+    for row in (first, second):
+        row["legal_actions"] = ["CLICK", "OTHER"]
+        row["observation_before"]["legal_actions"] = ["CLICK", "OTHER"]
+    second["requested_action"] = {"name": "OTHER", "id": 2}
+    metrics = evaluate(EchoCandidate(), [first, second], {"CLICK": 0, "OTHER": 1}, torch.ones(2))
+    assert metrics["action_raw_accuracy"] == 0.5
+    assert metrics["action_masked_accuracy"] == 0.5
+
+
 def test_checkpoint_round_trip(tmp_path):
     model = AOPModel(16, 4)
     path = tmp_path / "aop.pt"
