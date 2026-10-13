@@ -52,6 +52,14 @@ The original Phase 1 commit was not fully complete: the adapter emitted a hard-c
 - [x] CLI smoke run produced a three-environment offline packet under `/tmp/gatebench-run`.
 - [ ] The smoke packet is synthetic/offline fixture evidence, not a real ARC score or candidate promotion decision.
 
+## Phase 4 shadow admission status
+
+- [x] Clean GateBench packets can enter the existing shadow candidate registry through a fail-closed admission boundary.
+- [x] Admission requires two environments, non-empty holdout, hashed artifacts, deterministic replay, and zero false accept/reject failures.
+- [x] SICA holdout and safety gates are re-run before admission; a rollback snapshot is written.
+- [x] Admission output remains `authority_status=shadow`; activation is still denied.
+- [ ] Production authority / external UGC — intentionally out of scope.
+
 - [x] Deterministic recording adapter, provenance, replay hash, and manifest.
 - [x] GateBench metric calculation and report writer.
 - [x] Shadow candidate registry with cross-environment/evidence thresholds and rollback snapshot.
