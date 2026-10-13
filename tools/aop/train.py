@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import math
+from collections import Counter, defaultdict
 import json
 from pathlib import Path
 import subprocess
@@ -14,7 +16,7 @@ from torch import nn
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from lingjing_solo.neural.aop_encoder import encode_label  # noqa: E402
+from lingjing_solo.neural.aop_encoder import encode_label, profile_key  # noqa: E402
 from lingjing_solo.neural.aop_model import AOPModel, save_checkpoint  # noqa: E402
 from tools.aop.action_schema import action_names_from_labels, normalize_label  # noqa: E402
 from tools.aop.dataset import split_labels  # noqa: E402
@@ -61,7 +63,19 @@ def action_loss(logits, targets, legal, class_weights):
     return nn.functional.cross_entropy(masked, targets, weight=class_weights)
 
 
-def candidate_forward(model, labels: list[dict], action_to_id: dict[str, int]):
+def profile_priors(labels: list[dict], action_to_id: dict[str, int], smoothing: float = 1.0) -> dict[str, list[float]]:
+    counts: dict[str, Counter] = defaultdict(Counter)
+    for label in labels:
+        counts[profile_key(label)][label["requested_action"]["name"]] += 1
+    names = list(action_to_id)
+    result = {}
+    for profile, profile_counts in counts.items():
+        total = sum(profile_counts.values()) + smoothing * len(names)
+        result[profile] = [math.log((profile_counts[name] + smoothing) / total) for name in names]
+    return result
+
+
+def candidate_forward(model, labels: list[dict], action_to_id: dict[str, int], profile_log_priors: dict[str, list[float]] | None = None, prior_alpha: float = 0.0):
     """Score every candidate exactly as the evaluator/controller does at runtime."""
     if not labels or len(action_to_id) < 2:
         raise ValueError("candidate scoring requires labels and at least two actions")
@@ -79,6 +93,9 @@ def candidate_forward(model, labels: list[dict], action_to_id: dict[str, int]):
     action_cube = outputs["action"].reshape(rows, actions, actions)
     indexes = torch.arange(actions)
     candidate_scores = action_cube[:, indexes, indexes]
+    if profile_log_priors and prior_alpha:
+        prior_rows = [profile_log_priors.get(profile_key(label), [0.0] * actions) for label in labels]
+        candidate_scores = candidate_scores + prior_alpha * torch.tensor(prior_rows, dtype=candidate_scores.dtype)
     actual = torch.tensor([action_to_id[x["requested_action"]["name"]] for x in labels])
     row_indexes = torch.arange(rows)
     effective = outputs["action_effective"].reshape(rows, actions, 2)[row_indexes, actual]
@@ -146,7 +163,7 @@ def assert_disjoint(train: list[dict], holdout: list[dict]) -> None:
         raise ValueError(f"train/holdout leakage detected: {sorted(overlap)[:3]}")
 
 
-def evaluate(model, labels, action_to_id, class_weights) -> dict:
+def evaluate(model, labels, action_to_id, class_weights, profile_log_priors=None, prior_alpha=0.0) -> dict:
     if not labels:
         raise ValueError("evaluation labels must not be empty")
     criterion = nn.CrossEntropyLoss()
@@ -154,7 +171,7 @@ def evaluate(model, labels, action_to_id, class_weights) -> dict:
     y_progressed = torch.tensor([int(bool(x["state_delta"]["progressed"])) for x in labels])
     with torch.no_grad():
         effective_logits, progressed_logits, candidate_scores, y_action, legal = candidate_forward(
-            model, labels, action_to_id
+            model, labels, action_to_id, profile_log_priors, prior_alpha
         )
         raw_action = candidate_scores.argmax(dim=1)
         masked_logits = candidate_scores.masked_fill(~legal, torch.finfo(candidate_scores.dtype).min)
@@ -225,14 +242,16 @@ def main() -> int:
     class_weights = class_counts.clamp_min(1.0).sqrt().reciprocal()
     class_weights[class_counts == 0] = 0.0
     class_weights = class_weights / class_weights[class_counts > 0].mean()
+    profile_log_priors = profile_priors(train, action_to_id)
+    prior_alpha = 0.5
     model.eval()
-    baseline = evaluate(model, valid, action_to_id, class_weights)
+    baseline = evaluate(model, valid, action_to_id, class_weights, profile_log_priors, prior_alpha)
     for _ in range(args.epochs):
         model.train()
         y_effective = torch.tensor([int(bool(x["state_delta"]["action_effective"])) for x in train])
         y_progressed = torch.tensor([int(bool(x["state_delta"]["progressed"])) for x in train])
         effective_logits, progressed_logits, candidate_scores, y_action, legal = candidate_forward(
-            model, train, action_to_id
+            model, train, action_to_id, profile_log_priors, prior_alpha
         )
         loss = (
             criterion(effective_logits, y_effective)
@@ -244,7 +263,7 @@ def main() -> int:
         loss.backward()
         optimizer.step()
     model.eval()
-    trained = evaluate(model, valid, action_to_id, class_weights)
+    trained = evaluate(model, valid, action_to_id, class_weights, profile_log_priors, prior_alpha)
     train_hash = _sha256(args.labels)
     holdout_hash = _sha256(args.holdout_labels) if args.holdout_labels else train_hash
     manifest_hash = _sha256(args.dataset_manifest) if args.dataset_manifest else None
@@ -271,6 +290,8 @@ def main() -> int:
         "epochs": args.epochs,
         "evidence": evidence,
         "runtime_authority": False,
+        "profile_log_priors": profile_log_priors,
+        "profile_prior_alpha": prior_alpha,
         "holdout_metrics": trained,
     }
     save_checkpoint(args.output, model, checkpoint_config)

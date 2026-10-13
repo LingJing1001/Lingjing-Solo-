@@ -8,6 +8,14 @@ import torch
 INPUT_WIDTH = 16
 
 
+def profile_key(label: dict[str, Any]) -> str:
+    """Return the runtime-visible game profile from an episode identifier."""
+    episode_id = str(label.get("episode_id") or "")
+    if ":" in episode_id:
+        episode_id = episode_id.rsplit(":", 1)[-1]
+    return episode_id.split("_", 1)[0] if episode_id else "unknown"
+
+
 def _num(value: Any, default: float = 0.0) -> float:
     if isinstance(value, bool):
         return float(value)
