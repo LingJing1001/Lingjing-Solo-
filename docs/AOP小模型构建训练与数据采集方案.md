@@ -101,6 +101,7 @@ python3 tools/aop/train.py labels.jsonl \
 - [x] **阶段 4：真实训练与独立评估** — 首轮 `data/aop/stage4_candidate/` 暴露 trainer 与 runtime 的动作评分口径不一致：trainer 单行 argmax 会奖励输入 candidate 回显，而 runtime 会逐合法候选编码并比较对角 logit。修复 commit `8ba4749` 将训练、内置评估和 controller/evaluator 统一为逐候选评分；`data/aop/stage4_candidate_v2/` 在未改动的 frozen holdout 上由独立 evaluator 复核，masked accuracy `0.272552→0.383376`。随后以同一 frozen packet、同 seed 延长至 800 epochs，产出 `data/aop/stage4_candidate_v3/`；独立 evaluator 复核 raw `0.405284`、masked `0.485825`（754/1,552），ACTION2 `0.218045`，ACTION4 `0.459016`，ACTION5 `0.250000`。两次 v3 训练的 18 个 tensors 和全部 metrics 完全一致；`runtime_authority=false`。
 - [x] **阶段 4 纠偏：runtime-aligned candidate scoring** — 已完成并推送 `8ba4749`、`6d13b3d`；已验证训练指标与独立 evaluator 的 raw/masked 正确计数一致，未把 candidate echo 当作能力证据。
 - [ ] **阶段 4 后续：低覆盖动作质量** — v4 在不修改 frozen holdout 的前提下加入 train-only 的 profile×action 平滑先验，独立 evaluator masked accuracy `0.485825→0.550258`（854/1,552），ACTION2 `0.263158`、ACTION4 `0.608607`、ACTION5 `0.375000`；ACTION5 仅 `16` 条 holdout support，ACTION7 为 `0` 条 support，仍需补充经 gate 的非 IOP 证据或继续改进。未达到部署门槛前不得进入阶段 5。
+- [ ] **2026-10-13 ACTION7 补采候选** — 三个 ar25 ACTION7 shard 通过 counterfactual QA，共 `20` groups / `40` rows；候选 packet `data/aop/stage3_packet_action7_candidate/` freeze `complete`，按 group 切分 train `1,576`、holdout `1,552`。ACTION7 holdout support `4`，ACTION7 accuracy `0.750000`，但整体 masked accuracy `0.531572` 低于 v4 `0.550258`，因此该候选 rejected/shadow-only，继续补采后再训练。
 - [ ] **阶段 5：线上接入** — 未接入 runtime；确定性/legal-action 路径仍是唯一 authority。
 
 ### 阶段 3 的调整

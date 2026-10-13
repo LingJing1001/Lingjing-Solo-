@@ -1,0 +1,105 @@
+{
+  "all": {
+    "actions": {
+      "ACTION1": 516,
+      "ACTION2": 532,
+      "ACTION3": 486,
+      "ACTION4": 976,
+      "ACTION5": 32,
+      "ACTION6": 566,
+      "ACTION7": 20
+    },
+    "categories": {
+      "effective": 2811,
+      "non_failure": 3120,
+      "noop": 317,
+      "not_progressed": 3084,
+      "progressed": 44,
+      "terminal_failure": 8
+    },
+    "counterfactual_groups": 20,
+    "episodes": 50,
+    "profiles": {
+      "ar25": 592,
+      "dc22": 792,
+      "ls20": 618,
+      "re86": 792,
+      "vc33": 334
+    },
+    "rows": 3128
+  },
+  "completion_checks": {
+    "all_actions_in_holdout": true,
+    "all_profiles_in_holdout": true,
+    "all_profiles_in_train": true,
+    "at_least_two_profiles": true,
+    "effective_present": true,
+    "holdout_effective_present": true,
+    "holdout_noop_present": true,
+    "holdout_progress_present": true,
+    "holdout_terminal_failure_present": true,
+    "noop_present": true,
+    "progress_present": true,
+    "split_keys_disjoint": true,
+    "terminal_failure_present": true,
+    "train_holdout_nonempty": true
+  },
+  "holdout": {
+    "actions": {
+      "ACTION1": 252,
+      "ACTION2": 266,
+      "ACTION3": 243,
+      "ACTION4": 488,
+      "ACTION5": 16,
+      "ACTION6": 283,
+      "ACTION7": 4
+    },
+    "categories": {
+      "effective": 1395,
+      "non_failure": 1548,
+      "noop": 157,
+      "not_progressed": 1530,
+      "progressed": 22,
+      "terminal_failure": 4
+    },
+    "counterfactual_groups": 4,
+    "episodes": 13,
+    "profiles": {
+      "ar25": 284,
+      "dc22": 396,
+      "ls20": 309,
+      "re86": 396,
+      "vc33": 167
+    },
+    "rows": 1552
+  },
+  "train": {
+    "actions": {
+      "ACTION1": 264,
+      "ACTION2": 266,
+      "ACTION3": 243,
+      "ACTION4": 488,
+      "ACTION5": 16,
+      "ACTION6": 283,
+      "ACTION7": 16
+    },
+    "categories": {
+      "effective": 1416,
+      "non_failure": 1572,
+      "noop": 160,
+      "not_progressed": 1554,
+      "progressed": 22,
+      "terminal_failure": 4
+    },
+    "counterfactual_groups": 16,
+    "episodes": 37,
+    "profiles": {
+      "ar25": 308,
+      "dc22": 396,
+      "ls20": 309,
+      "re86": 396,
+      "vc33": 167
+    },
+    "rows": 1576
+  }
+}

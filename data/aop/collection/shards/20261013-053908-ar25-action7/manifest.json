@@ -1,0 +1,24 @@
+{
+  "schema_version": "aop-counterfactual-shard-v1",
+  "status": "qa_pass",
+  "game": "ar25",
+  "focus_action": "ACTION7",
+  "rows": 16,
+  "groups": 8,
+  "labels_sha256": "979b7137b2689d6d6c3d717d9d89d29a0cfab1df4bc0de2f47a74563c3bde2ce",
+  "created_at": 1791870081.8482237,
+  "training_performed": false,
+  "qa": {
+    "rows": 16,
+    "groups": 8,
+    "action_counts": {
+      "ACTION7": 8,
+      "ACTION1": 8
+    },
+    "replay_verified_rows": 16,
+    "unique_group_ids": 8,
+    "has_action7_rows": true,
+    "all_replay_verified": true
+  },
+  "collector_exit": 0
+}
