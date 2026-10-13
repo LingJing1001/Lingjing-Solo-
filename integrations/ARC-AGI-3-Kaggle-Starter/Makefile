@@ -79,6 +79,14 @@ submit: notebook _check-kaggle ## Build notebook and push to Kaggle (one-line su
 	@echo ""
 	@echo "Pushed. Track it with:  make status"
 
+submit-cpu: ## CPU floors-only (LINGJING_LLM off, no model datasets)
+	LINGJING_KAGGLE_ACCEL=cpu $(VENV_PY) scripts/build_notebook.py
+	@$(MAKE) submit
+
+submit-gpu: ## RTX6000 + Qwen/vLLM datasets + LINGJING_LLM on
+	LINGJING_KAGGLE_ACCEL=rtx6000 $(VENV_PY) scripts/build_notebook.py
+	@$(MAKE) submit
+
 status: _check-kaggle ## Show the status of your most recent Kaggle kernel run
 	@KERNEL_ID=$$(python3 -c "import json; print(json.load(open('notebooks/kernel-metadata.json'))['id'])"); \
 	$(KAGGLE) kernels status $$KERNEL_ID

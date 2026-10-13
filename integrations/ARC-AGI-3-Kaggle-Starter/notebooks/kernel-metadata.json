@@ -5,14 +5,18 @@
   "language": "python",
   "kernel_type": "notebook",
   "is_private": true,
-  "enable_gpu": false,
+  "enable_gpu": true,
   "enable_tpu": false,
   "enable_internet": false,
   "keywords": [],
-  "dataset_sources": [],
+  "dataset_sources": [
+    "bilgisarmal/vllm031-cp313-wheelhouse",
+    "driessmit1/vrfai-qwen3-6-27b-fp8-hf-snapshot"
+  ],
   "kernel_sources": [],
   "competition_sources": [
     "arc-prize-2026-arc-agi-3"
   ],
-  "model_sources": []
+  "model_sources": [],
+  "machine_shape": "NvidiaRtxPro6000"
 }

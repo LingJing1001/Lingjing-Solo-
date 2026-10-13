@@ -45,3 +45,22 @@ models/aop/checkpoints/
 *.pth
 integrations/ARC-AGI-3-Kaggle-Starter/environment_files/**/__pycache__/
 integrations/ARC-AGI-3-Kaggle-Starter/environment_files/**/*.pyc
+
+# Vendor Duck clone (Tufalabs); Lingjing overlays live in integrations/duck-kaggle/
+integrations/duck-harness/
+
+# Kaggle pull artifacts / local run logs
+integrations/ARC-AGI-3-Kaggle-Starter/data_pulled_kaggle/
+integrations/ARC-AGI-3-Kaggle-Starter/data_pulled_kaggle_hybrid/
+integrations/ARC-AGI-3-Kaggle-Starter/scripts/_*.log
+integrations/duck-kaggle/kaggle_push/pulled_*/
+data/*.log
+*.dll
+*.pyd
+*.exe
+integrations/ARC-AGI-3-Kaggle-Starter/cpp_explore/bin/
+
+# Local-only notes (competitor intel / raw score logs) — do not publish
+docs/高分队经验可用性分析_*.md
+docs/跑分日志与失败原因_*.md
+integrations/ARC-AGI-3-Kaggle-Starter/.kaggle/

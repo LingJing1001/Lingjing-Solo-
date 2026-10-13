@@ -337,8 +337,49 @@ BUILD_TAG = (
     "+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only"
     "+ceax-giveup150+dual-path-fix+aop-readiness-v2+plan-protect"
     "+perc-r3cap+iddfs-hasclick-fix+wa30-gbk-fix"
+    "+cpp-explore-bfs-iddfs"  # C++ lingjing_explore 加速未知环境搜索
+    "+llm-policy"  # LINGJING_LLM=on → local vLLM JSON action (fail-closed)
 )
 AGENT_BRAND = "lingjing-smart"
+
+
+def _try_import_lingjing_explore():
+    """加载 C++ 探索核（可选）。失败则返回 None，搜索回退纯 Python。
+
+    DLL 路径：integrations/.../cpp_explore/bin/lingjing_explore.dll
+    开关：LINGJING_CPP_EXPLORE=0/off 强制走 Python（便于 A/B 对比）。
+    """
+    if str(os.environ.get("LINGJING_CPP_EXPLORE", "1")).strip().lower() in {
+        "0", "off", "false", "none", "no",
+    }:
+        return None
+    try:
+        here = Path(__file__).resolve()
+        # agent/my_agent.py → parents[1] = Kaggle-Starter
+        # templates/my_agent.py → parents[2] ≈ ARC-AGI-3-Agents，再上一级到 Starter
+        candidates = [
+            here.parents[1] / "cpp_explore" / "python",
+            here.parents[2] / "cpp_explore" / "python" if len(here.parents) > 2 else None,
+            here.parents[3] / "integrations" / "ARC-AGI-3-Kaggle-Starter" / "cpp_explore" / "python"
+            if len(here.parents) > 3 else None,
+        ]
+        for p in candidates:
+            if p is None:
+                continue
+            try:
+                if p.is_dir():
+                    s = str(p)
+                    if s not in sys.path:
+                        sys.path.insert(0, s)
+            except OSError:
+                continue
+        import lingjing_explore as _lj  # type: ignore
+
+        _ = _lj.version()
+        return _lj
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{BUILD_TAG}] cpp-explore offline: {type(exc).__name__}: {exc}", flush=True)
+        return None
 
 
 def _r3_time_limit(default: float = 20.0) -> float:
@@ -842,6 +883,64 @@ def _safe_fallback(levels: int) -> GameAction:
     return action
 
 
+def _llm_on() -> bool:
+    return str(os.environ.get("LINGJING_LLM", "off")).strip().lower() in {
+        "1", "on", "true", "yes",
+    }
+
+
+def _llm_stall_threshold() -> int:
+    raw = os.environ.get("LINGJING_LLM_STALL", "80")
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 80
+
+
+def _try_llm_action(
+    *,
+    game_id: str,
+    levels: int,
+    latest_frame: FrameData,
+    note: str = "",
+) -> Optional[GameAction]:
+    """Consult local vLLM JSON policy; None on any failure (fail-closed)."""
+    if not _llm_on():
+        return None
+    try:
+        from llm_policy import propose_action as _llm_propose
+    except Exception:
+        try:
+            from agents.templates import llm_policy as _lp  # type: ignore
+
+            _llm_propose = _lp.propose_action
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{BUILD_TAG}] llm_policy import fail: {exc}", flush=True)
+            return None
+    valid = _valid_names(latest_frame)
+    if not valid:
+        return None
+    try:
+        grid = extract_grid(latest_frame)
+    except Exception:
+        grid = None
+    try:
+        act = _llm_propose(
+            game_id=game_id,
+            levels=levels,
+            valid_actions=valid,
+            grid=grid,
+            game_action_cls=GameAction,
+            note=note,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{BUILD_TAG}] llm_policy error: {type(exc).__name__}: {exc}", flush=True)
+        return None
+    if act is None:
+        return None
+    return act
+
+
 class _InlineScript:
     """Per-level ACTION queue (no PluginRegistry)."""
 
@@ -1293,6 +1392,27 @@ class MyAgent(Agent):
                         self._aop_overrides += 1
                 except Exception:
                     pass
+            # LLM terminal override (same layer as AOP): stall / post-r3 armed.
+            _stall = int(getattr(self, "_stag_count", 0) or 0)
+            _llm_armed = bool(getattr(self, "_llm_armed", False))
+            _thr = _llm_stall_threshold()
+            if _llm_on() and (_llm_armed or (_thr > 0 and _stall >= _thr)):
+                _levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+                _llm_act = _try_llm_action(
+                    game_id=_gid_early,
+                    levels=_levels,
+                    latest_frame=latest_frame,
+                    note=f"terminal stall={_stall} armed={_llm_armed}",
+                )
+                if _llm_act is not None:
+                    action = _llm_act
+                    self._llm_armed = False
+                    if self.action_counter < 5 or self.action_counter % 25 == 0:
+                        print(
+                            f"[{BUILD_TAG}] llm-override gid={_gid_early} "
+                            f"L={_levels} stall={_stall}",
+                            flush=True,
+                        )
         try:
             return self._v14_transition.transition(action, grid)
         except Exception as exc:  # noqa: BLE001 — preserve ARC action fallback
@@ -1629,15 +1749,28 @@ class MyAgent(Agent):
         self._stag_count += 1
         _giveup_after = _ceax_giveup_after()
         if _giveup_after > 0 and self._stag_count > _giveup_after:
-            # 止损后：RESET 重开换起点，而不是机械按键耗步数
+            # 止损后：优先问本地 LLM；失败再 RESET / idle（fail-closed）
             if not self._stag_logged:
                 self._stag_logged = True
                 self._stag_resets = getattr(self, "_stag_resets", 0)
                 print(
                     f"[{BUILD_TAG}] ceax-giveup gid={gid} L={levels} "
-                    f"连续 {self._stag_count} 步零进展（阈值 {_giveup_after}）→ RESET 重开换起点",
+                    f"连续 {self._stag_count} 步零进展（阈值 {_giveup_after}）"
+                    f"{' → try LLM' if _llm_on() else ' → RESET 重开换起点'}",
                     flush=True,
                 )
+            if _llm_on():
+                _llm_act = _try_llm_action(
+                    game_id=gid,
+                    levels=levels,
+                    latest_frame=latest_frame,
+                    note=f"ceax-giveup stag={self._stag_count}",
+                )
+                if _llm_act is not None:
+                    self._stag_count = 0
+                    self._stag_logged = False
+                    self._llm_armed = False
+                    return _llm_act
             # 限制重开次数（避免无限 RESET）
             self._stag_resets = getattr(self, "_stag_resets", 0) + 1
             if self._stag_resets <= 3:
@@ -1753,6 +1886,8 @@ class MyAgent(Agent):
                                 f"[{BUILD_TAG}] r3-none gid={gid} L={levels} "
                                 f"(no path within budget)", flush=True,
                             )
+                            if _llm_on():
+                                self._llm_armed = True
                     except Exception as exc:
                         print(
                             f"[{BUILD_TAG}] r3-raised gid={gid} L={levels} "
@@ -1999,11 +2134,93 @@ class MyAgent(Agent):
                     done = 0
                 return (int(g._current_level_index), done, _gb(f), _gs(g))
 
+            def _check_win_bfs(g, path_now):
+                if int(g._current_level_index) > li0 or g._state == _GS.WIN:
+                    print(f"[{BUILD_TAG}] bfs-WIN gid={gid} path={path_now} len={len(path_now)}", flush=True)
+                    return True
+                for m in ['vplrhaovhr', 'cgj', 'pbznecvnfr', 'sjwqloivve', 'smxyfelexa', 'mrzduxdbbk']:
+                    try:
+                        v = getattr(g, m)
+                        if callable(v) and v() is True:
+                            print(f"[{BUILD_TAG}] bfs-WIN2 gid={gid} method={m} path={path_now}", flush=True)
+                            return True
+                    except Exception:
+                        pass
+                return False
+
+            def _replay_path(path):
+                env.reset()
+                gg = env._game
+                fr = frame
+                for aa in path:
+                    if isinstance(aa, tuple):
+                        act_num, cx, cy = aa
+                        fr = gg.perform_action(
+                            _AI(id=_am[act_num], data={"x": cx, "y": cy}, reasoning=None), raw=True
+                        )
+                    else:
+                        fr = gg.perform_action(
+                            _AI(id=_am[aa], data={}, reasoning=None), raw=True
+                        )
+                return gg, fr
+
+            _lj = _try_import_lingjing_explore()
+            t0 = _time.time()
+            found = None
+            n_states = 0
+
+            # ---- 优先：C++ CompactBFS（路径/seen 在 C++，转移仍 Python）----
+            if _lj is not None:
+                def _key_u64(g, f):
+                    try:
+                        done = int(g._score or 0)
+                    except Exception:
+                        done = 0
+                    fb = _gb(f)
+                    gs = _gs(g)
+                    sp = repr(gs).encode("utf-8", errors="replace") if gs is not None else b""
+                    return _lj.state_key_u64(int(g._current_level_index), done, fb, sp)
+
+                bfs = _lj.CompactBFS(max_nodes=15000, max_depth=25)
+                bfs.push_root()
+                bfs.mark_seen(_key_u64(g, frame))
+                print(f"[{BUILD_TAG}] bfs-cpp on gid={gid} ver={_lj.version()}", flush=True)
+                while found is None:
+                    if _time.time() - t0 > t_limit or bfs.seen_size > 15000:
+                        break
+                    item = bfs.pop()
+                    if item is None:
+                        break
+                    nid, depth = item
+                    if depth >= 25:
+                        continue
+                    path = bfs.path(nid)
+                    for a in all_acts:
+                        npath = path + [a]
+                        gg, fr = _replay_path(npath)
+                        n_states += 1
+                        if _check_win_bfs(gg, npath):
+                            found = npath
+                            break
+                        # 键必须在交付当场取（见上方 _gb 注释）
+                        h = _key_u64(gg, fr)
+                        bfs.try_child(nid, a, h)
+                    if found is not None:
+                        break
+                _os.chdir(_old)
+                print(
+                    f"[{BUILD_TAG}] bfs-done gid={gid} backend=cpp found={found is not None} "
+                    f"states~={n_states} seen={bfs.seen_size} t={_time.time()-t0:.1f}s "
+                    f"kbd={kbd_acts} clicks={len(click_acts)}",
+                    flush=True,
+                )
+                return found
+
+            # ---- 回退：纯 Python deque + set（原逻辑）----
             start = _key(g, frame)
             queue = _coll.deque([[]])
             seen = {start}
-            t0 = _time.time()
-            found = None
+            print(f"[{BUILD_TAG}] bfs-python fallback gid={gid}", flush=True)
             while queue and not found:
                 if _time.time() - t0 > t_limit or len(seen) > 15000:
                     break
@@ -2011,39 +2228,20 @@ class MyAgent(Agent):
                 if len(path) >= 25:
                     continue
                 for a in all_acts:
-                    env.reset()
-                    g = env._game
-                    fr = frame
-                    for aa in path + [a]:
-                        if isinstance(aa, tuple):
-                            act_num, cx, cy = aa
-                            fr = g.perform_action(_AI(id=_am[act_num], data={"x": cx, "y": cy}, reasoning=None), raw=True)
-                        else:
-                            fr = g.perform_action(_AI(id=_am[aa], data={}, reasoning=None), raw=True)
-                    # 键必须在这里取：动作交付的画面数组之后会被游戏/下一次 reset 重涂，
-                    # 而下面那些 game 方法调用也可能顺带渲染。旧写法在这里多走一步
-                    # `env.step(ACTION1)` 只为了拿一帧，量到的还是"再按一下上"的状态。
-                    k = _key(g, fr)
-                    if int(g._current_level_index) > li0 or g._state == _GS.WIN:
+                    gg, fr = _replay_path(path + [a])
+                    k = _key(gg, fr)
+                    if _check_win_bfs(gg, path + [a]):
                         found = path + [a]
-                        print(f"[{BUILD_TAG}] bfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
-                        break
-                    for m in ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']:
-                        try:
-                            v = getattr(g, m)
-                            if callable(v) and v() is True:
-                                found = path + [a]
-                                print(f"[{BUILD_TAG}] bfs-WIN2 gid={gid} method={m} path={path+[a]}", flush=True)
-                                break
-                        except:
-                            pass
-                    if found:
                         break
                     if k not in seen:
                         seen.add(k)
                         queue.append(path + [a])
             _os.chdir(_old)
-            print(f"[{BUILD_TAG}] bfs-done gid={gid} found={found is not None} states={len(seen)} t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}", flush=True)
+            print(
+                f"[{BUILD_TAG}] bfs-done gid={gid} backend=python found={found is not None} "
+                f"states={len(seen)} t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}",
+                flush=True,
+            )
             return found
         except Exception as exc:
             try: _os.chdir(_old)
@@ -2190,20 +2388,38 @@ class MyAgent(Agent):
                         v = getattr(gg, m)
                         if callable(v) and v() is True:
                             return True
-                    except:
+                    except Exception:
                         pass
                 return False
+
+            # C++ Visited：精确去重热路径；余弦去重仍作软过滤
+            _lj = _try_import_lingjing_explore()
+            _use_cpp_vis = _lj is not None
+
+            def _exact_u64(gg, frame_arr):
+                """把 (level, score, frame, sprite-sig) 压成 u64。"""
+                try:
+                    done = int(gg._score or 0)
+                except Exception:
+                    done = 0
+                fb = _np2.asarray(frame_arr).astype(_np2.int8, copy=False).tobytes()
+                sp_h = _gs(gg)
+                sp = repr(sp_h).encode("utf-8", errors="replace") if sp_h is not None else b""
+                return _lj.state_key_u64(int(gg._current_level_index), done, fb, sp)
 
             t0 = _time.time()
             start_hash = _gs(g)
             MAX_DEPTH = 200
             total_states = [0]
             found_box = [None]
+            if _use_cpp_vis:
+                print(f"[{BUILD_TAG}] iddfs-cpp-visited on gid={gid} ver={_lj.version()}", flush=True)
+            else:
+                print(f"[{BUILD_TAG}] iddfs-python-seen gid={gid}", flush=True)
 
-            def _dfs(depth, max_depth, path, seen, current_acts):
+            def _dfs(depth, max_depth, path, seen, current_acts, cpp_vis):
                 if _time.time() - t0 > t_limit or depth >= max_depth:
                     return
-                # 先 replay 所有子动作，用 RidgeLinear 预测 value 排序
                 children = []
                 for a in current_acts:
                     if found_box[0] is not None or _time.time() - t0 > t_limit:
@@ -2214,29 +2430,35 @@ class MyAgent(Agent):
                         found_box[0] = path + [a]
                         print(f"[{BUILD_TAG}] iddfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
                         return
-                    k = _gs(gg)
-                    if k is not None and k not in seen:
-                        feat = _extract_features(gg, frame_arr)
-                        # 余弦相似度去重：相似状态跳过
-                        if not _cos_dedup(feat):
+                    # 精确去重：优先 C++ Visited
+                    if cpp_vis is not None:
+                        ku = _exact_u64(gg, frame_arr)
+                        if cpp_vis.contains(ku):
                             continue
-                        val = 0.0
-                        if _has_ridge and _ridge.n > 0:
-                            val, _ = _ridge.predict(feat)
-                        children.append((a, gg, frame_arr, k, val))
-                # IDA*：按 value 降序（value 高 = level_index 高 = 更接近通关）
+                    else:
+                        k = _gs(gg)
+                        if k is None or k in seen:
+                            continue
+                        ku = k
+                    feat = _extract_features(gg, frame_arr)
+                    if not _cos_dedup(feat):
+                        continue
+                    val = 0.0
+                    if _has_ridge and _ridge.n > 0:
+                        val, _ = _ridge.predict(feat)
+                    children.append((a, gg, frame_arr, ku, val))
                 if _has_ridge and len(children) > 1:
                     children.sort(key=lambda x: -x[4])
-                # 递归
-                for a, gg, frame_arr, k, val in children:
+                for a, gg, frame_arr, ku, val in children:
                     if found_box[0] is not None or _time.time() - t0 > t_limit:
                         return
-                    seen.add(k)
-                    # 更新 RidgeLinear（在线学习）
+                    if cpp_vis is not None:
+                        cpp_vis.insert(ku)
+                    else:
+                        seen.add(ku)
                     if _has_ridge:
                         feat = _extract_features(gg, frame_arr)
                         _ridge.update(feat, float(gg._current_level_index))
-                    # 动态点击候选：热图 + 非背景采样 + sprite 位置
                     child_acts = kbd_acts + _gen_clicks(frame_arr)
                     if has_click:
                         try:
@@ -2252,24 +2474,39 @@ class MyAgent(Agent):
                                     break
                         except Exception:
                             pass
-                    _dfs(depth + 1, max_depth, path + [a], seen, child_acts)
+                    _dfs(depth + 1, max_depth, path + [a], seen, child_acts, cpp_vis)
                     if found_box[0] is not None:
                         return
 
             for max_depth in range(1, MAX_DEPTH + 1):
                 if _time.time() - t0 > t_limit or found_box[0] is not None:
                     break
-                seen = {start_hash}
-                # 模糊去重的记忆必须和 seen 同生命周期：它建在闭包里、整个搜索只建一次，
-                # 于是第 2 轮起根节点的子代全被 sims.max()>0.99 判成重复，children 为空、
-                # 递归永不发生（states 恒等于 MAX_DEPTH×|acts|，只能找到 1 步解）。
+                # 每轮迭代加深：seen / cpp_vis / 余弦记忆 同生命周期重置
                 _n_seen[0] = 0
-                _dfs(0, max_depth, [], seen, all_acts)
+                if _use_cpp_vis:
+                    cpp_vis = _lj.Visited()
+                    # 根状态标记
+                    try:
+                        _g0, _f0 = _replay([])
+                        cpp_vis.insert(_exact_u64(_g0, _f0))
+                    except Exception:
+                        pass
+                    seen = set()
+                else:
+                    cpp_vis = None
+                    seen = {start_hash}
+                _dfs(0, max_depth, [], seen, all_acts, cpp_vis)
                 if found_box[0] is not None:
                     break
 
             _os.chdir(_old)
-            print(f"[{BUILD_TAG}] iddfs-done gid={gid} found={found_box[0] is not None} states={total_states[0]} t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}", flush=True)
+            backend = "cpp-visited" if _use_cpp_vis else "python-seen"
+            print(
+                f"[{BUILD_TAG}] iddfs-done gid={gid} backend={backend} "
+                f"found={found_box[0] is not None} states={total_states[0]} "
+                f"t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}",
+                flush=True,
+            )
             return found_box[0]
         except Exception as exc:
             try: _os.chdir(_old)

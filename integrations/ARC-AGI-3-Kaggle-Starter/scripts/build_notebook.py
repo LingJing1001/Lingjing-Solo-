@@ -22,26 +22,31 @@ from pathlib import Path
 from textwrap import dedent
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHANGE THIS ONE LINE TO PICK YOUR KAGGLE ACCELERATOR
-# Options:
-#   "cpu"      — no GPU. Good for the random starter or any non-ML agent.
-#   "t4"       — Nvidia T4 ×2 (default; matches Kaggle's sample submission).
-#   "p100"     — Nvidia P100 (single big-memory GPU).
-#   "rtx6000"  — Nvidia RTX 6000 (g4-standard-48). ARC-AGI-3 exclusive,
-#                burns GPU quota faster — use only when you're confident.
+# Accelerator: env LINGJING_KAGGLE_ACCEL overrides (cpu|t4|p100|rtx6000).
+# Default rtx6000 for hybrid LLM path; set LINGJING_KAGGLE_ACCEL=cpu for floors-only.
 # ─────────────────────────────────────────────────────────────────────────────
-ACCELERATOR = "cpu"
+ACCELERATOR = str(os.environ.get("LINGJING_KAGGLE_ACCEL", "rtx6000")).strip().lower()
 
 # Internal mapping; don't edit unless Kaggle adds new options.
+# `name` → notebook metadata.kaggle.accelerator (legacy)
+# `machine_shape` → kernel-metadata.json field honored by Kaggle CLI push
 _ACCELERATORS = {
-    "cpu":     {"name": "none",            "gpu": False},
-    "t4":      {"name": "nvidiaTeslaT4",   "gpu": True},
-    "p100":    {"name": "nvidiaTeslaP100", "gpu": True},
-    "rtx6000": {"name": "nvidiaRtx6000",   "gpu": True},
+    "cpu":     {"name": "none",                 "gpu": False, "machine_shape": ""},
+    "t4":      {"name": "nvidiaTeslaT4",        "gpu": True,  "machine_shape": "NvidiaTeslaT4"},
+    "p100":    {"name": "nvidiaTeslaP100",      "gpu": True,  "machine_shape": "NvidiaTeslaP100"},
+    "rtx6000": {"name": "nvidiaRtx6000",        "gpu": True,  "machine_shape": "NvidiaRtxPro6000"},
 }
+
+# Duck-compatible offline datasets (Qwen 3.6 27B FP8 + vLLM wheelhouse).
+_LLM_DATASET_SOURCES = [
+    # Kaggle notebook image is CPython 3.13 — need cp313 wheels (H100 house is cp312).
+    "bilgisarmal/vllm031-cp313-wheelhouse",
+    "driessmit1/vrfai-qwen3-6-27b-fp8-hf-snapshot",
+]
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_SRC = ROOT / "agent" / "my_agent.py"
+LLM_POLICY_SRC = ROOT / "agent" / "llm_policy.py"
 LINGJING_SRC = Path(
     os.environ.get("LINGJING_SRC", str(ROOT.parents[1] / "lingjing_solo"))
 ).expanduser().resolve()
@@ -169,8 +174,14 @@ def _lingjing_write_cell(files: list[tuple[str, str]]) -> dict:
 def build() -> dict:
     if not AGENT_SRC.exists():
         raise SystemExit(f"Could not find {AGENT_SRC}")
+    if not LLM_POLICY_SRC.exists():
+        raise SystemExit(f"Could not find {LLM_POLICY_SRC}")
     agent_body = AGENT_SRC.read_text(encoding="utf-8")
+    llm_policy_body = LLM_POLICY_SRC.read_text(encoding="utf-8")
     lj_files = _collect_lingjing_files()
+    use_gpu = bool(_ACCELERATORS.get(ACCELERATOR, {}).get("gpu"))
+    # GPU builds enable local vLLM by default; CPU stays fail-closed off.
+    llm_env_default = "on" if use_gpu else "off"
 
     install_cell = code_cell(
         "!pip install --no-index --find-links \\\n"
@@ -185,10 +196,86 @@ def build() -> dict:
     write_agent_cell = code_cell(
         "%%writefile /tmp/my_agent.py\n" + agent_body
     )
+    write_llm_policy_cell = code_cell(
+        "%%writefile /tmp/llm_policy.py\n" + llm_policy_body
+    )
     write_lingjing_cell = _lingjing_write_cell(lj_files)
 
+    vllm_cell_source = dedent(
+        f"""\
+        import os, glob, subprocess, time, urllib.request
+        from pathlib import Path
+
+        # Singleton vLLM for SmartRouter LLM policy (GPU builds only).
+        # Fail-closed: if model/wheelhouse missing, leave LINGJING_LLM=off.
+        os.environ.setdefault('LINGJING_LLM', '{llm_env_default}')
+        os.environ.setdefault('LINGJING_LLM_URL', 'http://127.0.0.1:1234/v1')
+        os.environ.setdefault('LINGJING_LLM_MODEL', 'vrfai/Qwen3.6-27B-FP8')
+
+        def _find_input(slug_part: str):
+            root = Path('/kaggle/input')
+            if not root.is_dir():
+                return None
+            for p in root.rglob('*'):
+                if p.is_dir() and slug_part in p.name:
+                    return p
+            return None
+
+        _wheel = (
+            _find_input('vllm031') or _find_input('arc3-vllm')
+            or _find_input('wheelhouse')
+        )
+        _model = _find_input('qwen3-6-27b') or _find_input('qwen') or _find_input('vrfai')
+        _llm_ready = False
+        if os.environ.get('LINGJING_LLM', 'off').lower() in ('1','on','true','yes') and _wheel and _model:
+            try:
+                _links = Path(_wheel) / 'wheels' if (Path(_wheel) / 'wheels').is_dir() else Path(_wheel)
+                req = Path(_wheel) / 'requirements.lock'
+                if not req.is_file():
+                    req = Path(_wheel) / 'requirements.txt'
+                if req.is_file():
+                    subprocess.check_call([
+                        'pip', 'install', '--no-index', '--find-links', str(_links),
+                        '-r', str(req),
+                    ])
+                # Prefer `vllm serve` CLI when present.
+                logf = open('/kaggle/working/vllm_server.log', 'w')
+                cmd = [
+                    'python', '-m', 'vllm.entrypoints.openai.api_server',
+                    '--model', str(_model),
+                    '--served-model-name', os.environ['LINGJING_LLM_MODEL'],
+                    '--host', '127.0.0.1', '--port', '1234',
+                    '--max-model-len', os.environ.get('LINGJING_VLLM_MAX_LEN', '8192'),
+                    '--tensor-parallel-size', '1',
+                    '--gpu-memory-utilization',
+                    os.environ.get('LINGJING_VLLM_MEM', '0.90'),
+                ]
+                subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT)
+                for _i in range(180):
+                    try:
+                        urllib.request.urlopen(
+                            'http://127.0.0.1:1234/v1/models', timeout=2
+                        )
+                        _llm_ready = True
+                        break
+                    except Exception:
+                        time.sleep(5)
+                print('VLLM_READY', _llm_ready, 'model', _model, 'wheel', _wheel, flush=True)
+            except Exception as _exc:
+                print('VLLM_START_FAIL', type(_exc).__name__, _exc, flush=True)
+                _llm_ready = False
+        else:
+            print('VLLM_SKIP', 'llm', os.environ.get('LINGJING_LLM'),
+                  'wheel', _wheel, 'model', _model, flush=True)
+        if not _llm_ready:
+            os.environ['LINGJING_LLM'] = 'off'
+        open('/kaggle/working/LINGJING_LLM.txt', 'w').write(os.environ.get('LINGJING_LLM', 'off'))
+        """
+    )
+    vllm_cell = code_cell(vllm_cell_source)
+
     run_cell_source = dedent(
-        """\
+        f"""\
         import os
 
         if os.getenv('KAGGLE_IS_COMPETITION_RERUN'):
@@ -200,9 +287,11 @@ def build() -> dict:
             !cp -r /kaggle/input/competitions/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents \\
                    /kaggle/working/ARC-AGI-3-Agents
 
-            # Drop our agent + lingjing_solo package into the framework tree.
+            # Drop our agent + llm_policy + lingjing_solo into the framework tree.
             !cp /tmp/my_agent.py \\
                 /kaggle/working/ARC-AGI-3-Agents/agents/templates/my_agent.py
+            !cp /tmp/llm_policy.py \\
+                /kaggle/working/ARC-AGI-3-Agents/agents/templates/llm_policy.py
             !rm -rf /kaggle/working/ARC-AGI-3-Agents/lingjing_solo
             !cp -r /tmp/lingjing_solo \\
                 /kaggle/working/ARC-AGI-3-Agents/lingjing_solo
@@ -218,18 +307,19 @@ def build() -> dict:
 
         load_dotenv()
 
-        AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
+        AVAILABLE_AGENTS: dict[str, Type[Agent]] = {{
             'random': Random,
             'myagent': MyAgent,
-        }
+        }}
         \"\"\")
 
             # Fail loud if wrong agent landed (SmartRouter fingerprint).
             !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router'), BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
 
+            _llm_flag = os.environ.get('LINGJING_LLM', '{llm_env_default}')
             # Point the framework at the gateway sidecar.
             with open('/kaggle/working/ARC-AGI-3-Agents/.env', 'w') as f:
-                f.write(\"\"\"SCHEME=http
+                f.write(f\"\"\"SCHEME=http
         HOST=gateway
         PORT=8001
         ARC_API_KEY=test-key-123
@@ -239,12 +329,16 @@ def build() -> dict:
         RECORDINGS_DIR=/kaggle/working/server_recording
         AETHER_LLM=0
         LINGJING_SCRIPT_DEBUG=0
+        LINGJING_LLM={{_llm_flag}}
+        LINGJING_LLM_URL=http://127.0.0.1:1234/v1
+        LINGJING_LLM_MODEL=vrfai/Qwen3.6-27B-FP8
+        LINGJING_LLM_STALL=80
         \"\"\")
 
             # Run it. The gateway records every action and emits submission.parquet.
             !cd /kaggle/working/ARC-AGI-3-Agents && \\
                 MPLBACKEND=agg \\
-                PYTHONPATH=/kaggle/working/ARC-AGI-3-Agents:${PYTHONPATH} \\
+                PYTHONPATH=/kaggle/working/ARC-AGI-3-Agents:${{PYTHONPATH}} \\
                 python main.py --agent myagent
             !python -c "print('MAIN_EXIT', 0)"
         """
@@ -301,15 +395,18 @@ def build() -> dict:
         "nbformat": 4,
         "cells": [
             markdown_cell(
-                "# ARC Prize 2026 — CEAX Unknown v3.6 (no plugins)\n\n"
-                "Submission agent = **SmartRouter v1** (`smart-router-v1+inline-ls20/ar25/ft09+ceax`). "
-                "No PluginRegistry / ScriptBank / canned ls20. "
-                "Local focus8@300 aggregate ≈**2.26** (7/8 non-zero, 8 levels). "
-                "Phase A validates; Phase B competition rerun scores."
+                "# ARC Prize 2026 — SmartRouter + optional local LLM\n\n"
+                "Submission agent = **SmartRouter** (`BUILD_TAG` starts with `smart-router`). "
+                "Plan/engine floors first; `LINGJING_LLM=on` consults local vLLM JSON policy "
+                "on stall / r3-none / CEAX giveup (fail-closed). "
+                "GPU default: RTX 6000 + Duck Qwen/vLLM datasets. "
+                "CPU fallback: `LINGJING_KAGGLE_ACCEL=cpu` → LLM off."
             ),
             install_cell,
             write_lingjing_cell,
             write_agent_cell,
+            write_llm_policy_cell,
+            vllm_cell,
             run_cell,
             dummy_submission_cell,
         ],
@@ -318,21 +415,52 @@ def build() -> dict:
 
 
 def main() -> None:
+    if ACCELERATOR not in _ACCELERATORS:
+        raise SystemExit(
+            f"Unknown ACCELERATOR={ACCELERATOR!r}. Pick one of: "
+            f"{sorted(_ACCELERATORS)}"
+        )
     NOTEBOOK_PATH.parent.mkdir(parents=True, exist_ok=True)
     NOTEBOOK_PATH.write_text(json.dumps(build(), indent=1), encoding="utf-8")
     print(f"[build_notebook] Wrote {NOTEBOOK_PATH.relative_to(ROOT)}  "
           f"(accelerator: {ACCELERATOR})")
 
     # Keep notebooks/kernel-metadata.json in sync so the user never has to
-    # edit it just to flip CPU ↔ GPU.
+    # edit it just to flip CPU ↔ GPU / attach LLM datasets.
     if METADATA_PATH.exists():
         meta = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
         wanted = _ACCELERATORS[ACCELERATOR]["gpu"]
+        shape = _ACCELERATORS[ACCELERATOR].get("machine_shape", "")
+        dirty = False
         if meta.get("enable_gpu") != wanted:
             meta["enable_gpu"] = wanted
-            METADATA_PATH.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-            print(f"[build_notebook] Synced enable_gpu={wanted} in "
-                  f"{METADATA_PATH.relative_to(ROOT)}")
+            dirty = True
+        if meta.get("machine_shape", "") != shape:
+            meta["machine_shape"] = shape
+            dirty = True
+        # Drop obsolete free-form accelerator key if present.
+        if "accelerator" in meta:
+            meta.pop("accelerator", None)
+            dirty = True
+        if wanted:
+            if meta.get("dataset_sources") != _LLM_DATASET_SOURCES:
+                meta["dataset_sources"] = list(_LLM_DATASET_SOURCES)
+                dirty = True
+        else:
+            # CPU floors-only: drop heavy model datasets to keep commits light.
+            if meta.get("dataset_sources"):
+                meta["dataset_sources"] = []
+                dirty = True
+        if dirty:
+            METADATA_PATH.write_text(
+                json.dumps(meta, indent=2) + "\n", encoding="utf-8"
+            )
+            print(
+                f"[build_notebook] Synced enable_gpu={wanted} "
+                f"machine_shape={shape!r} "
+                f"dataset_sources={meta.get('dataset_sources')} in "
+                f"{METADATA_PATH.relative_to(ROOT)}"
+            )
 
 
 if __name__ == "__main__":
