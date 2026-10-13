@@ -38,6 +38,31 @@ def _hash_json(value: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+_VOLATILE_OBSERVATION_KEYS = {
+    "action_input",
+    "episode_id",
+    "frame_id",
+    "guid",
+    "reasoning",
+    "requested_action",
+    "tick",
+    "timestamp",
+}
+
+
+def _semantic_observation(value: Any) -> Any:
+    """Remove transport metadata that changes even when game state does not."""
+    if isinstance(value, dict):
+        return {
+            key: _semantic_observation(child)
+            for key, child in value.items()
+            if key not in _VOLATILE_OBSERVATION_KEYS
+        }
+    if isinstance(value, list):
+        return [_semantic_observation(child) for child in value]
+    return value
+
+
 def _action(row: dict[str, Any]) -> dict[str, Any]:
     action = row.get("requested_action")
     if not isinstance(action, dict) or not action.get("name") or action.get("name") == "RESET":
@@ -97,8 +122,8 @@ def row_to_label(row: dict[str, Any], *, episode_id: str | None = None, step_id:
     after_levels = _number(after, ("levels_completed",), ("game_specific", "levels_completed"))
     before_score = _number(before, ("score",), ("game_specific", "score"))
     after_score = _number(after, ("score",), ("game_specific", "score"))
-    before_hash = before.get("state_hash") or _hash_json(before)
-    after_hash = after.get("state_hash") or _hash_json(after)
+    before_hash = _hash_json(_semantic_observation(before))
+    after_hash = _hash_json(_semantic_observation(after))
     frame_before = before.get("frame") or before.get("grid")
     frame_after = after.get("frame") or after.get("grid")
     visual_changed = frame_before is not None and frame_after is not None and frame_before != frame_after

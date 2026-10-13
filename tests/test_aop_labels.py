@@ -69,6 +69,38 @@ def test_nonfinite_observation_is_rejected():
         row_to_label(item)
 
 
+def test_transport_metadata_does_not_make_an_action_effective():
+    item = row()
+    item["observation"] = {
+        "tick": 2,
+        "guid": "before-guid",
+        "action_input": {"id": "ACTION1", "reasoning": "before"},
+        "state": "NOT_FINISHED",
+        "frame": [[0]],
+        "levels_completed": 0,
+        "legal_actions": ["CLICK"],
+    }
+    item["data"] = {
+        **item["observation"],
+        "tick": 3,
+        "guid": "after-guid",
+        "action_input": {"id": "ACTION6", "reasoning": "after"},
+    }
+    label = row_to_label(item)
+    assert label.state_delta["before_hash"] == label.state_delta["after_hash"]
+    assert label.state_delta["state_changed"] is False
+    assert label.state_delta["action_effective"] is False
+
+
+def test_semantic_frame_change_is_action_effective():
+    item = row()
+    item["observation"].pop("state_hash")
+    item["data"].pop("state_hash")
+    label = row_to_label(item)
+    assert label.state_delta["before_hash"] != label.state_delta["after_hash"]
+    assert label.state_delta["action_effective"] is True
+
+
 def test_cli_is_deterministic(tmp_path):
     source = tmp_path / "recording.jsonl"
     output = tmp_path / "labels.jsonl"

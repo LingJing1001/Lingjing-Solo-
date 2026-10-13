@@ -1,0 +1,9 @@
+{
+  "game": "ar25",
+  "action": "ACTION6",
+  "rows": 12,
+  "labels_sha256": "b9c78b48c9d43d76834ccbab69a2b894630f6bd7d2765f93c843c5c238cb3e77",
+  "collector_exit": 0,
+  "created_at": 1791852694.909135,
+  "training_performed": false
+}

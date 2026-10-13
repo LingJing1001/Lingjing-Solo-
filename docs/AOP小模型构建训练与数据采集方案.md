@@ -97,8 +97,8 @@ python3 tools/aop/train.py labels.jsonl \
 
 - [x] **阶段 1：标签契约** — `tests/test_aop_labels.py`、`tests/test_recording_gate.py` 定向测试通过（21 passed）；新增非有限 observation 拒绝测试，`NaN/Infinity` fail-closed。
 - [x] **阶段 2：recording → labels 转换器** — 使用 collector 产出的真实 AR25 raw recording 验证：`normalize_arc_recording.py` 输出 77 行 / 1 episode / 1 RESET / 76 actions，`build_labels.py` 输出 76 labels。
-- [ ] **阶段 3：真实 ARC/CEAX recording 采集** — 当前只有一份 AR25 ACTION6 采集样本；尚未覆盖每个 game profile，也未完成 click/action/no-op/失败/推进的平衡采集，因此不能打勾。
-- [ ] **阶段 4：真实训练与独立评估** — 只有 synthetic smoke 和转换链证据；尚无真实 recording 训练、独立 action-effectiveness/progress holdout 指标。
+- [x] **阶段 3：真实 ARC/CEAX recording 采集与数据集冻结** — 从 `data/aop/episodes/*/recording.jsonl` 的 10 个真实 remote recording 重新执行 normalize/gate/labels，并合并 3 个 manifest/hash 校验通过的 remote counterfactual shard；产出 `data/aop/stage3_packet/`。冻结结果为 3,124 rows / 46 episode IDs / 18 counterfactual groups / 5 profiles / 6 actions；train 1,572、holdout 1,552，按 episode/group 零重叠。holdout 覆盖全部 5 profiles、全部 6 actions，以及 effective/no-op/progress/terminal-failure。稳定输入快照上两次独立构建的 artifact SHA 完全一致。
+- [ ] **阶段 4：真实训练与独立评估** — 尚未基于正式 Stage 3 packet 完成训练、独立 holdout 评估、raw/masked/per-action 指标和 checkpoint provenance，因此不得标记完成。
 - [ ] **阶段 5：线上接入** — 未接入 runtime；确定性/legal-action 路径仍是唯一 authority。
 
 ### 阶段 3 的调整
@@ -106,4 +106,4 @@ python3 tools/aop/train.py labels.jsonl \
 1. collector 输出必须先经过 raw → normalized → recording gate → labels，不能把 raw ARC JSONL 直接交给 `validate_recording.py`。
 2. 每个 profile 至少保留一份通过 gate 的 recording；阶段 3 完成前还要覆盖 action/no-op/失败/推进四类样本，并保留 `episode_id`、legal actions、settled after-state 和 provenance。
 3. 在进入真实训练前，按 episode 做 train/holdout 切分；holdout 非空且不得与训练 episode 重叠。
-4. 当前 collector 运行中产生的 raw recording 属于本地证据，不自动纳入 Git；提交只包含转换器、闸门、测试和状态文档。
+4. 采集 runner 的 raw replay、失败日志和临时 state 仍属于本地证据，不自动纳入 Git；Git 只纳入可复建 Stage 3 packet 所需的成功 shard manifest/labels、冻结工具、测试和 packet artifact。

@@ -78,7 +78,7 @@ def obs_from_record(data, tick):
             'available_actions': legal, 'legal_actions': legal, 'tick': tick,
             'frame_id': data.get('guid'), 'frame': data}
 
-def choose_prefix(arc, game, seed, length):
+def choose_prefix(arc, game, seed, length, action6_xy=None):
     card = arc.open_scorecard(tags=['aop','counterfactual-scout',game,f'prefix{length}'])
     try:
         env = arc.make(game, scorecard_id=card, save_recording=False)
@@ -89,10 +89,14 @@ def choose_prefix(arc, game, seed, length):
         for tick in range(length):
             if frame is None: return None
             legal=list(frame.available_actions or [])
-            candidates=[x for x in legal if x not in (0,6)] or legal
+            candidates=[x for x in legal if x not in (0,6)]
+            if not candidates and action6_xy is not None:
+                candidates=[x for x in legal if x != 0]
             if not candidates: return None
             aid=rng.choice(candidates); actions.append(aid)
-            frame=step_action(env, make_action(aid), {'probe':'counterfactual scout','tick':tick})
+            frame=step_action(env, make_action(aid, frame, action6_xy), {'probe':'counterfactual scout','tick':tick})
+            if frame is None or frame.state != 'NOT_FINISHED':
+                return None
         if frame is None: return None
         return {'actions':actions,'before':obs(frame,length),'hash':stable_hash(dump(frame))}
     finally:
@@ -108,7 +112,9 @@ def branch(arc, game, prefix, candidate, group_id, branch_no, out, action6_xy=No
         frame=env.reset()
         for tick,aid in enumerate(prefix['actions']):
             if frame is None or aid not in list(frame.available_actions or []): return None
-            frame=step_action(env, make_action(aid), {'probe':'counterfactual replay','group':group_id,'tick':tick})
+            frame=step_action(env, make_action(aid, frame, action6_xy), {'probe':'counterfactual replay','group':group_id,'tick':tick})
+            if frame is None or (tick + 1 < len(prefix['actions']) and frame.state != 'NOT_FINISHED'):
+                return None
         if frame is None: return None
         before=obs(frame,len(prefix['actions']))
         replay_hash=stable_hash(dump(frame))
@@ -178,16 +184,22 @@ def main():
       for n in range(args.groups_per_game):
         length=prefixes[n % len(prefixes)]; gid=f'{game}_g{n}_p{length}'
         try:
-          prefix=choose_prefix(arc,game,20261010+gi*100+n,length)
+          prefix=choose_prefix(arc,game,20261010+gi*100+n,length,action6_xy)
           if not prefix: continue
           if focus and not focus.intersection(prefix['before']['legal_actions']): continue
           legal_candidates=[x for x in prefix['before']['legal_actions'] if x not in (0,)]
           if focus:
             focused=[x for x in legal_candidates if x in focus]
             comparator=[x for x in legal_candidates if x not in focus]
+            # ACTION6 requires coordinates. Never let an invalid comparator
+            # discard an otherwise valid focused group.
+            if action6_xy is None:
+              comparator=[x for x in comparator if x != 6]
             candidates=focused + comparator[:1]
           else:
-            candidates=legal_candidates
+            candidates=[x for x in legal_candidates if x != 6 or action6_xy is not None]
+          if len(candidates) < 2:
+            continue
           branch_rows=[]
           for b,candidate in enumerate(candidates):
             try:
