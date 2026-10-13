@@ -1,0 +1,60 @@
+{
+  "run_id": "20261012-retrain-after-collection-fix",
+  "purpose": "Continue AOP data collection after diagnosing the outer 600-second budget; persist accepted groups incrementally; retrain candidate checkpoint.",
+  "collection": {
+    "command_scope": "dc22, groups=1, prefix_length=50, focus=ACTION6, payload=(15,31)",
+    "exit_code": 0,
+    "new_rows": 2,
+    "new_groups": 1,
+    "new_games": ["dc22"],
+    "qa": "raw group validation pass; 2 rows, 1 comparable group, 0 errors"
+  },
+  "dataset": {
+    "path": "data/aop/runs/20261012-retrain-after-collection-fix/datasets/merged_11169_labels.jsonl",
+    "rows": 11169,
+    "episodes": 209,
+    "games": 5,
+    "sha256": "bf68bde3d8db4bb653f0f581853e88cbc16a95c55eb3e3248206e025a20849da",
+    "qa_report": "data/aop/runs/20261012-retrain-after-collection-fix/reports/data_qa.json",
+    "requested_action_legal_rate": 1.0,
+    "duplicate_transition_rows": 0,
+    "missing_fields": {}
+  },
+  "training": {
+    "epochs": 20,
+    "train_rows": 8905,
+    "validation_rows": 2264,
+    "val_loss": 1.712491,
+    "exit_code": 0
+  },
+  "evaluation_same_holdout": {
+    "baseline_checkpoint": "data/aop/runs/20261014-retrain-action6-forwarded/checkpoints/aop_targeted_11167_action6_forwarded.pt",
+    "baseline_raw_accuracy": 0.2199646682,
+    "baseline_masked_accuracy": 0.2358657271,
+    "candidate_raw_accuracy": 0.2177561820,
+    "candidate_masked_accuracy": 0.2371908128,
+    "masked_accuracy_delta": 0.0013250857,
+    "unknown_legal": 0,
+    "holdout_rows": 2264
+  },
+  "checkpoint": "data/aop/runs/20261012-retrain-after-collection-fix/checkpoints/aop_11169_collection_fix.pt",
+  "checkpoint_sha256": "adbe9322f3b934e82a6a2d42c1b437bd30761d39b67242783a50ca5d477f8f88",
+  "deployment": {
+    "status": "shadow_candidate_only",
+    "control_enabled": false,
+    "promotion": "blocked",
+    "reason": "Only 2 new rows and masked accuracy remains 0.2372; this is not evidence of broad coverage or production readiness."
+  },
+  "verification": {
+    "focused_tests": "51 passed",
+    "collector_compile": "passed",
+    "collection_api": "ARC API fetch/reset/close succeeded",
+    "incremental_persistence": "accepted group flushed and fsynced before process exit"
+  },
+  "known_limitations": [
+    "The current collection added one dc22 ACTION6 group only; broader per-game/action/edge-state coverage is still required.",
+    "The 600-second value is an outer job wall-clock budget; remote calls returned successfully in this run.",
+    "No live control deployment was performed; AOP remains shadow-only.",
+    "A larger candidate run must be collected and evaluated before promotion."
+  ]
+}

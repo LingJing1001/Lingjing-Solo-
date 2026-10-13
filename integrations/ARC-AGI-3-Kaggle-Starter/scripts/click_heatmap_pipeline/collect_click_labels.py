@@ -10,6 +10,7 @@ This is the training set for the per-colour click-heatmap proposer.
 """
 import json
 import logging
+import os
 import sys
 import time
 from collections import Counter
@@ -17,13 +18,15 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, 'F:/pro2/integrations/ARC-AGI-3-Kaggle-Starter/.venv/Lib/site-packages')
 from arc_agi import Arcade, OperationMode
 from arcengine import GameAction
 
-ENV_DIR = 'F:/pro2/integrations/ARC-AGI-3-Kaggle-Starter/environment_files'
-OUT = Path('F:/pro2/state/click_labels.npz')
-PROGRESS = Path('F:/pro2/state/click_labels_progress.json')
+STARTER_ROOT = Path(__file__).resolve().parents[2]
+ENV_DIR = Path(os.environ.get('ARC_ENV_DIR', STARTER_ROOT / 'environment_files'))
+STATE_DIR = Path(os.environ.get('AOP_STATE_DIR', STARTER_ROOT / 'state'))
+OUT = Path(os.environ.get('CLICK_LABELS_OUT', STATE_DIR / 'click_labels.npz'))
+PROGRESS = Path(os.environ.get('CLICK_LABELS_PROGRESS', STATE_DIR / 'click_labels_progress.json'))
+STATE_DIR.mkdir(parents=True, exist_ok=True)
 CHANGED_MIN = 5
 MAX_PROBES_PER_GAME = 140
 

@@ -1,0 +1,29 @@
+{
+  "run_id": "20261013-retrain-action6-payload-fix",
+  "purpose": "Fix malformed ACTION6 complex-action requests and retrain on last verified corpus",
+  "input_labels": "data/aop/runs/20261012-targeted-cf-v2/datasets/merged_11165_labels.jsonl",
+  "input_rows": 11165,
+  "training": {
+    "epochs": 20,
+    "train_rows": 8903,
+    "validation_rows": 2262,
+    "val_loss": 1.749875,
+    "exit_code": 0
+  },
+  "evaluation": {
+    "raw_accuracy": 0.2012,
+    "masked_accuracy": 0.2442,
+    "unknown_legal": 0,
+    "exit_code": 0
+  },
+  "checkpoint": "data/aop/runs/20261013-retrain-action6-payload-fix/checkpoints/aop_targeted_11165_action6_payload_fix.pt",
+  "checkpoint_sha256": "7871cd31e61347800c7708c64caeb31c24c3b28f24046955f09e9c4437b152b9",
+  "collector_fix": {
+    "source": "tools/aop/counterfactual_collect.py",
+    "behavior": "ACTION6 requires explicit x/y ComplexAction payload and the serialized payload is now explicitly forwarded via env.step(data=...)",
+    "initial_probe_before_forwarding_fix": "The earlier probe set action.action_data but did not pass env.step(data=...), so it was not a valid payload test.",
+    "validated_probe_run": "data/aop/runs/20261014-action6-payload-forwarded/raw",
+    "validated_probe_result": "rows=2, groups=1, dc22; ACTION6 recording contains game_id=dc22-fdcac232, x=15, y=31"
+  },
+  "known_blocker": "No remaining ACTION6 HTTP 500 in the validated dc22 probe; broader collection still requires game/state-appropriate coordinates."
+}

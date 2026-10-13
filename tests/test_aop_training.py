@@ -43,6 +43,21 @@ def test_split_is_episode_disjoint():
     assert train and valid
 
 
+def test_split_keeps_counterfactual_branches_together():
+    rows = [
+        {**label("branch-a", 0), "counterfactual_group_id": "group-1"},
+        {**label("branch-b", 0), "counterfactual_group_id": "group-1"},
+        {**label("episode-c", 0)},
+        {**label("episode-d", 0)},
+    ]
+    train, valid = split_labels(rows, validation_fraction=0.5)
+    train_groups = {x.get("counterfactual_group_id", x["episode_id"]) for x in train}
+    valid_groups = {x.get("counterfactual_group_id", x["episode_id"]) for x in valid}
+    assert train_groups.isdisjoint(valid_groups)
+    assert {x["episode_id"] for x in train} != {"branch-a", "branch-b"}
+    assert {x["episode_id"] for x in valid} != {"branch-a", "branch-b"}
+
+
 def test_checkpoint_round_trip(tmp_path):
     model = AOPModel(16, 4)
     path = tmp_path / "aop.pt"

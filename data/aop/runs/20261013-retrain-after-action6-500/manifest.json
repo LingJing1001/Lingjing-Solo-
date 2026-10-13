@@ -1,0 +1,21 @@
+{
+  "schema": "aop.training-run.v1",
+  "run_id": "20261013-retrain-after-action6-500",
+  "status": "completed_on_last_valid_corpus",
+  "labels": "data/aop/runs/20261012-targeted-cf-v2/datasets/merged_11165_labels.jsonl",
+  "rows": 11165,
+  "episodes": 205,
+  "games": 5,
+  "checkpoint": "data/aop/runs/20261013-retrain-after-action6-500/checkpoints/aop_targeted_11165_group_split_20ep.pt",
+  "evaluation": "data/aop/runs/20261013-retrain-after-action6-500/reports/eval_full.json",
+  "git_commit": "6c389d001ab3ab4cb7ec69fb95be766abe9ff580",
+  "command": "python3 tools/aop/train.py data/aop/runs/20261012-targeted-cf-v2/datasets/merged_11165_labels.jsonl --output data/aop/runs/20261013-retrain-after-action6-500/checkpoints/aop_targeted_11165_group_split_20ep.pt --epochs 20 --validation-fraction 0.2",
+  "collection_attempt": {
+    "command": "tools/aop/run_targeted_collection.sh data/aop/runs/20261013-targeted-cf-retry/raw 1 ACTION6 dc22 10",
+    "result": "blocked_external_http_500",
+    "endpoint": "https://three.arcprize.org/api/cmd/ACTION6",
+    "http_status": 500,
+    "valid_new_rows": 0
+  },
+  "training_eligibility": "uses previously verified real corpus; no failed HTTP-500 branch was added"
+}
