@@ -57,6 +57,7 @@ from .loop import (  # noqa: F401
     position_signature,
     shape_signature,
 )
+from ..core.frame_decode import grid_from_frame  # noqa: F401  # 与提交链共用的唯一解码入口
 from .arc_env import (  # noqa: F401
     CANONICAL_TO_GAME_ACTION,
     GAME_ACTION_TO_CANONICAL,
@@ -124,6 +125,7 @@ __all__ = [
     "extract_code",
     "frame_to_grid",
     "graph_signature",
+    "grid_from_frame",
     "harness_agent_class",
     "load_game_action",
     "make_action",

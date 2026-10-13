@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence, Tuple
 
+from ..core.frame_decode import grid_from_frame
 from ..perception.segmentation import segment_frame
 
 __all__ = ["Obj", "Graph", "build_graph", "render", "graph_signature"]
@@ -97,23 +98,17 @@ class Graph:
 
 
 def _normalize_frame(frame: Any) -> List[List[int]]:
-    """把 numpy 数组 / 元组 / 嵌套 list 统一成 ``list[list[int]]`` 的**单层**。
+    """把任意一帧统一成 ``list[list[int]]`` 的**单层**；取不到返回 ``[]``。
 
-    harness 不依赖 numpy（``pyproject`` 里 numpy 是可选运行时），所以只用
-    ``.tolist()`` 这个鸭子接口，不 ``import numpy``。
+    委托给 :func:`lingjing_solo.core.frame_decode.grid_from_frame` —— 与
+    ``arc_env.frame_to_grid`` / ``core.utils.extract_grid`` 共用**同一份**解码。
+
+    这里原先只认 ndarray / 嵌套 list，**不认官方 ``FrameData``**，导致
+    ``build_graph`` 必须由调用方先解码（那条 FrameData 接缝）。改走统一入口后，
+    裸帧可以直接喂进来：``build_graph(latest_frame)`` / ``decide(latest_frame)``
+    都能工作。仍然是纯 stdlib（``grid_from_frame`` 内部只用 ``.tolist()``）。
     """
-    if hasattr(frame, "tolist"):
-        frame = frame.tolist()
-    if not frame:
-        return []
-    first = frame[0]
-    # 多层帧：frame[0][0] 还是序列 -> 取最后一层（约定：渲染层在最上）
-    if isinstance(first, (list, tuple)) and first and isinstance(first[0], (list, tuple)):
-        last = frame[-1]
-        if hasattr(last, "tolist"):
-            last = last.tolist()
-        return [[int(v) for v in row] for row in last]
-    return [[int(v) for v in row] for row in frame]
+    return grid_from_frame(frame) or []
 
 
 def _bbox_from_boundary(boundary: Sequence[Sequence[int]]) -> Tuple[int, int, int, int]:

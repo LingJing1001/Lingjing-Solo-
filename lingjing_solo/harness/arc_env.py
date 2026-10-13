@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from ..core.frame_decode import grid_from_frame
 from .actions import Action
 from .contract import RunJournal
 from .loop import (
@@ -156,36 +157,16 @@ def resolve_game_action(action: Action, available: Any = None) -> Any:
 # --------------------------------------------------------------------------- #
 
 
-def _norm(x: Any) -> Any:
-    return x.tolist() if hasattr(x, "tolist") else x
-
-
-def frame_to_grid(frame: Any, _depth: int = 0) -> Optional[List[List[int]]]:
+def frame_to_grid(frame: Any) -> Optional[List[List[int]]]:
     """把官方帧（或帧列表、或裸 ndarray）压成 2D ``list[list[int]]``。
 
-    真实结构是 ``FrameData.frame = [np.ndarray(64,64)]``（一帧一层），
-    但也兼容"多个历史帧的列表"（取最后一帧）。取不到返回 ``None``。
+    委托给 :func:`lingjing_solo.core.frame_decode.grid_from_frame` —— 与
+    ``object_graph.build_graph`` / ``core.utils.extract_grid`` 共用**同一份**解码
+    （原先是三份各写各的，见该模块 docstring）。真实结构
+    ``FrameData.frame = [np.ndarray(64,64)]``、"多个历史帧的列表"、裸网格
+    都走同一套规则（帧栈 / 多层 → 取最后一层）。取不到返回 ``None``。
     """
-    if frame is None or _depth > 6:
-        return None
-    frame = _norm(frame)
-
-    inner = getattr(frame, "frame", None)  # FrameData / FrameDataRaw
-    if inner is not None:
-        return frame_to_grid(inner, _depth + 1)
-
-    if not isinstance(frame, (list, tuple)) or len(frame) == 0:
-        return None
-
-    rows = [_norm(r) for r in frame]
-    is_grid = all(
-        isinstance(r, (list, tuple)) and all(not isinstance(v, (list, tuple)) for v in r)
-        for r in rows
-    )
-    if is_grid:
-        return [[int(v) for v in r] for r in rows]
-    # 不是网格 → 当成"帧的列表"，取最后一帧
-    return frame_to_grid(rows[-1], _depth + 1)
+    return grid_from_frame(frame)
 
 
 # --------------------------------------------------------------------------- #

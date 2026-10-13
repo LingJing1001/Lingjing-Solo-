@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import numpy as np
 from .actions import from_available_ids, canonicalize
+from .frame_decode import grid_from_frame
 
 
 def hash_grid(grid: np.ndarray, levels: int = None) -> str:
@@ -39,7 +40,12 @@ def delta_region(grid_prev, grid_curr, pad=1):
 
 
 def _layers_of(frame) -> list:
-    """兼容 FrameData.frame = list[list[list[int]]] 或多层。"""
+    """兼容 FrameData.frame = list[list[list[int]]] 或多层。
+
+    保留（不再被 :func:`extract_grid` 使用）：解码已统一到
+    :func:`lingjing_solo.core.frame_decode.grid_from_frame`，
+    这里留作外部脚本的兼容入口。
+    """
     raw = getattr(frame, "frame", None)
     if raw is None and isinstance(frame, dict):
         raw = frame.get("frame")
@@ -57,7 +63,16 @@ def _layers_of(frame) -> list:
 
 
 def extract_grid(frame) -> "np.ndarray | None":
-    """从多种帧输入提取顶层网格为 numpy 数组。"""
+    """从多种帧输入提取顶层网格为 numpy 数组。
+
+    慢路径（FrameData / dict-with-frame / 嵌套 list）统一委托给
+    :func:`lingjing_solo.core.frame_decode.grid_from_frame` —— 与 harness 旁路
+    （``arc_env.frame_to_grid`` / ``object_graph.build_graph``）共用**同一份**解码，
+    这样"提交链认得的帧"和"harness 认得的帧"不会再有差异。
+
+    快路径（已是 ndarray / 已是 ``.grid`` ndarray）原样返回，避免多一次拷贝与
+    dtype 抖动 —— 上层 ``hash_grid`` 是按字节哈希的，dtype 必须稳定。
+    """
     if frame is None:
         return None
     if isinstance(frame, np.ndarray):
@@ -70,18 +85,14 @@ def extract_grid(frame) -> "np.ndarray | None":
             val = getattr(frame, attr)
             if val is not None:
                 return np.asarray(val)
-    # FrameData 风格
-    layers = _layers_of(frame)
-    if layers:
-        return np.asarray(layers[-1], dtype=np.int16)
     if isinstance(frame, dict):
         for k in ("grid", "array", "observation"):
-            if k in frame and frame[k] is not None:
+            if frame.get(k) is not None:
                 return np.asarray(frame[k])
-        if "frame" in frame and frame["frame"]:
-            layers = _layers_of(frame)
-            if layers:
-                return np.asarray(layers[-1], dtype=np.int16)
+    # 唯一解码入口（FrameData(.frame) / 帧栈 / 多层 list / 裸嵌套 list）
+    grid = grid_from_frame(frame)
+    if grid is not None:
+        return np.asarray(grid, dtype=np.int16)
     return None
 
 

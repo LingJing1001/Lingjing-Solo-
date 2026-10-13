@@ -5,6 +5,7 @@ from .types import (
     BubbleWall, PhiDensity, SourceTerm, PerceptionSnapshot,
     Ar25Piece, Ar25Axis, Ar25Obs, Ar25Config, Ar25CoverReport,
 )
+from .frame_decode import grid_from_frame, is_grid
 from .utils import (
     hash_grid, bbox_of, clamp, delta_region, Logger,
     extract_grid, extract_state, extract_levels,
@@ -25,6 +26,7 @@ __all__ = [
     "hash_grid", "bbox_of", "clamp", "delta_region", "Logger",
     "extract_grid", "extract_state", "extract_levels",
     "extract_available_actions", "is_win_state", "needs_reset",
+    "grid_from_frame", "is_grid",
     "canonicalize", "to_alias", "normalize_valid", "from_available_ids",
     "ALIAS_TO_CANONICAL", "DEFAULT_SIMPLE",
     "compute_phi", "compute_bubble", "curvature_proxy", "prefer_block_actions",
