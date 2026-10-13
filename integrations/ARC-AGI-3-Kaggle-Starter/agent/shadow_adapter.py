@@ -160,6 +160,13 @@ def normalize_action(item: Any) -> Optional[Any]:
             x = _as_int(item[1])
             y = _as_int(item[2])
             return (6, x, y) if x is not None and y is not None else None
+        # 方言 C：("i", 动作号) —— 键盘动作（arc_shadow_cn04 格式）
+        if isinstance(head, str) and head.strip().lower() == "i" and len(item) == 2:
+            val = _as_int(item[1])
+            return val if val is not None and 1 <= val <= 7 else None
+        # 方言 D：("r",) —— 旋转（arc_shadow_cn04 格式）
+        if isinstance(head, str) and head.strip().lower() == "r":
+            return 5  # ACTION5 = rotate
         if isinstance(head, str):
             # 其余字符串方言一律不猜
             return None

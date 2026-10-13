@@ -64,6 +64,7 @@ add_tree() {                       # $1=源目录 $2=ARC 下的目标目录
 }
 
 add_pair "$SCRIPT_DIR/agents/templates/lingjing_solo_agent.py" agents/templates/lingjing_solo_agent.py
+add_pair "$SCRIPT_DIR/agents/templates/icm_agent.py" agents/templates/icm_agent.py
 # agents/strategies/ 整目录（含离线 runner 与探针）。**这一条是 §7.3 登记的规则 ① 越界**：
 # 线上真正需要的只有 __init__.py + base/generic/ar25/ls20/r11l/registry 六份，其余是诊断件。
 # 缩小到那七份要改的是"生产包该含什么"，那是你的决定，本脚本只保证复制范围可见、可比对。

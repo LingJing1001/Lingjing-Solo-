@@ -1,0 +1,13 @@
+### canned BEFORE try3 start 16:50:50
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-13 16:50:55 | INFO | Got anonymous API key: 61a0f431-17a2-4ab4-9605-2c31435c0a9b
+2026-10-13 16:50:55 | INFO | You can register for an API key at https://three.arcprize.org
+2026-10-13 16:50:56 | INFO | Successfully fetched 25 environment(s) from API
+[engine_solver] env_dir=D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\environment_files game_dirs=25
+[engine_solver] env_dir=D:\Quan\Lingjing-Solo-main-bench\environment_files game_dirs=25
+2026-10-13 16:50:56 | INFO | Created new scorecard: 321b0f8f-9779-4d69-94c4-7e94422a0fca
+2026-10-13 16:50:57 | INFO | Successfully fetched metadata for game ar25
+2026-10-13 16:50:57 | INFO | Successfully loaded game class Ar25 from environment_files\ar25\0c556536\ar25.py
+[EngineSolver] loaded env=D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\environment_files
+C:\Users\admin\.workbuddy\binaries\PortableGit\versions\1.2.0\bin\bash.exe: line 1:   608 Segmentation fault         $PY scripts/benchmark_all_games.py 400 --agent "$B" --out "$OUT/bench_afterB_canned_BEFORE.json" --label canned-beforeB
+### rc=139 16:50:59

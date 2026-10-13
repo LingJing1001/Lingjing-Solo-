@@ -1,0 +1,719 @@
+[engine_solver] env_dir=D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\environment_files game_dirs=25
+[engine_solver] env_dir=D:\Quan\Lingjing-Solo-main-bench\environment_files game_dirs=25
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=ar25-0c556536 gid=ar25 route=INLINE:ar25 ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] ar25: 探测缓存命中 (无解法，跳过搜索)
+  ar25-0c556536      levels= 8 state=WIN            steps=276 (2.7s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=bp35-0a0ad940 gid=bp35 route=BP35_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] bp35: 探测缓存命中 (无解法，跳过搜索)
+[engine_solver] mode: generic_bfs=off probe_cache=on cache_file=D:\Quan\Lingjing-Solo-main-bench\state\engine_solver_cache.json
+  [engine_solver] bp35: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=bp35 L=1 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=bp35 src=v4 click=(43,26) budget=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION6 ceax_experiment:(47, 44) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=bp35 L=1 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:31:56 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:31:56 | INFO | Created new scorecard: 62f2181f-4a95-4eb8-a5c5-a6c87467eeda
+2026-10-11 09:32:06 | INFO | Successfully fetched metadata for game bp35
+[arc_solver_utils] 未解: nodes=0 seen=1
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=bp35 L=1 t=500.0s (IDDFS)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:32:06 | INFO | Created new scorecard: 54c62342-e657-4322-a26d-6035cc3bf370
+2026-10-11 09:32:06 | INFO | Successfully loaded game class Bp35 from environment_files\bp35\0a0ad940\bp35.py
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] iddfs-done gid=bp35 found=False states=3600 t=53.0s kbd=[3, 4] clicks=16
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-none gid=bp35 L=1 (no path within budget)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=100 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=1 ACTION6 ceax_hybrid_mut:(48, 38) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=1 ACTION7 ceax_undo skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=bp35 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=1 ACTION7 ceax_undo skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=1 ACTION6 ceax_experiment:(7, 61) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=1 ACTION7 ceax_undo skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=1 ACTION7 ceax_undo skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=1 ACTION6 ceax_experiment:(7, 61) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=1 ACTION6 ceax_experiment:(2, 63) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=bp35 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=1 ACTION6 ceax_exploit:c14@(51, 33) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=1 ACTION6 ceax_exploit:c14@(39, 33) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+  bp35-0a0ad940      levels= 1 state=NOT_FINISHED   steps=400 (99.0s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=cd82-fb555c5d gid=cd82 route=CD82_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] cd82: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+  cd82-fb555c5d      levels= 6 state=WIN            steps= 73 (0.6s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=cn04-2fe56bfb gid=cn04 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] cn04: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] cn04: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=cn04 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=cn04 L=0 (shadow_solver)
+[cn04] CSP 命中: 14 步 (budget 75)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=cn04 L=0 path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#1: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#2: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#3: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#4: ValueError: invalid literal for int() with base 10: 'm'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'm'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#5: ValueError: invalid literal for int() with base 10: 'm'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'm'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=cn04 src=v4 click=(49,29) budget=13
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION6 ceax_experiment:(45, 41) skills=0 err=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=cn04 L=1 (shadow_solver)
+[cn04] CSP 命中: 14 步 (budget 75)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=cn04 L=1 path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L2 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=2 ACTION6 ceax_experiment:(39, 36) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=2 ACTION6 ceax_experiment:(40, 0) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=2 ACTION5 ceax_submit skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=2 ACTION6 ceax_exploit:c8@(51, 30) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=2 ACTION6 ceax_exploit:c8@(51, 39) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=cn04 L=2 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=2 ACTION6 ceax_exploit:c12@(17, 16) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=2 ACTION6 ceax_exploit:c14@(42, 30) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=2 ACTION6 ceax_grid:(28, 32) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=2 ACTION6 ceax_exploit:c14@(42, 30) skills=9 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=2 ACTION5 ceax_submit skills=9 err=28
+  cn04-2fe56bfb      levels= 2 state=NOT_FINISHED   steps=400 (22.6s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=dc22-fdcac232 gid=dc22 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] dc22: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] dc22: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=dc22 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=dc22 L=0 (shadow_solver)
+[dc22] A*命中: 20 步 nodes=75
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-raised gid=dc22 L=0 TypeError: int() argument must be a string, a bytes-like object or a real number, not 'tuple'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=0 gid=dc22 src=v4 click=(13,30) budget=19
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=1 gid=dc22 src=v4 click=(13,30) budget=18
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=2 gid=dc22 src=v4 click=(13,30) budget=17
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=3 gid=dc22 src=v4 click=(13,30) budget=16
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=4 gid=dc22 src=v4 click=(13,30) budget=15
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=25 L=0 ACTION6 ceax_hybrid_mut:(45, 19) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=0 ACTION6 ceax_hybrid_mut:(20, 24) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=0 ACTION6 ceax_hybrid_mut:(50, 36) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=dc22 L=0 (shadow_solver)
+[dc22] A*未解, 回退原始BFS (剩余 118s)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=dc22 L=0 t=500.0s (IDDFS)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:34:02 | INFO | Created new scorecard: c9890366-f5d9-4b8e-a5b4-e6d7ede306e8
+2026-10-11 09:34:02 | INFO | Successfully loaded game class Dc22 from environment_files\dc22\fdcac232\dc22.py
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] iddfs-done gid=dc22 found=False states=8177 t=36.3s kbd=[1, 2, 3, 4] clicks=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-none gid=dc22 L=0 (no path within budget)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=100 L=0 ACTION6 ceax_hybrid_mut:(10, 40) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=dc22 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=0 ACTION6 ceax_exploit:c8@(42, 20) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=dc22 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+  dc22-fdcac232      levels= 0 state=NOT_FINISHED   steps=400 (71.5s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=ft09-0d8bbf25 gid=ft09 route=INLINE:ft09 ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] ft09: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ft09 L0 hardcoded plan len=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ft09 L1 hardcoded plan len=7
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ft09 L2 hardcoded plan len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ft09 L3 hardcoded plan len=16
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ft09 L4 hardcoded plan len=21
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ft09 L5 hardcoded plan len=19
+  ft09-0d8bbf25      levels= 6 state=WIN            steps= 81 (0.5s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=g50t-5849a774 gid=g50t route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] g50t: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] g50t: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=g50t L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=g50t L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:35:16 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:35:16 | INFO | Created new scorecard: 2eb5c36b-47a0-4b03-a9dd-f76216f96c8e
+2026-10-11 09:35:23 | INFO | Successfully fetched metadata for game g50t
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=17
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=g50t L=0 path_len=17
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=17 L=1 ACTION3 ceax_kbd:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=25 L=1 ACTION2 ceax_kbd:ACTION2 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION2 ceax_kbd:ACTION2 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION4 ceax_kbd:ACTION4 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=g50t L=1 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:35:29 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:35:29 | INFO | Created new scorecard: 2ed8311c-c199-49de-bd61-e007a2d4496a
+2026-10-11 09:35:30 | INFO | Successfully fetched metadata for game g50t
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=17
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=g50t L=1 path_len=17
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=1 ACTION2 ceax_kbd:ACTION2 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=1 ACTION2 ceax_kbd:ACTION2 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=g50t L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=1 ACTION3 ceax_kbd:ACTION3 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=1 ACTION1 ceax_kbd:ACTION1 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=1 ACTION2 ceax_kbd:ACTION2 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=1 ACTION3 ceax_kbd:ACTION3 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=1 ACTION1 ceax_kbd:ACTION1 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=1 ACTION1 ceax_kbd:ACTION1 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=g50t L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=1 ACTION1 ceax_kbd:ACTION1 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=1 ACTION1 ceax_kbd:ACTION1 skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=1 ACTION1 ceax_kbd:ACTION1 skills=2 err=0
+  g50t-5849a774      levels= 1 state=NOT_FINISHED   steps=400 (47.4s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=ka59-38d34dbb gid=ka59 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] ka59: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] ka59: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=ka59 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=ka59 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:35:45 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:35:45 | INFO | Created new scorecard: d23dbcd4-36a4-4a6e-a8d5-587c74ced2df
+2026-10-11 09:35:47 | INFO | Successfully fetched metadata for game ka59
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=11
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=ka59 L=0 path_len=11
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=ka59 src=v4 click=(43,49) budget=10
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=ka59 L=1 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:36:00 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:36:00 | INFO | Created new scorecard: 22f0bbdf-5390-422e-b687-523a193fcaa3
+2026-10-11 09:36:01 | INFO | Successfully fetched metadata for game ka59
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=11
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=ka59 L=1 path_len=11
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=ka59 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=1 ACTION6 ceax_chrome_end:(38, 48) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=1 ACTION6 ceax_hybrid_mut:(19, 44) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=ka59 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+  ka59-38d34dbb      levels= 1 state=NOT_FINISHED   steps=400 (36.6s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=lf52-271a04aa gid=lf52 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] lf52: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] lf52: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=lf52 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=lf52 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:36:23 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:36:23 | INFO | Created new scorecard: 8c6f82d4-c773-40c3-81f4-185a7da86a02
+2026-10-11 09:36:24 | INFO | Successfully fetched metadata for game lf52
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=lf52 L=0 path_len=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=lf52 src=v4 click=(14,15) budget=7
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=lf52 L=1 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:36:33 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:36:33 | INFO | Created new scorecard: 50deaafa-3c72-468f-87d9-72b3d6aaf5e8
+2026-10-11 09:36:34 | INFO | Successfully fetched metadata for game lf52
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=lf52 L=1 path_len=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=lf52 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=lf52 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=1 ACTION3 ceax_hybrid_walk:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=1 ACTION4 ceax_hybrid_walk:ACTION4 skills=1 err=0
+  lf52-271a04aa      levels= 1 state=NOT_FINISHED   steps=400 (27.2s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=lp85-305b61c3 gid=lp85 route=CEAX_KNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] lp85: 探测缓存命中 (有解法 79 步，跳过搜索)
+  lp85-305b61c3      levels= 8 state=WIN            steps= 79 (0.1s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=ls20-9607627b gid=ls20 route=INLINE:ls20 ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] ls20: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+  ls20-9607627b      levels= 7 state=WIN            steps=309 (2.9s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=m0r0-492f87ba gid=m0r0 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] m0r0: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] m0r0: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=m0r0 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=m0r0 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:36:53 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:36:53 | INFO | Created new scorecard: b23134ab-f7fb-4c33-b93f-26e347196a40
+2026-10-11 09:36:54 | INFO | Successfully fetched metadata for game m0r0
+[m0r0_solver] BFS 命中: 15 步 节点=521 状态=596
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=15
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=m0r0 L=0 path_len=15
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=m0r0 src=v4 click=(27,41) budget=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION6 ceax_experiment:(38, 63) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION6 ceax_experiment:(44, 63) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=m0r0 L=1 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:37:04 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:37:04 | INFO | Created new scorecard: 80695e82-704d-43ae-b543-e9da7b84a5a0
+2026-10-11 09:37:06 | INFO | Successfully fetched metadata for game m0r0
+[m0r0_solver] BFS 命中: 15 步 节点=521 状态=596
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=15
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=m0r0 L=1 path_len=15
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=1 ACTION6 ceax_experiment:(57, 63) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=1 ACTION6 ceax_grid:(36, 28) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=m0r0 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=1 ACTION6 ceax_experiment:(46, 63) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=1 ACTION5 ceax_submit skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=1 ACTION6 ceax_grid:(20, 28) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=1 ACTION6 ceax_grid:(44, 24) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=1 ACTION6 ceax_grid:(48, 32) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=1 ACTION5 ceax_submit skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=m0r0 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=1 ACTION5 ceax_submit skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=1 ACTION6 ceax_grid:(32, 52) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=1 ACTION6 ceax_grid:(28, 52) skills=1 err=0
+  m0r0-492f87ba      levels= 1 state=NOT_FINISHED   steps=400 (33.7s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=r11l-495a7899 gid=r11l route=R11L_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] r11l: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+  r11l-495a7899      levels= 6 state=WIN            steps=130 (0.5s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=re86-8af5384d gid=re86 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] re86: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] re86: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=re86 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=re86 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:37:28 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:37:28 | INFO | Created new scorecard: 6546cc6d-366a-454b-9c45-91a574b94a68
+2026-10-11 09:37:29 | INFO | Successfully fetched metadata for game re86
+[re86] 未解: nodes=46 seen=47
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=re86 L=0 t=600.0s (IDDFS)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:37:29 | INFO | Created new scorecard: cecdcd78-c518-4a38-a7fb-c8e04a456d47
+2026-10-11 09:37:29 | INFO | Successfully loaded game class Re86 from environment_files\re86\8af5384d\re86.py
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] iddfs-done gid=re86 found=False states=1995 t=2.6s kbd=[1, 2, 3, 4, 5] clicks=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-none gid=re86 L=0 (no path within budget)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=0 L=0 ACTION1 ceax_kbd:ACTION1 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=1 L=0 ACTION2 ceax_kbd:ACTION2 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=2 L=0 ACTION1 ceax_kbd:ACTION1 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=25 L=0 ACTION4 ceax_kbd:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=0 ACTION4 ceax_kbd:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=0 ACTION4 ceax_kbd:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=0 ACTION4 ceax_kbd:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=0 ACTION2 ceax_kbd:ACTION2 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=re86 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=0 ACTION3 ceax_kbd:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=0 ACTION1 ceax_kbd:ACTION1 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=0 ACTION3 ceax_kbd:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=0 ACTION2 ceax_kbd:ACTION2 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=0 ACTION4 ceax_kbd:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=0 ACTION1 ceax_kbd:ACTION1 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=re86 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=0 ACTION1 ceax_kbd:ACTION1 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=0 ACTION4 ceax_kbd:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=0 ACTION2 ceax_kbd:ACTION2 skills=0 err=0
+  re86-8af5384d      levels= 0 state=NOT_FINISHED   steps=400 (27.8s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=s5i5-18d95033 gid=s5i5 route=CEAX_KNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] s5i5: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] s5i5: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=s5i5 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=s5i5 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:37:56 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:37:56 | INFO | Created new scorecard: 86bf7e31-12de-4a5b-b3c2-d75602020a59
+2026-10-11 09:37:57 | INFO | Successfully fetched metadata for game s5i5
+[arc_solver_utils] 未解: nodes=0 seen=1
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=s5i5 L=0 t=600.0s (IDDFS)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:37:57 | INFO | Created new scorecard: 4302a672-61b2-4cc0-8811-ca25ae288911
+2026-10-11 09:37:57 | INFO | Successfully loaded game class S5i5 from environment_files\s5i5\18d95033\s5i5.py
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] iddfs-done gid=s5i5 found=False states=6384 t=15.3s kbd=[] clicks=16
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-none gid=s5i5 L=0 (no path within budget)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=0 L=0 ACTION6 ceax_align_sticky:(48, 21) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=1 L=0 ACTION6 ceax_align_sticky:(24, 47) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=2 L=0 ACTION6 ceax_align_sticky:(48, 21) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=13 L=1 ACTION6 ceax_chrome_end:(60, 57) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=25 L=1 ACTION6 ceax_align_sticky:(60, 57) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION6 ceax_experiment:(19, 36) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION6 ceax_experiment:(28, 30) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=s5i5 L=1 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:38:16 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:38:16 | INFO | Created new scorecard: 67c3f14e-51e2-46da-85f7-1edda5bae6cf
+2026-10-11 09:38:18 | INFO | Successfully fetched metadata for game s5i5
+[arc_solver_utils] 未解: nodes=0 seen=1
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=s5i5 L=1 t=500.0s (IDDFS)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:38:18 | INFO | Created new scorecard: 5a051e3f-ef00-4847-8664-df9ad6550614
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] iddfs-done gid=s5i5 found=False states=6384 t=16.4s kbd=[] clicks=16
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-none gid=s5i5 L=1 (no path within budget)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=100 L=1 ACTION6 ceax_experiment:(40, 30) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=1 ACTION6 ceax_experiment:(22, 36) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=1 ACTION6 ceax_experiment:(17, 40) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=s5i5 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=0 ACTION6 ceax_experiment:(59, 63) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=0 ACTION6 ceax_experiment:(53, 63) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=0 ACTION6 ceax_experiment:(49, 63) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=0 ACTION6 ceax_experiment:(28, 63) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=0 ACTION6 ceax_experiment:(34, 63) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=0 ACTION6 ceax_exploit:c11@(24, 44) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=s5i5 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=0 ACTION6 ceax_experiment:(10, 44) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=0 ACTION6 ceax_experiment:(57, 10) skills=2 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=0 ACTION6 ceax_exploit:c2@(24, 47) skills=2 err=0
+  s5i5-18d95033      levels= 1 state=NOT_FINISHED   steps=400 (46.9s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=sb26-7fbdac44 gid=sb26 route=SB26_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] sb26: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+  sb26-7fbdac44      levels= 8 state=WIN            steps=124 (2.4s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=sc25-635fd71a gid=sc25 route=SC25_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] sc25: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] sc25: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=sc25 L=4 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L4 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=80 gid=sc25 src=v4 click=(62,1) budget=5
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=sc25 L=4 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:38:49 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:38:49 | INFO | Created new scorecard: b8ed7583-9a78-471e-9f33-41e0fa21b6d7
+2026-10-11 09:38:51 | INFO | Successfully fetched metadata for game sc25
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-raised gid=sc25 L=4 TypeError: int() argument must be a string, a bytes-like object or a real number, not 'tuple'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=100 L=4 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=4 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=4 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=4 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=4 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=sc25 L=4 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=4 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=4 ACTION6 ceax_chrome_end:(18, 32) skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=4 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=4 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=4 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=4 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=sc25 L=4 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=4 ACTION6 ceax_hybrid_mut:(8, 4) skills=0 err=0
+  sc25-635fd71a      levels= 4 state=NOT_FINISHED   steps=400 (23.9s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=sk48-d8078629 gid=sk48 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] sk48: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] sk48: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=sk48 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=sk48 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:39:09 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:39:09 | INFO | Created new scorecard: 16a0f537-6208-468b-93e8-cf29b3059c52
+2026-10-11 09:39:11 | INFO | Successfully fetched metadata for game sk48
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=sk48 L=0 path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#1: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#2: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#3: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#4: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#5: ValueError: invalid literal for int() with base 10: 'i'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'i'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=sk48 src=v4 click=(42,31) budget=13
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=0 ACTION7 ceax_undo skills=0 err=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=sk48 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:39:24 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:39:24 | INFO | Created new scorecard: f11e12b7-2491-4771-b08b-a6c7f4febe3e
+2026-10-11 09:39:25 | INFO | Successfully fetched metadata for game sk48
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=sk48 L=0 path_len=14
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=0 ACTION3 ceax_hybrid_walk:ACTION3 skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=sk48 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=0 ACTION7 ceax_undo skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=0 ACTION7 ceax_undo skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=0 ACTION7 ceax_undo skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=0 ACTION7 ceax_undo skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=0 ACTION4 ceax_hybrid_walk:ACTION4 skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=sk48 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=0 ACTION6 ceax_hybrid_mut:(36, 53) skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=0 ACTION6 ceax_hybrid_mut:(22, 53) skills=0 err=28
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=0 ACTION6 ceax_hybrid_mut:(46, 53) skills=0 err=28
+  sk48-d8078629      levels= 0 state=NOT_FINISHED   steps=400 (37.0s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=sp80-589a99af gid=sp80 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] sp80: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] sp80: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=sp80 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=sp80 L=0 (shadow_solver)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=sp80 L=0 path_len=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#1: ValueError: invalid literal for int() with base 10: 'm'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'm'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#2: ValueError: invalid literal for int() with base 10: 'm'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'm'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#3: ValueError: invalid literal for int() with base 10: 'm'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'm'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#4: ValueError: invalid literal for int() with base 10: 'p'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'p'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=4 gid=sp80 src=v4 click=(39,0) budget=19
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=sp80 src=v4 click=(13,13) budget=3
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=25 L=0 ACTION6 ceax_experiment:(0, 0) skills=0 err=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=0 ACTION6 ceax_experiment:(2, 0) skills=0 err=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=0 ACTION6 ceax_experiment:(51, 0) skills=0 err=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=sp80 L=0 (shadow_solver)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=sp80 L=0 path_len=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] choose_action ERROR#5: ValueError: invalid literal for int() with base 10: 'm'
+Traceback (most recent call last):
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 982, in choose_action
+    action = self._choose_action_inner(frames, latest_frame)
+  File "D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py", line 1490, in _choose_action_inner
+    action.set_data({"x": int(cx), "y": int(cy)})
+                          ~~~^^^^
+ValueError: invalid literal for int() with base 10: 'm'
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=0 ACTION6 ceax_experiment:(25, 0) skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=0 ACTION6 ceax_exploit:c14@(32, 0) skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=sp80 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=0 ACTION5 ceax_submit skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=0 ACTION5 ceax_submit skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=0 ACTION5 ceax_submit skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=0 ACTION5 ceax_submit skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=0 ACTION5 ceax_submit skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=sp80 L=0 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=0 ACTION6 ceax_grid:(20, 20) skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=0 ACTION6 ceax_grid:(22, 16) skills=0 err=8
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=0 ACTION6 ceax_grid:(52, 34) skills=0 err=8
+  sp80-589a99af      levels= 0 state=NOT_FINISHED   steps=400 (24.8s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=su15-1944f8ab gid=su15 route=CEAX_KNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] su15: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=su15 L=0 (shadow_solver)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver path_len=89
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=su15 L=0 path_len=89
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L2 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L3 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L4 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L5 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L6 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L7 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L8 (level transition)
+  su15-1944f8ab      levels= 9 state=WIN            steps= 89 (4.1s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=tn36-ef4dde99 gid=tn36 route=TN36_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] tn36: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+  tn36-ef4dde99      levels= 7 state=WIN            steps=103 (0.4s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=tr87-cd924810 gid=tr87 route=INLINE:tr87 ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] tr87: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+  tr87-cd924810      levels= 6 state=WIN            steps=122 (1.0s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=tu93-0768757b gid=tu93 route=CEAX_KNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] tu93: 探测缓存命中 (无解法，跳过搜索)
+  [engine_solver] tu93: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=tu93 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=tu93 L=0 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:40:17 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:40:17 | INFO | Created new scorecard: 53da3730-3180-4bac-90b0-df2feb66a681
+2026-10-11 09:40:21 | INFO | Successfully fetched metadata for game tu93
+[arc_solver_utils] 未解: nodes=3 seen=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=tu93 L=0 t=600.0s (IDDFS)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:40:21 | INFO | Created new scorecard: 1ee37211-0ade-4797-b3df-9d02bf85d012
+2026-10-11 09:40:21 | INFO | Successfully loaded game class Tu93 from environment_files\tu93\0768757b\tu93.py
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] iddfs-done gid=tu93 found=False states=3968 t=7.2s kbd=[1, 2, 3, 4] clicks=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-none gid=tu93 L=0 (no path within budget)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=0 L=0 ACTION4 ceax_kbd:ACTION4 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=1 L=0 ACTION2 ceax_kbd:ACTION2 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=2 L=0 ACTION2 ceax_kbd:ACTION2 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=18 L=1 ACTION3 ceax_kbd:ACTION3 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=25 L=1 ACTION2 ceax_kbd:ACTION2 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=tu93 L=1 (shadow_solver)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:40:34 | INFO | Successfully fetched 25 environment(s) from API
+2026-10-11 09:40:34 | INFO | Created new scorecard: efbc20dd-dc00-4ab9-95ec-7d251d430c49
+2026-10-11 09:40:37 | INFO | Successfully fetched metadata for game tu93
+[arc_solver_utils] 未解: nodes=3 seen=4
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=tu93 L=1 t=500.0s (IDDFS)
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+2026-10-11 09:40:37 | INFO | Created new scorecard: e579fb5b-4be4-4abb-8e4f-cf585648bca1
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] iddfs-done gid=tu93 found=False states=3968 t=8.0s kbd=[1, 2, 3, 4] clicks=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-none gid=tu93 L=1 (no path within budget)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=100 L=1 ACTION4 ceax_kbd:ACTION4 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=125 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=tu93 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=1 ACTION4 ceax_kbd:ACTION4 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=1 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=1 ACTION4 ceax_kbd:ACTION4 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=tu93 L=1 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=0 ACTION3 ceax_kbd:ACTION3 skills=3 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=0 ACTION1 ceax_kbd:ACTION1 skills=3 err=0
+  tu93-0768757b      levels= 1 state=NOT_FINISHED   steps=400 (47.4s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=vc33-5430563c gid=vc33 route=VC33_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] vc33: 无 maps 数据，通用 BFS 已关（ENGINE_SOLVER_GENERIC=1 可开）
+  vc33-5430563c      levels= 7 state=WIN            steps=167 (1.4s)
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=wa30-ee6fef47 gid=wa30 route=WA30_PLAN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] wa30: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] wa30 L0 规划 26 步 ✅
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] wa30 L1 规划失败 → 回退
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] wa30 L2 规划失败 → 回退
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] wa30 L3 规划失败 → 回退
+  [engine_solver] wa30: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=wa30 L=3 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L3 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=3 ACTION1 ceax_kbd:ACTION1 skills=0 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=3 ACTION1 ceax_kbd:ACTION1 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=3 ACTION2 ceax_kbd:ACTION2 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=3 ACTION3 ceax_kbd:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=3 ACTION2 ceax_kbd:ACTION2 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=3 ACTION2 ceax_kbd:ACTION2 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=wa30 L=3 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=3 ACTION3 ceax_kbd:ACTION3 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=3 ACTION2 ceax_kbd:ACTION2 skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=3 ACTION4 ceax_kbd:ACTION4 skills=1 err=0
+  wa30-ee6fef47      levels= 3 state=NOT_FINISHED   steps=400 (24.1s)
+
+== main-0486e5c-root400 ==
+总分(关) 94  破零 21/25  WIN 11  → D:\Quan\Lingjing-Solo-main-bench\ui\static\games_benchmark_main_400.json

@@ -22,6 +22,20 @@ jobs:
           pip install -e ".[dev,cnn]"
           pip install pytest pytest-timeout
 
+      - name: 口径对齐闸门（headline = 闭卷分）
+        # 单一真相源 state/score_registry.json 必须与三个 bench 产物一致；
+        # 跑分漂移而没同步 registry 时在此失败。
+        run: python scripts/closed_book_score.py --check
+
+      - name: 门禁反向闸门（反罐头 + 闭卷合规）
+        # ① 任何未被 _CLOSED_BOOK 包住的硬编码答案表；
+        # ② lingjing_solo/closed_book/ 里不得出现引擎源码/混淆 tag/预存解法。
+        run: >-
+          python -m pytest
+          tests/test_closed_book_gate.py
+          tests/test_score_registry.py
+          tests/test_ar25_closed_book.py -v
+
       - name: 跑测试闸门（pytest）
         run: python -m pytest tests/ -v
 

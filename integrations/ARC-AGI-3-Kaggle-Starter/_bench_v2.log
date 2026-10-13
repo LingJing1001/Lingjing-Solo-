@@ -1,0 +1,8 @@
+﻿INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+python : OpenBLAS error: Memory allocation still failed after 10 retries, giving up.
+所在位置 行:1 字符: 32
++ ... ="offline"; python scripts/benchmark_all_games.py 400 --agent agent/m ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (OpenBLAS error:...ies, giving up.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

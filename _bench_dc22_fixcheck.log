@@ -1,0 +1,40 @@
+[bench] --agent agent/my_agent.py 不存在，回退 D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\agent\my_agent.py
+[engine_solver] env_dir=D:\Quan\Lingjing-Solo-main-bench\integrations\ARC-AGI-3-Kaggle-Starter\environment_files game_dirs=25
+[engine_solver] env_dir=D:\Quan\Lingjing-Solo-main-bench\environment_files game_dirs=25
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+[AOP] controller loaded: threshold=0.35
+[EngineSolver] loaded
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] boot game=dc22-fdcac232 gid=dc22 route=CEAX_UNKNOWN ls20_steps=309 ar25_levels=8 ft09_levels=6 vc33_levels=[0, 1, 2, 3, 4, 5, 6] sb26_levels=[0, 1, 2, 3, 4, 5, 6, 7] r11l_levels=[0, 1, 2, 3, 4, 5] cd82_levels=[0, 1, 2, 3, 4, 5] tn36_levels=[0, 1, 2, 3, 4, 5, 6] bp35_levels=[0] bp35_arms=2 max_actions=800
+  [engine_solver] dc22: 探测缓存命中 (无解法，跳过搜索)
+[engine_solver] mode: generic_bfs=off probe_cache=on cache_file=D:\Quan\Lingjing-Solo-main-bench\state\engine_solver_cache.json
+  [engine_solver] dc22: 探测缓存命中 (无解法，跳过搜索)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] engine-off gid=dc22 L=0 (无解法或已耗尽)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=dc22 L=0 (shadow_solver)
+[dc22] A*命中: 20 步 nodes=75
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver gid=dc22 L=0 path_len=20
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=dc22 L=0 path_len=20
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L1 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] hybrid-click step=20 gid=dc22 src=v4 click=(13,24) budget=19
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=50 L=1 ACTION6 ceax_hybrid_mut:(49, 22) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=75 L=1 ACTION6 ceax_hybrid_mut:(29, 26) skills=1 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-attempt gid=dc22 L=1 (shadow_solver)
+[dc22] A*命中: 47 步 nodes=343
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] shadow_solver gid=dc22 L=1 path_len=47
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] r3-search gid=dc22 L=1 path_len=47
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-reset L2 (level transition)
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=147 L=2 ACTION6 ceax_hybrid_mut:(53, 18) skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=150 L=2 ACTION4 ceax_hybrid_walk:ACTION4 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=175 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=200 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=225 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=250 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=275 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] ceax-giveup gid=dc22 L=2 连续 151 步零进展（阈值 150）→ RESET 重开换起点
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=300 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=325 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=350 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+[smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150] step=375 L=2 ACTION3 ceax_hybrid_walk:ACTION3 skills=9 err=0
+  dc22-fdcac232      levels= 2 state=NOT_FINISHED   steps=400 (15.8s)
+
+== dc22-fixcheck-1011 ==
+总分(关) 2  破零 1/1  WIN 0  → D:\Quan\Lingjing-Solo-main-bench\ui\static\games_benchmark_dc22_fixcheck_1011.json

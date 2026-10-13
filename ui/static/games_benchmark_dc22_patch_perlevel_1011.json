@@ -1,0 +1,24 @@
+{
+ "label": "dc22-patch-perlevel-1011",
+ "agent": "D:\\Quan\\patches\\mirror\\integrations\\ARC-AGI-3-Kaggle-Starter\\agent\\my_agent.py",
+ "n_steps": 400,
+ "build_tag": "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150",
+ "generated_at": "2026-10-11T05:19:19.238021+00:00",
+ "results": [
+  {
+   "game_id": "dc22-fdcac232",
+   "max_levels": 3,
+   "final_levels": 3,
+   "state": "NOT_FINISHED",
+   "steps": 400,
+   "win": false,
+   "elapsed_s": 414.2
+  }
+ ],
+ "summary": {
+  "total_levels": 3,
+  "nonzero_games": 1,
+  "wins": 0,
+  "n_games": 1
+ }
+}
