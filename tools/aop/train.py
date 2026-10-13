@@ -103,21 +103,83 @@ def _git_commit() -> str | None:
         return None
 
 
+def _split_key(label: dict) -> str:
+    return str(label.get("counterfactual_group_id") or label["episode_id"])
+
+
+def assert_disjoint(train: list[dict], holdout: list[dict]) -> None:
+    overlap = {_split_key(row) for row in train} & {_split_key(row) for row in holdout}
+    if overlap:
+        raise ValueError(f"train/holdout leakage detected: {sorted(overlap)[:3]}")
+
+
+def evaluate(model, labels, action_to_id, class_weights) -> dict:
+    if not labels:
+        raise ValueError("evaluation labels must not be empty")
+    criterion = nn.CrossEntropyLoss()
+    features, y_effective, y_progressed, y_action, legal = targets(labels, action_to_id)
+    with torch.no_grad():
+        outputs = model(features)
+        raw_action = outputs["action"].argmax(dim=1)
+        masked_logits = outputs["action"].masked_fill(~legal, torch.finfo(outputs["action"].dtype).min)
+        masked_action = masked_logits.argmax(dim=1)
+        loss = (
+            criterion(outputs["action_effective"], y_effective)
+            + criterion(outputs["progressed"], y_progressed)
+            + action_loss(outputs["action"], y_action, legal, class_weights)
+        )
+    names = list(action_to_id)
+    per_action = {}
+    for name, action_id in action_to_id.items():
+        selected = y_action == action_id
+        support = int(selected.sum().item())
+        per_action[name] = {
+            "support": support,
+            "raw_accuracy": float((raw_action[selected] == y_action[selected]).float().mean().item()) if support else None,
+            "masked_accuracy": float((masked_action[selected] == y_action[selected]).float().mean().item()) if support else None,
+        }
+    return {
+        "rows": len(labels),
+        "val_loss": float(loss.item()),
+        "action_raw_accuracy": float((raw_action == y_action).float().mean().item()),
+        "action_masked_accuracy": float((masked_action == y_action).float().mean().item()),
+        "action_effective_accuracy": float((outputs["action_effective"].argmax(dim=1) == y_effective).float().mean().item()),
+        "progressed_accuracy": float((outputs["progressed"].argmax(dim=1) == y_progressed).float().mean().item()),
+        "per_action": {name: per_action[name] for name in names},
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("labels", type=Path)
+    parser.add_argument("labels", type=Path, help="training labels JSONL")
+    parser.add_argument("--holdout-labels", type=Path)
+    parser.add_argument("--dataset-manifest", type=Path)
+    parser.add_argument("--metrics-output", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--validation-fraction", type=float, default=0.2)
+    parser.add_argument("--seed", type=int, default=20261013)
     parser.add_argument("--synthetic", action="store_true", help="mark output as synthetic smoke evidence")
     args = parser.parse_args()
     if args.epochs < 1:
         raise SystemExit("--epochs must be positive")
+    torch.manual_seed(args.seed)
+    torch.set_num_threads(1)
+    torch.use_deterministic_algorithms(True)
     labels = read_labels(args.labels)
-    train, valid = split_labels(labels, args.validation_fraction)
-    names = action_names_from_labels(labels)
+    if args.holdout_labels:
+        train = labels
+        valid = read_labels(args.holdout_labels)
+    else:
+        train, valid = split_labels(labels, args.validation_fraction)
+    if not train or not valid:
+        raise ValueError("train and holdout must both be non-empty")
+    assert_disjoint(train, valid)
+    names = action_names_from_labels(train + valid)
+    if len(names) == 1:
+        names.append("__UNUSED__")
     action_to_id = {name: i for i, name in enumerate(names)}
-    model = AOPModel(16, max(2, len(names)))
+    model = AOPModel(16, len(names))
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
     class_counts = torch.bincount(
@@ -126,6 +188,8 @@ def main() -> int:
     ).float()
     class_weights = (class_counts.clamp_min(1.0).sqrt().reciprocal())
     class_weights = class_weights / class_weights.mean()
+    model.eval()
+    baseline = evaluate(model, valid, action_to_id, class_weights)
     for _ in range(args.epochs):
         model.train()
         features, y_effective, y_progressed, y_action, legal = targets(train, action_to_id)
@@ -140,26 +204,57 @@ def main() -> int:
         loss.backward()
         optimizer.step()
     model.eval()
-    with torch.no_grad():
-        features, y_effective, y_progressed, y_action, legal = targets(valid, action_to_id)
-        outputs = model(features)
-        val_loss = float((
-            criterion(outputs["action_effective"], y_effective)
-            + criterion(outputs["progressed"], y_progressed)
-            + action_loss(outputs["action"], y_action, legal, class_weights)
-        ).item())
-    save_checkpoint(args.output, model, {
+    trained = evaluate(model, valid, action_to_id, class_weights)
+    train_hash = _sha256(args.labels)
+    holdout_hash = _sha256(args.holdout_labels) if args.holdout_labels else train_hash
+    manifest_hash = _sha256(args.dataset_manifest) if args.dataset_manifest else None
+    deltas = {
+        "val_loss_improvement": baseline["val_loss"] - trained["val_loss"],
+        "action_raw_accuracy": trained["action_raw_accuracy"] - baseline["action_raw_accuracy"],
+        "action_masked_accuracy": trained["action_masked_accuracy"] - baseline["action_masked_accuracy"],
+        "action_effective_accuracy": trained["action_effective_accuracy"] - baseline["action_effective_accuracy"],
+        "progressed_accuracy": trained["progressed_accuracy"] - baseline["progressed_accuracy"],
+    }
+    evidence = "synthetic_smoke" if args.synthetic else "real_stage3_packet" if args.holdout_labels else "converted_recording"
+    checkpoint_config = {
         "action_names": names,
         "train_rows": len(train),
         "validation_rows": len(valid),
-        "train_episodes": sorted({x["episode_id"] for x in train}),
-        "validation_episodes": sorted({x["episode_id"] for x in valid}),
-        "labels_sha256": _sha256(args.labels),
+        "train_split_keys": sorted({_split_key(x) for x in train}),
+        "validation_split_keys": sorted({_split_key(x) for x in valid}),
+        "train_sha256": train_hash,
+        "holdout_sha256": holdout_hash,
+        "dataset_manifest_sha256": manifest_hash,
         "git_commit": _git_commit(),
         "training_command": " ".join(sys.argv),
-        "evidence": "synthetic_smoke" if args.synthetic else "converted_recording",
-    })
-    print(f"TRAINED epochs={args.epochs} train_rows={len(train)} validation_rows={len(valid)} val_loss={val_loss:.6f} output={args.output}")
+        "seed": args.seed,
+        "epochs": args.epochs,
+        "evidence": evidence,
+        "runtime_authority": False,
+        "holdout_metrics": trained,
+    }
+    save_checkpoint(args.output, model, checkpoint_config)
+    metrics = {
+        "schema_version": "aop.training.metrics.v1",
+        "evidence": evidence,
+        "runtime_authority": False,
+        "seed": args.seed,
+        "epochs": args.epochs,
+        "train_rows": len(train),
+        "holdout_rows": len(valid),
+        "train_sha256": train_hash,
+        "holdout_sha256": holdout_hash,
+        "dataset_manifest_sha256": manifest_hash,
+        "checkpoint_sha256": _sha256(args.output),
+        "git_commit": _git_commit(),
+        "baseline": baseline,
+        "trained": trained,
+        "delta": deltas,
+    }
+    if args.metrics_output:
+        args.metrics_output.parent.mkdir(parents=True, exist_ok=True)
+        args.metrics_output.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(metrics, sort_keys=True))
     return 0
 
 

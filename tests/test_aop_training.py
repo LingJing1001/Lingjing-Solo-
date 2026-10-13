@@ -6,6 +6,7 @@ import torch
 from lingjing_solo.neural.aop_encoder import encode_label
 from lingjing_solo.neural.aop_model import AOPModel, load_checkpoint, save_checkpoint
 from tools.aop.dataset import split_labels
+from tools.aop.train import assert_disjoint, evaluate
 
 
 def label(ep, step, effective=1, progressed=0):
@@ -56,6 +57,23 @@ def test_split_keeps_counterfactual_branches_together():
     assert train_groups.isdisjoint(valid_groups)
     assert {x["episode_id"] for x in train} != {"branch-a", "branch-b"}
     assert {x["episode_id"] for x in valid} != {"branch-a", "branch-b"}
+
+
+def test_explicit_holdout_leakage_is_rejected():
+    with pytest.raises(ValueError, match="leakage"):
+        assert_disjoint([label("same", 0)], [label("same", 1)])
+
+
+def test_evaluation_reports_raw_masked_and_per_action_metrics():
+    model = AOPModel(16, 2, dropout=0.0)
+    rows = [label("holdout", 0), label("holdout", 1, effective=0)]
+    metrics = evaluate(model, rows, {"CLICK": 0, "__UNUSED__": 1}, torch.ones(2))
+    assert metrics["rows"] == 2
+    assert set(metrics["per_action"]) == {"CLICK", "__UNUSED__"}
+    assert metrics["per_action"]["CLICK"]["support"] == 2
+    assert metrics["per_action"]["__UNUSED__"]["support"] == 0
+    assert 0.0 <= metrics["action_raw_accuracy"] <= 1.0
+    assert 0.0 <= metrics["action_masked_accuracy"] <= 1.0
 
 
 def test_checkpoint_round_trip(tmp_path):
