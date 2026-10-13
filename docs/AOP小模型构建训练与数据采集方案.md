@@ -98,7 +98,7 @@ python3 tools/aop/train.py labels.jsonl \
 - [x] **阶段 1：标签契约** — `tests/test_aop_labels.py`、`tests/test_recording_gate.py` 定向测试通过（21 passed）；新增非有限 observation 拒绝测试，`NaN/Infinity` fail-closed。
 - [x] **阶段 2：recording → labels 转换器** — 使用 collector 产出的真实 AR25 raw recording 验证：`normalize_arc_recording.py` 输出 77 行 / 1 episode / 1 RESET / 76 actions，`build_labels.py` 输出 76 labels。
 - [x] **阶段 3：真实 ARC/CEAX recording 采集与数据集冻结** — 从 `data/aop/episodes/*/recording.jsonl` 的 10 个真实 remote recording 重新执行 normalize/gate/labels，并合并 3 个 manifest/hash 校验通过的 remote counterfactual shard；产出 `data/aop/stage3_packet/`。冻结结果为 3,124 rows / 46 episode IDs / 18 counterfactual groups / 5 profiles / 6 actions；train 1,572、holdout 1,552，按 episode/group 零重叠。holdout 覆盖全部 5 profiles、全部 6 actions，以及 effective/no-op/progress/terminal-failure。稳定输入快照上两次独立构建的 artifact SHA 完全一致。
-- [ ] **阶段 4：真实训练与独立评估** — 尚未基于正式 Stage 3 packet 完成训练、独立 holdout 评估、raw/masked/per-action 指标和 checkpoint provenance，因此不得标记完成。
+- [x] **阶段 4：真实训练与独立评估** — `data/aop/stage4_candidate/` 保存真实 Stage 3 packet 的 20 epoch checkpoint、metrics 和明确的 readiness report；train/holdout split keys 零重叠，raw/masked/per-action、val_loss、baseline delta 和完整 hash provenance 均已落盘。结果是 val_loss 明显下降，但 masked action accuracy 回退且 ACTION2/4/5 为 0、ACTION7 无 target support，因此仅完成训练/评估闭环，candidate 被拒绝部署，`runtime_authority=false`。
 - [ ] **阶段 5：线上接入** — 未接入 runtime；确定性/legal-action 路径仍是唯一 authority。
 
 ### 阶段 3 的调整
