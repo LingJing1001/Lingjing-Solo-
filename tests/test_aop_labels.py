@@ -62,6 +62,13 @@ def test_visual_delta_is_not_required_for_state_progress():
     assert label.state_delta["progressed"] is True
 
 
+def test_nonfinite_observation_is_rejected():
+    item = row()
+    item["data"]["score"] = float("nan")
+    with pytest.raises(LabelError, match="finite"):
+        row_to_label(item)
+
+
 def test_cli_is_deterministic(tmp_path):
     source = tmp_path / "recording.jsonl"
     output = tmp_path / "labels.jsonl"

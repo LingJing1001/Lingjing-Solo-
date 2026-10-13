@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 import hashlib
 import json
+import math
 
 
 class LabelError(ValueError):
@@ -51,6 +52,17 @@ def _obs(row: dict[str, Any], key: str) -> dict[str, Any]:
     return value
 
 
+def _require_finite(value: Any, path: str) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise LabelError(f"observation contains non-finite value at {path}")
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _require_finite(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _require_finite(child, f"{path}[{index}]")
+
+
 def _number(obs: dict[str, Any], *paths: tuple[str, ...], default: float = 0.0) -> float:
     for path in paths:
         cur: Any = obs
@@ -69,6 +81,8 @@ def row_to_label(row: dict[str, Any], *, episode_id: str | None = None, step_id:
         raise LabelError("recording row must be an object")
     before = _obs(row, "observation")
     after = _obs(row, "data")
+    _require_finite(before, "observation")
+    _require_finite(after, "data")
     action = _action(row)
     episode = episode_id or str(row.get("episode_id") or after.get("episode_id") or "")
     if not episode:

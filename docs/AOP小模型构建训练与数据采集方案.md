@@ -93,4 +93,17 @@ python3 tools/aop/train.py labels.jsonl \
 4. `visual_changed`、`action_effective`、`progressed` 三者可独立重算；
 5. recording 重复转换产生字节一致的 labels。
 
-未经这些闸门，不训练、不把视觉变化当成成功、不将模型输出直接送入执行器。
+## 6. 2026-10-13 完成门槛复核
+
+- [x] **阶段 1：标签契约** — `tests/test_aop_labels.py`、`tests/test_recording_gate.py` 定向测试通过（21 passed）；新增非有限 observation 拒绝测试，`NaN/Infinity` fail-closed。
+- [x] **阶段 2：recording → labels 转换器** — 使用 collector 产出的真实 AR25 raw recording 验证：`normalize_arc_recording.py` 输出 77 行 / 1 episode / 1 RESET / 76 actions，`build_labels.py` 输出 76 labels。
+- [ ] **阶段 3：真实 ARC/CEAX recording 采集** — 当前只有一份 AR25 ACTION6 采集样本；尚未覆盖每个 game profile，也未完成 click/action/no-op/失败/推进的平衡采集，因此不能打勾。
+- [ ] **阶段 4：真实训练与独立评估** — 只有 synthetic smoke 和转换链证据；尚无真实 recording 训练、独立 action-effectiveness/progress holdout 指标。
+- [ ] **阶段 5：线上接入** — 未接入 runtime；确定性/legal-action 路径仍是唯一 authority。
+
+### 阶段 3 的调整
+
+1. collector 输出必须先经过 raw → normalized → recording gate → labels，不能把 raw ARC JSONL 直接交给 `validate_recording.py`。
+2. 每个 profile 至少保留一份通过 gate 的 recording；阶段 3 完成前还要覆盖 action/no-op/失败/推进四类样本，并保留 `episode_id`、legal actions、settled after-state 和 provenance。
+3. 在进入真实训练前，按 episode 做 train/holdout 切分；holdout 非空且不得与训练 episode 重叠。
+4. 当前 collector 运行中产生的 raw recording 属于本地证据，不自动纳入 Git；提交只包含转换器、闸门、测试和状态文档。
