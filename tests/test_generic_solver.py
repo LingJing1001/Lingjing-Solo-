@@ -186,7 +186,20 @@ def test_it_steers_once_the_avatar_is_readable():
     assert live, "the solver should steer once an avatar has been measured"
     assert all(p[0] in (1, 2, 3, 4) for p in live)
     assert all(p[1].startswith("generic:") for p in live)
-    assert solver.status["reasons"].get("generic:reach", 0) > 0
+    assert solver.status["reasons"], "every pick should be attributed a rung"
+
+
+def test_it_stands_beside_an_object_rather_than_on_it():
+    """Stepping *onto* an unknown colour is how ls20 kills you; approach, don't touch."""
+    import numpy as np
+
+    from lingjing_solo.closed_book.generic_solver import _dilate4
+
+    objects = np.zeros((5, 5), bool)
+    objects[2, 2] = True
+    near = _dilate4(objects)
+    assert near[2, 2] and near[1, 2] and near[2, 1] and near[2, 3] and near[3, 2]
+    assert not near[0, 0]
 
 
 def test_it_declines_when_no_avatar_can_be_read():

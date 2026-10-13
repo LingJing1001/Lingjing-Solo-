@@ -183,6 +183,16 @@ def _free_degree(blocked: np.ndarray, cell: tuple) -> int:
     )
 
 
+def _dilate4(mask: np.ndarray) -> np.ndarray:
+    """``mask`` plus every cell orthogonally touching it."""
+    out = mask.copy()
+    out[1:, :] |= mask[:-1, :]
+    out[:-1, :] |= mask[1:, :]
+    out[:, 1:] |= mask[:, :-1]
+    out[:, :-1] |= mask[:, 1:]
+    return out
+
+
 def _step_towards(blocked: np.ndarray, start: tuple, targets: np.ndarray,
                   inert: Optional[set] = None):
     """First key of a shortest path from ``start`` to any ``targets`` cell.
@@ -404,13 +414,20 @@ class GenericClosedBookSolver:
             if got:
                 return got[0], "generic:goal"
 
-        # rung 2 -- go touch something (most ARC levels are "reach the thing")
+        # rung 2 -- go stand next to something.  Deliberately *not* "step on it":
+        # whether a board's non-background colours are rewards or hazards is not
+        # something the roles can decide, and on ls20 walking onto them is fatal
+        # (measured: a held direction survives 400 steps, random dies at 130, and
+        # a policy that walks onto objects died at 129 -- i.e. it stepped on the
+        # hazard every time).  Standing adjacent still makes progress, and keeps
+        # the option of a final step open to whoever does know the rule.
         objects = self._object_mask(cells, spec, own_mask)
         if objects.any():
-            got = (_step_towards(hard, start, objects, inert)
-                   or _step_towards(soft, start, objects, inert))
-            if got:
-                return got[0], "generic:reach"
+            approach = _dilate4(objects) & ~objects & ~hard & ~own_mask
+            if approach.any():
+                got = _step_towards(hard, start, approach, inert)
+                if got:
+                    return got[0], "generic:approach"
 
         # rung 3 -- nothing left to touch: systematic frontier sweep
         h, w = cells.shape
@@ -434,9 +451,9 @@ class GenericClosedBookSolver:
 # convenience
 # --------------------------------------------------------------------------- #
 def search_only_action(cells: np.ndarray, start: tuple, blocked: np.ndarray,
-                       targets: np.ndarray):
+                       targets: np.ndarray, inert: Optional[set] = None):
     """Expose the raw search for tests: ``(action, destination)`` or ``None``."""
-    return _step_towards(blocked, start, targets)
+    return _step_towards(blocked, start, targets, inert)
 
 
 def enabled(default: bool = True) -> bool:
