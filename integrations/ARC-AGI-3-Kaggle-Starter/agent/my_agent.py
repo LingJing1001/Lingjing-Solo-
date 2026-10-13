@@ -127,8 +127,13 @@ _ENGINE: Any = None
 
 # 白名单：只给"卡住"的局开，且挂在各局专用计划之后 → 已 WIN 的局零回归风险。
 _ENGINE_SOLVER_GAMES = frozenset({
-    "bp35", "cn04", "dc22", "g50t", "ka59", "lf52", "lp85", "m0r0",
-    "re86", "s5i5", "sc25", "sk48", "sp80", "tu93", "wa30",
+    "cn04", "dc22", "g50t", "ka59", "lf52", "lp85", "m0r0",
+    "re86", "s5i5", "sk48", "sp80", "tu93",
+})
+# 校准 plan / INLINE 局：choose_action 入口禁止 engine_solver / AOP 抢占。
+_PLAN_PROTECTED_GAMES = frozenset({
+    "ls20", "ar25", "ft09", "tr87", "vc33", "sb26", "r11l", "cd82",
+    "tn36", "sc25", "bp35", "wa30", "tu93",
 })
 
 
@@ -204,7 +209,11 @@ def _idle_action(valid: list[str]) -> GameAction:
 # 走不到 CEAX 未知路径那段计数，_stag_count 不会涨到阈值 → AOP 结构上碰不到它们；
 # 只有"已经在同关空转 ≥N 步"的局才有入场机会，那些步现发的是凑数动作，期望本就 ≈0。
 _AOP_CKPT_DEFAULT = str(
-    Path(__file__).resolve().parents[3] / "data" / "aop" / "collected_10eps.pt"
+    Path(__file__).resolve().parents[3]
+    / "data"
+    / "aop"
+    / "checkpoints"
+    / "collected_10eps_v2.pt"
 )
 _AOP: Any = None  # None=未初始化, False=不可用, 其余=AOPController 单例
 
@@ -323,14 +332,211 @@ def _aop_apply(
         return action
 
 
-BUILD_TAG = "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only+ceax-giveup150"
+BUILD_TAG = (
+    "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
+    "+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only"
+    "+ceax-giveup150+dual-path-fix+aop-readiness-v2+plan-protect"
+    "+perc-r3cap+iddfs-hasclick-fix+wa30-gbk-fix"
+)
 AGENT_BRAND = "lingjing-smart"
+
+
+def _r3_time_limit(default: float = 20.0) -> float:
+    """LINGJING_R3_TLIMIT caps IDDFS/shadow search seconds (full-25 must not burn 500s/unknown)."""
+    raw = str(os.environ.get("LINGJING_R3_TLIMIT", "")).strip()
+    if not raw:
+        return float(default)
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return float(default)
+
+
+def _perc_click_candidates(grid: Any, prev: Any = None, k: int = 8) -> list[tuple[int, int]]:
+    """Perception top-K click XY: object centers → delta pixels → rare-color samples."""
+    if grid is None:
+        return []
+    import numpy as _np
+
+    arr = _np.asarray(grid)
+    if arr.ndim != 2:
+        return []
+    h, w = int(arr.shape[0]), int(arr.shape[1])
+    out: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    def _add(x: int, y: int) -> None:
+        xy = (int(x), int(y))
+        if xy in seen or not (0 <= xy[0] < w and 0 <= xy[1] < h):
+            return
+        seen.add(xy)
+        out.append(xy)
+
+    try:
+        enc = PerceptionEncoder(SoloConfig())
+        objs = enc.segment(arr, delta_pixels=None) or []
+        objs = sorted(objs, key=lambda o: len(getattr(o, "pixels", []) or []), reverse=True)
+        for o in objs:
+            bb = getattr(o, "bbox", None)
+            if bb and len(bb) >= 4:
+                _add((int(bb[0]) + int(bb[2])) // 2, (int(bb[1]) + int(bb[3])) // 2)
+            if len(out) >= k:
+                return out[:k]
+    except Exception:
+        pass
+
+    if prev is not None:
+        try:
+            parr = _np.asarray(prev)
+            if parr.shape == arr.shape:
+                ys, xs = _np.where(arr != parr)
+                if len(xs):
+                    step = max(1, len(xs) // max(1, k))
+                    for i in range(0, len(xs), step):
+                        _add(int(xs[i]), int(ys[i]))
+                        if len(out) >= k:
+                            return out[:k]
+        except Exception:
+            pass
+
+    try:
+        hist = _np.bincount(arr.flatten().astype(_np.int64), minlength=16)
+        bg = int(_np.argmax(hist))
+        for color in _np.argsort(hist):  # rare → common
+            c = int(color)
+            n = int(hist[c]) if c < len(hist) else 0
+            if c == bg or n == 0 or n > 256:
+                continue
+            ys, xs = _np.where(arr == c)
+            if len(xs) == 0:
+                continue
+            _add(int(xs.mean()), int(ys.mean()))
+            step = max(1, len(xs) // 4)
+            for i in range(0, len(xs), step):
+                _add(int(xs[i]), int(ys[i]))
+                if len(out) >= k:
+                    return out[:k]
+    except Exception:
+        pass
+    return out[:k]
+
+
+def _frame_to_grid(frame_or_arr: Any) -> Any:
+    """Normalize Arcade frame / ndarray to 2D int grid for click proposers."""
+    import numpy as _np
+
+    if frame_or_arr is None:
+        return None
+    ff = getattr(frame_or_arr, "frame", frame_or_arr)
+    if isinstance(ff, list):
+        arr = _np.asarray(ff[0])
+    else:
+        arr = _np.asarray(ff)
+    if arr.ndim == 3 and arr.shape[0] <= 2:
+        arr = arr[0]
+    if arr.ndim != 2:
+        return None
+    return arr
+
+
+def _build_search_click_acts(frame_or_arr: Any, acts: list[int], k: int = 8) -> list[tuple[int, int, int]]:
+    """Heatmap + perc top-K click acts. Force-include ACTION6 when UI clicks exist even if mask omits 6."""
+    click_acts: list[tuple[int, int, int]] = []
+    seen: set[tuple[int, int, int]] = set()
+
+    def _push(x: int, y: int) -> None:
+        item = (6, int(x), int(y))
+        if item not in seen:
+            seen.add(item)
+            click_acts.append(item)
+
+    frame_arr = _frame_to_grid(frame_or_arr)
+    if frame_arr is None:
+        return click_acts
+
+    try:
+        _ensure_adaptor_on_path()
+        from arc_adaptor import click_heatmap as _ch
+
+        for p in _ch.propose_clicks(frame_arr, topk=k) or []:
+            _push(p["data"]["x"], p["data"]["y"])
+    except Exception:
+        pass
+
+    for x, y in _perc_click_candidates(frame_arr, prev=None, k=k):
+        _push(x, y)
+
+    # If ACTION6 missing from available_actions but we found clickable UI, still search clicks.
+    if 6 not in acts and not click_acts:
+        return []
+    return click_acts[: max(k * 2, 16)]
+
+
+def _ensure_adaptor_on_path() -> None:
+    """Hang repo ``arc_adaptor`` on sys.path (no machine-local F:/pro2)."""
+    candidates: list[Path] = []
+    env_src = os.environ.get("LINGJING_SRC")
+    if env_src:
+        p = Path(env_src).expanduser().resolve()
+        candidates.append(p.parent if p.name == "lingjing_solo" else p)
+    if _FILE.parent.name == "agent":
+        starter = _FILE.parents[1]
+        candidates.extend([starter, starter.parent, starter.parents[1]])
+    candidates.extend([Path.cwd(), Path.cwd().parent])
+    seen: set[str] = set()
+    for root in candidates:
+        try:
+            root = root.resolve()
+        except OSError:
+            continue
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        if (root / "arc_adaptor").is_dir():
+            s = str(root)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+        if root.name == "arc_adaptor" and root.is_dir():
+            s = str(root.parent)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+
+
+def _resolve_environments_dir() -> Optional[Path]:
+    """Locate ``environment_files`` for offline Arcade clone search."""
+    for var in ("LINGJING_ENVIRONMENTS_DIR", "LINGJING_ARC_ROOT", "ARC_ENVIRONMENTS_DIR"):
+        raw = (os.environ.get(var) or "").strip()
+        if not raw:
+            continue
+        p = Path(raw).expanduser().resolve()
+        if p.name != "environment_files" and (p / "environment_files").is_dir():
+            p = (p / "environment_files").resolve()
+        if p.is_dir():
+            return p
+    candidates: list[Path] = []
+    if _FILE.parent.name == "agent":
+        starter = _FILE.parents[1]
+        candidates.append(starter / "environment_files")
+        candidates.append(starter.parent / "ARC-AGI-3" / "environment_files")
+        candidates.append(starter.parents[1] / "environment_files")
+    candidates.append(Path.cwd() / "environment_files")
+    for c in candidates:
+        try:
+            if c.is_dir():
+                return c.resolve()
+        except OSError:
+            continue
+    return None
+
 
 # Evidence-based route table (do not put uncalibrated scripts here).
 ROUTE_INLINE = frozenset({"ls20", "ar25", "ft09", "tr87"})
 # Practice ids where CEAX historically cleared ≥1 level @800 — still CEAX path.
 ROUTE_CEAX_KNOWN = frozenset({
-    "lp85", "su15", "sb26", "s5i5", "tu93", "r11l",
+    "lp85", "sb26", "s5i5", "tu93", "r11l",
 })
 # vc33: 专用点击计划（vc33_click_solver/vc33_abstract_solver 校准，7 关真机回放验证 WIN）。
 _VC33_PLANS: dict[int, list[tuple[int, int]]] = {
@@ -357,43 +563,12 @@ _WA30_PLANS: dict[int, list[int]] = {
         5, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 2, 4, 5, 4, 4, 4, 4, 4, 5, 3, 4, 3, 4,
         3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3,
         4],
-    # L3-L6: 外部 beam solver 产出，链式复核验证 PASS（_diag_20261011/wa30_l456_chain_verify_out.txt）
-    3: [1, 1, 4, 5, 2, 4, 4, 5, 1, 5, 2, 5, 2, 5, 2, 5, 3, 3, 5, 3, 1, 5, 4, 5, 4, 1, 4, 5, 3, 1, 1, 3, 5, 3, 2, 5, 4, 4, 4, 5, 4, 2, 5, 3, 3, 4, 4, 5, 2, 2, 3, 5, 1, 4, 2, 5, 2, 5, 1, 1, 3, 4, 1, 1, 2, 1, 3, 1],
-    4: [2, 2, 2, 2, 4, 2, 3, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 5, 4, 4, 4, 4, 4, 1, 4, 1, 1, 1, 1, 4, 4, 4, 4, 4, 1, 3, 5, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 1, 4, 4, 4, 4, 4, 4, 2, 2, 2, 4, 4, 4, 4, 4, 2, 5, 1, 1, 1, 1, 3, 3, 3, 3, 1, 3, 3, 3, 3, 3, 3, 1, 1, 1, 3, 3, 3, 2, 5],
-    5: [1, 3, 1, 1, 5, 1, 1, 1, 4, 4, 4, 4, 4, 4, 1, 4, 5, 4, 5, 3, 3, 3, 3, 1, 1, 3, 1, 5, 2, 4, 4, 2, 2, 2, 4, 1, 4, 4, 4, 4, 4, 2, 3, 5, 1, 3, 3, 3, 3, 3, 1, 1, 3, 5],
-    6: [4, 5, 3, 3, 3, 3, 2, 3, 1, 1, 1, 1, 5, 4, 4, 4, 4, 4, 4, 4, 5, 3, 3, 3, 2, 3, 3, 2, 5, 1, 4, 5, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 5, 3, 3, 3, 3, 3, 3, 3, 1, 3, 3, 5],
-}
-# su15: 专用点击计划（su15_solver.solve_level(max_nodes=200000, weight=1.3, time_budget=300)
-# 于 2026-10-12 离线逐关产出，九关共 89 击；原始序列见 state/su15_plans_20261012.json。
-# 语义：ACTION6 的 (x, y) 绝对坐标点击，逐关回放。
-# 状态：求解器内部按引擎源码建模，L4/L7/L8 单关耗时 59.8s/81.8s/234.7s ⇒ 烘成常量把
-# 起跑开销从"墙钟负载的函数"变成 0。**整局 9/9 真机回放尚未验证**（其他计划表注释里的
-# "真机回放验证 WIN"这一条 su15 还没有），待一局 su15 实跑确认后再改口径。
-_SU15_PLANS: dict[int, list[tuple[int, int]]] = {
-    0: [(10, 53), (16, 47), (22, 41), (28, 35), (34, 29), (40, 23), (46, 17)],
-    1: [(18, 53), (45, 52), (20, 41), (22, 47), (39, 38), (44, 44), (30, 46), (36, 41), (34, 33), (33, 25)],
-    2: [(35, 18), (58, 27), (52, 28), (46, 33), (13, 28), (16, 22), (34, 26), (38, 33), (14, 30), (12, 38), (10, 46), (33, 39), (28, 45), (22, 51)],
-    3: [(31, 35), (8, 30), (28, 47), (25, 40), (13, 42), (10, 36), (17, 40), (12, 47), (7, 54)],
-    4: [(10, 31), (7, 55), (48, 30), (12, 29), (51, 56), (47, 49), (41, 37), (40, 45), (5, 47), (38, 37), (10, 41), (30, 38), (18, 40), (23, 34), (26, 27), (30, 20), (63, 10)],
-    5: [(29, 31), (22, 27), (15, 22), (8, 18), (63, 10), (6, 19), (0, 10), (6, 20)],
-    6: [(11, 32), (26, 37), (19, 33), (21, 25), (46, 24), (23, 17)],
-    7: [(45, 37), (9, 49), (37, 41), (29, 32), (19, 53), (14, 21), (6, 57), (12, 29), (8, 22)],
-    8: [(13, 20), (16, 54), (46, 53), (42, 31), (42, 45), (33, 44), (25, 44), (8, 56), (51, 56)],
-}
-# lp85: 专用点击计划（8 关共 79 击，全部 ACTION6 绝对坐标点击，逐关回放）。
-# 出处：state/engine_solver_cache.json 的 lp85.solution（引擎解法器离线探出，
-# 本机 play-local 复现 8 关 / 79 步 / WIN）。那份缓存是 gitignore 的本机产物、也没打进
-# notebook，上云必然读不到 ⇒ 这里烘成常量，和 _SU15_PLANS 同一套路。
-# 关界取自 2026-10-12 play-local 日志：第 4/12/28/40/49/68/73/78 拍换关。
-_LP85_PLANS: dict[int, list[tuple[int, int]]] = {
-    0: [(2, 29), (2, 29), (2, 29), (2, 29), (2, 29)],
-    1: [(38, 16), (47, 34), (47, 34), (47, 34), (38, 16), (38, 16), (38, 16), (47, 34)],
-    2: [(34, 40), (34, 40), (34, 40), (34, 40), (22, 40), (22, 40), (22, 40), (22, 40), (34, 40), (34, 40), (34, 40), (34, 40), (34, 40), (34, 40), (22, 40), (22, 40)],
-    3: [(14, 24), (14, 24), (14, 24), (14, 24), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14), (5, 14)],
-    4: [(35, 34), (35, 34), (49, 4), (9, 34), (7, 4), (9, 34), (9, 34), (9, 34), (9, 34)],
-    5: [(56, 14), (56, 14), (41, 44), (41, 44), (26, 14), (26, 14), (29, 57), (29, 57), (29, 57), (29, 57), (29, 57), (29, 57), (14, 27), (14, 27), (44, 27), (44, 27), (44, 27), (44, 27), (52, 54)],
-    6: [(32, 41), (19, 19), (28, 41), (19, 32), (28, 41)],
-    7: [(52, 28), (52, 28), (52, 33), (52, 33), (30, 56)],
+    # L4（index 3）：软墙投放 + NPC 外运。仅投 cyjrduhzmz 当前可达墙格（底/左优先），
+    # 墙空即推下一块；92 步 ≤ budget 100。scripts/wa30_l3_solve10.py 冷回放 L0–L3→4。
+    3: [2, 3, 2, 5, 2, 5, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 1, 1, 4, 4, 2, 2, 5, 2, 5,
+        4, 3, 4, 3, 4, 1, 3, 5, 3, 3, 3, 5, 4, 3, 4, 3, 4, 1, 1, 1, 3, 5, 3, 5,
+        4, 3, 4, 3, 4, 3, 2, 4, 4, 4, 1, 5, 1, 5, 4, 3, 4, 3, 4, 3, 4, 3, 2, 3,
+        1, 5, 1, 5, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4],
 }
 # sb26: 专用点击计划（sb26_click_solver.py 校准，8 关真机回放验证 WIN，全程 124 步）。
 # 语义：选中-放置两段点击 + ACTION5 织布提交；条目 (action_id, x, y)，(5,0,0)=提交。
@@ -488,6 +663,20 @@ _SC25_PLANS: dict[int, list[tuple[int, int, int]]] = {
         (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0),
         (2, 0, 0), (2, 0, 0), (2, 0, 0),
         (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0)],
+    # L5（index 4）：三法术。缩尺→tele 到 smzaik(29,39)→走到 (11,45) fibcey 毁
+    # seofsw-tagsmh（拔 seofsw-dosorb）→(15,45) 面朝上 fibcey 毁 tagsmh（拔 dosorb）→
+    # 再扩尺→tele acyylh(51,35)→上六步进 exydhv。冷回放 3/3 PASS（scripts/sc25_l5_*）。
+    4: [(6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61),
+        (6, 26, 51), (6, 31, 51), (6, 31, 56),
+        (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0),
+        (2, 0, 0), (2, 0, 0), (2, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0),
+        (6, 31, 51), (6, 31, 56), (6, 31, 61),
+        (4, 0, 0), (4, 0, 0),
+        (1, 0, 0),
+        (6, 31, 51), (6, 31, 56), (6, 31, 61),
+        (6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61),
+        (6, 26, 51), (6, 31, 51), (6, 31, 56),
+        (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)],
 }
 # bp35 L1: 精确世界模型 + 有界闭包搜索产出的 15 击计划（10 移动 + 5 点击，≤14 已机器证明无解）。
 # 语义：(action_id, x, y)；aid=3 ACTION3(左)、aid=4 ACTION4(右)、aid=6 ACTION6 点击。
@@ -495,10 +684,25 @@ _SC25_PLANS: dict[int, list[tuple[int, int, int]]] = {
 # 离线求解 state/bp35_l1_solve.py + state/bp35_l1_model.py；导出/复验 state/bp35_l1_export.py
 # （seed 0/1/7/12345/默认 五路真机回放均 levels_completed 0→1，15 步，5 个点击像素点击前均为色 14）。
 _BP35_NODE_COLOUR = 14
+# L0 点色 14 节点；L1+ 点色 5 可碎平台（倒置重力迷宫）。护栏按关选期望色。
+_BP35_CLICK_COLOUR: dict[int, int] = {0: 14, 1: 5}
 _BP35_PLANS: dict[int, list[tuple[int, int, int]]] = {
     0: [(4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 45, 33), (3, 0, 0), (3, 0, 0),
         (6, 27, 39), (6, 27, 33), (3, 0, 0), (6, 27, 33), (4, 0, 0), (6, 33, 33),
         (3, 0, 0), (3, 0, 0)],
+    # L2（index 1）：倒置重力平台迷宫。右廊开顶→中段左穿→x=3 过 y=18 尖刺缝→
+    # y=16 右清顶→x=8 下到 y=11→左到 x=5→点 (5,9) 坠宝石。49 步；scripts/bp35_l2_* 冷回放 3/3。
+    1: [(6, 36, 30), (6, 42, 30), (6, 48, 30), (6, 36, 24), (6, 42, 24), (6, 48, 24),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0),
+        (6, 30, 36), (6, 24, 36), (6, 18, 36), (6, 12, 36), (6, 30, 42), (6, 24, 42),
+        (6, 18, 42), (6, 12, 42),
+        (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (6, 12, 30),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 30, 30), (6, 30, 30), (6, 18, 30),
+        (3, 0, 0), (3, 0, 0), (6, 18, 30), (6, 18, 30),
+        (6, 24, 36), (6, 30, 36), (6, 36, 36), (6, 42, 36), (6, 48, 36),
+        (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0),
+        (6, 48, 30), (6, 48, 30), (3, 0, 0), (3, 0, 0), (6, 42, 36), (3, 0, 0),
+        (6, 30, 30)],
 }
 # 同一关允许"中途脱轨后重新上膛"几次。2026-09-29 实测：死亡后 agent 发的 RESET 只重开当前关，
 # `levels_completed` 不回退（state/bp35_l2_death_effect.py），所以旧接线里"换关才复位"的分支
@@ -539,6 +743,20 @@ _AR25_LEVEL_ACTIONS: dict[int, list[int]] = {
     5: [2] * 11 + [5] + [3] + [5] + [3] * 15 + [2] * 4 + [5] + [3] * 7 + [2] * 12,
     6: [2] * 2 + [5] + [4] * 9 + [5] + [3] * 10 + [1] * 6 + [5] + [4] * 3 + [1] * 15,
     7: [2] * 6 + [5] + [4] * 9 + [5] + [3] * 9 + [1] * 7 + [5] + [4] * 9 + [1] * 4,
+}
+# tu93: offline deepcopy-fork BFS per level (state/tu93_offline/solve2.py).
+# 9 levels = 185 steps total (human baseline sum 462); recheck2.py replayed the whole
+# string from reset via real env.step -> WIN, so this is not a set_level shortcut.
+_TU93_LEVEL_ACTIONS: dict[int, list[int]] = {
+    0: [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2],
+    1: [1, 4, 4, 2, 4, 4, 1, 4, 4, 1],
+    2: [1, 1, 4, 1, 3, 3, 1, 3, 3, 2, 4, 2, 3, 3, 3, 2, 4, 2, 4],
+    3: [4, 3, 4, 3, 4, 4, 4, 4, 1, 1, 3, 1, 1, 3, 3, 2, 3],
+    4: [3, 3, 3, 4, 3, 3, 3, 3, 3, 2, 1, 2, 1, 2, 1, 2, 1, 2, 2, 2, 4, 2, 2, 4, 4, 4, 1, 1, 3],
+    5: [3, 3, 2, 1, 2, 1, 2, 2, 3, 3, 4, 4, 4, 2, 2, 3, 2, 3, 1, 2, 3, 1, 1, 3, 1, 1, 1, 3],
+    6: [4, 4, 4, 2, 2, 4, 1, 4, 1, 1, 1, 4, 2, 2],
+    7: [4, 4, 1, 1, 4, 4, 3, 3, 3, 2, 2, 4, 1, 1, 4, 4, 1, 1, 1, 3, 3],
+    8: [3, 3, 1, 1, 4, 2, 2, 3, 1, 1, 4, 1, 1, 4, 4, 4, 2, 2, 4, 2, 3, 2, 3, 2, 2, 3, 3, 1, 4],
 }
 
 
@@ -857,7 +1075,7 @@ class MyAgent(Agent):
             enable_click_sweep=True,
             return_game_action=False,
         )
-        # AOP controller 自动接入（如果 checkpoint 存在）
+        # AOP controller：仅当显式 AOP=on/margin/abs 时加载；默认 off 不碰校准 plan。
         self._aop_controller = None
         self._aop_overrides = 0
         # engine_solver 自动接入（有引擎代码就读，没有回退原流程）
@@ -869,23 +1087,35 @@ class MyAgent(Agent):
             import sys as _sys
             if str(_root) not in _sys.path:
                 _sys.path.insert(0, str(_root))
-            # AOP controller
-            _aop_ckpt = _root / "data" / "aop" / "collected_10eps.pt"
-            if _aop_ckpt.exists():
-                from lingjing_solo.neural.aop_controller import AOPController
-                self._aop_controller = AOPController(_aop_ckpt, threshold=0.35)
-                print(f"[AOP] controller loaded: threshold=0.35", flush=True)
-            # engine_solver
-            # ENGINE_SOLVER=off 过去只挡 _engine_solver() 那条单例路径，构造阶段照接，
-            # 于是 choose_action 头部的引擎捷径照跑 ⇒ 文档承诺的开关在主决策点失效。
-            # 不设该变量时行为与过去一字不差。
-            if str(os.environ.get("ENGINE_SOLVER", "")).strip().lower() in {"off", "0", "none"}:
-                print("[engine_solver] ENGINE_SOLVER=off → 构造阶段不接入，"
-                      "内联计划/CEAX 负责", flush=True)
+            if _aop_mode() != "off":
+                _aop_ckpt = _P(
+                    str(os.environ.get("AOP_CKPT", "")).strip()
+                    or str(_root / "data" / "aop" / "checkpoints" / "collected_10eps_v2.pt")
+                )
+                if not _aop_ckpt.is_file():
+                    _aop_ckpt = _root / "data" / "aop" / "collected_10eps.pt"
+                if _aop_ckpt.is_file():
+                    from lingjing_solo.neural.aop_controller import AOPController
+                    self._aop_controller = AOPController(
+                        _aop_ckpt, threshold=_aop_float("AOP_THRESHOLD", 0.8)
+                    )
+                    print(
+                        f"[AOP] controller loaded mode={_aop_mode()} "
+                        f"threshold={_aop_float('AOP_THRESHOLD', 0.8)} ckpt={_aop_ckpt}",
+                        flush=True,
+                    )
+            # engine_solver：尊重 ENGINE_SOLVER=off；入口只服务白名单 unknown。
+            if str(os.environ.get("ENGINE_SOLVER", "")).strip().lower() in {
+                "off", "0", "none", "false",
+            }:
+                print("[EngineSolver] ENGINE_SOLVER=off → 不预热", flush=True)
             else:
                 from lingjing_solo.engine_solver import EngineSolver
-                self._engine_solver = EngineSolver(environments_dir=str(_root / "environment_files"))
-                print(f"[EngineSolver] loaded", flush=True)
+                _env = _P(__file__).resolve().parents[1] / "environment_files"
+                if not _env.is_dir():
+                    _env = _root / "environment_files"
+                self._engine_solver = EngineSolver(environments_dir=str(_env))
+                print(f"[EngineSolver] loaded env={_env}", flush=True)
         except Exception as _e:
             print(f"[AOP/Engine] load failed: {_e}", flush=True)
         self.encoder = PerceptionEncoder(self.cfg)
@@ -911,16 +1141,12 @@ class MyAgent(Agent):
         self._stag_level: int = -1
         self._stag_count: int = 0
         self._stag_logged: bool = False
-        # su15 动态求解器缓存（分析 environment_files/su15 游戏机制，A* 搜索过关）
+        # su15 动态求解器缓存
         self._su15_plans: dict[int, list[tuple[int, int]]] = {}
         self._su15_idx: int = 0
         self._su15_level: int = -1
         self._su15_solved: bool = False
         self._su15_solver_mod: Any = None
-        # lp85 内联点击计划回放游标（_LP85_PLANS，8 关 79 击）
-        self._lp85_idx: int = 0
-        self._lp85_level: int = -1
-        self._lp85_exhausted: int = -1
         gid = _norm_game(getattr(self, "game_id", ""))
         if gid in ROUTE_INLINE:
             route = f"INLINE:{gid}"
@@ -975,10 +1201,14 @@ class MyAgent(Agent):
         self._bp35_level = -1
         self._bp35_exhausted = -1
         self._bp35_arms: dict[int, int] = {}
+        self._tu93_idx = 0
+        self._tu93_level = -1
+        self._tu93_exhausted = -1
         print(
             f"[{BUILD_TAG}] boot game={self.game_id} gid={gid} route={route} "
             f"ls20_steps={sum(len(v) for v in _LS20_LEVEL_ACTIONS.values())} "
             f"ar25_levels={len(_AR25_LEVEL_ACTIONS)} "
+            f"tu93_levels={sorted(_TU93_LEVEL_ACTIONS)} "
             f"ft09_levels={len(self._FT09_HARDCODED)} "
             f"vc33_levels={sorted(_VC33_PLANS)} "
             f"sb26_levels={sorted(_SB26_PLANS)} "
@@ -990,52 +1220,32 @@ class MyAgent(Agent):
             flush=True,
         )
 
-        # su15: 内联计划优先（_SU15_PLANS 烘自离线求解器，起跑零墙钟开销、分数不再随负载漂）。
-        # 内联表不满九关时，才回落到原来的"起跑时在线预求解"。
+        # su15: 预求解所有关 -> 按实际步数设 MAX_ACTIONS
         if gid == "su15":
-            if len(_SU15_PLANS) >= 9:
-                self._su15_plans = {
-                    _lvl: [(int(_x), int(_y)) for _x, _y in _plan]
-                    for _lvl, _plan in _SU15_PLANS.items()
-                }
-                _total = sum(len(_plan) for _plan in _SU15_PLANS.values())
-                _ok = len(self._su15_plans)
+            try:
+                import su15_solver as _su15_sol  # noqa: E402
+                self._su15_solver_mod = _su15_sol
                 self._su15_solved = True
-                self.MAX_ACTIONS = _total + 2
-                print(f"[{BUILD_TAG}] su15-inline: {_ok}/9 pinned, {_total} clicks, "
-                      f"MAX_ACTIONS={self.MAX_ACTIONS}", flush=True)
-            else:
-                try:
-                    import su15_solver as _su15_sol  # noqa: E402
-                    self._su15_solver_mod = _su15_sol
-                    self._su15_solved = True
-                    _total = 0
-                    _ok = 0
-                    for _lvl in range(9):
-                        _sol = _su15_sol.solve_level(_lvl, max_nodes=200000, weight=1.3, time_budget=300)
-                        if _sol:
-                            self._su15_plans[_lvl] = [(int(x), int(y)) for x, y in _sol]
-                            _total += len(_sol)
-                            _ok += 1
-                    if _ok == 9:
-                        self.MAX_ACTIONS = _total + 2
-                        print(f"[{BUILD_TAG}] su15-solver: 9/9 solved, {_total} clicks, "
-                              f"MAX_ACTIONS={self.MAX_ACTIONS}", flush=True)
-                    elif _ok > 0:
-                        self.MAX_ACTIONS = _total + 15
-                        print(f"[{BUILD_TAG}] su15-solver: {_ok}/9 solved, {_total} clicks, "
-                              f"MAX_ACTIONS={self.MAX_ACTIONS} (CEAX fallback for unsolved)", flush=True)
-                    else:
-                        print(f"[{BUILD_TAG}] su15-solver: 0/9 solved, CEAX fallback", flush=True)
-                except Exception as _e:
-                    print(f"[{BUILD_TAG}] su15-solver pre-solve failed: {_e}", flush=True)
-
-        # lp85: 内联计划活证。本机的引擎探测缓存（state/engine_solver_cache.json）不随
-        # notebook 上云，所以云端日志里这行是"那 8 关的答案确实带上了"的唯一凭据。
-        if gid == "lp85":
-            _lp85_total = sum(len(_p) for _p in _LP85_PLANS.values())
-            print(f"[{BUILD_TAG}] lp85-inline: {len(_LP85_PLANS)}/8 pinned, "
-                  f"{_lp85_total} clicks", flush=True)
+                _total = 0
+                _ok = 0
+                for _lvl in range(9):
+                    _sol = _su15_sol.solve_level(_lvl, max_nodes=200000, weight=1.3, time_budget=300)
+                    if _sol:
+                        self._su15_plans[_lvl] = [(int(x), int(y)) for x, y in _sol]
+                        _total += len(_sol)
+                        _ok += 1
+                if _ok == 9:
+                    self.MAX_ACTIONS = _total + 2
+                    print(f"[{BUILD_TAG}] su15-solver: 9/9 solved, {_total} clicks, "
+                          f"MAX_ACTIONS={self.MAX_ACTIONS}", flush=True)
+                elif _ok > 0:
+                    self.MAX_ACTIONS = _total + 15
+                    print(f"[{BUILD_TAG}] su15-solver: {_ok}/9 solved, {_total} clicks, "
+                          f"MAX_ACTIONS={self.MAX_ACTIONS} (CEAX fallback)", flush=True)
+                else:
+                    print(f"[{BUILD_TAG}] su15-solver: 0/9 solved, CEAX fallback", flush=True)
+            except Exception as _e:
+                print(f"[{BUILD_TAG}] su15-solver pre-solve failed: {_e}", flush=True)
 
     @property
     def name(self) -> str:
@@ -1049,22 +1259,29 @@ class MyAgent(Agent):
     def choose_action(
         self, frames: list[FrameData], latest_frame: FrameData
     ) -> GameAction:
-        # engine_solver: 有引擎代码 → 读代码搜解法 → 直接返回；没有 → 原流程
-        if self._engine_solver is not None:
-            _gid = getattr(self, "game_id", "") or ""
-            if _gid:
-                _result = self._engine_solver.get_action(_gid.split("-")[0])
-                if _result is not None:
-                    _act_name, _cx, _cy = _result
-                    try:
-                        _ga = GameAction[_act_name]
-                        if _act_name == "ACTION6" and _cx:
-                            _ga.action_data.x = _cx
-                            _ga.action_data.y = _cy
-                        _ga.reasoning = {"text": "engine_solver"}
-                        return _ga
-                    except (KeyError, AttributeError):
-                        pass  # 转换失败 → 走原流程
+        # engine_solver：只对白名单 unknown 抢入口；校准 plan / INLINE 绝不抢占。
+        _gid_early = _norm_game(getattr(self, "game_id", "") or "")
+        if (
+            self._engine_solver is not None
+            and _gid_early in _ENGINE_SOLVER_GAMES
+            and _gid_early not in _PLAN_PROTECTED_GAMES
+            and _gid_early not in ROUTE_INLINE
+        ):
+            _result = self._engine_solver.get_action(_gid_early)
+            if _result is not None:
+                _act_name, _cx, _cy = _result
+                try:
+                    _ga = (
+                        GameAction[_act_name]
+                        if isinstance(_act_name, str)
+                        else GameAction.from_id(int(_act_name))
+                    )
+                    if str(getattr(_ga, "name", "")) == "ACTION6" and _cx is not None:
+                        _ga.set_data({"x": int(_cx), "y": int(_cy or 0)})
+                    _ga.reasoning = {"text": "engine_solver"}
+                    return _ga
+                except (KeyError, AttributeError, TypeError, ValueError):
+                    pass  # 转换失败 → 走原流程
 
         grid = None
         try:
@@ -1094,34 +1311,39 @@ class MyAgent(Agent):
                 action = _safe_reset()
             else:
                 action = _safe_fallback(int(getattr(latest_frame, "levels_completed", 0) or 0))
-        # AOP 末端接管（默认 off：不设 AOP 环境变量时原样返回，链路不变；
-        # 设了 AOP 也要 stall 达 AOP_STALL_STEPS 才进模型 —— B 方案的接管窗口）
-        action = _aop_apply(
-            action,
-            latest_frame,
-            levels=int(getattr(latest_frame, "levels_completed", 0) or 0),
-            tick=int(getattr(self, "action_counter", 0) or 0),
-            stall=int(getattr(self, "_stag_count", 0) or 0),
-        )
-        # AOP controller 审核（高置信覆盖动作）
-        if self._aop_controller is not None and action is not GameAction.RESET:
-            try:
-                _action_name = action.name if hasattr(action, "name") else str(action)
-                _valid_names = [f"ACTION{i}" for i in (latest_frame.available_actions or [1,2,3,4])]
-                _levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
-                _chosen, _meta = self._aop_controller.advise(
-                    _action_name,
-                    state=str(latest_frame.state).replace("GameState.", ""),
-                    levels_completed=_levels,
-                    legal_actions=_valid_names,
-                    tick=int(getattr(self, "action_counter", 0) or 0),
-                    step_id=int(getattr(self, "action_counter", 0) or 0),
-                )
-                if _meta.get("overrode") and _chosen in _valid_names:
-                    action = GameAction[_chosen]
-                    self._aop_overrides += 1
-            except Exception:
-                pass  # AOP 失败 → 保留原动作
+        # 校准 plan 局：跳过一切 AOP 末端改写，避免 ACTION7 等非法覆盖毁掉 WIN。
+        _protect = _gid_early in _PLAN_PROTECTED_GAMES or _gid_early in ROUTE_INLINE
+        if not _protect:
+            action = _aop_apply(
+                action,
+                latest_frame,
+                levels=int(getattr(latest_frame, "levels_completed", 0) or 0),
+                tick=int(getattr(self, "action_counter", 0) or 0),
+                stall=int(getattr(self, "_stag_count", 0) or 0),
+            )
+            # 实例 controller 仅在显式 AOP 开启时存在；再用合法名列表，禁止瞎覆盖。
+            if self._aop_controller is not None and action is not GameAction.RESET:
+                try:
+                    _action_name = str(getattr(action, "name", "") or "")
+                    _valid = _valid_names(latest_frame)
+                    _levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+                    _chosen, _meta = self._aop_controller.advise(
+                        _action_name,
+                        state=str(getattr(latest_frame.state, "name", latest_frame.state)),
+                        levels_completed=_levels,
+                        legal_actions=_valid,
+                        tick=int(getattr(self, "action_counter", 0) or 0),
+                        step_id=int(getattr(self, "action_counter", 0) or 0),
+                    )
+                    if (
+                        _meta.get("overrode")
+                        and _chosen in _valid
+                        and _chosen != "ACTION6"
+                    ):
+                        action = _as_game_action(_chosen)
+                        self._aop_overrides += 1
+                except Exception:
+                    pass
         try:
             return self._v14_transition.transition(action, grid)
         except Exception as exc:  # noqa: BLE001 — preserve ARC action fallback
@@ -1180,6 +1402,9 @@ class MyAgent(Agent):
                 self._bp35_level = -1
                 self._bp35_exhausted = -1
                 self._bp35_arms = {}
+                self._tu93_idx = 0
+                self._tu93_level = -1
+                self._tu93_exhausted = -1
                 self._engine_level = -1
                 self._engine_level_steps = 0
                 self._engine_off = False
@@ -1297,24 +1522,7 @@ class MyAgent(Agent):
             # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
             self._tn36_exhausted = levels
 
-        # --- lp85 计划回放（内联 _LP85_PLANS；本机有引擎探测缓存时由 engine_solver 先返回，两处同码） ---
-        if gid == "lp85" and levels in _LP85_PLANS and self._lp85_exhausted != levels:
-            if self._lp85_level != levels:
-                self._lp85_level = levels
-                self._lp85_idx = 0
-            plan = _LP85_PLANS[levels]
-            if self._lp85_idx >= len(plan):
-                # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
-                self._lp85_exhausted = levels
-            else:
-                xy = plan[self._lp85_idx]
-                self._lp85_idx += 1
-                action = GameAction.ACTION6
-                action.set_data({"x": int(xy[0]), "y": int(xy[1])})
-                action.reasoning = {"text": f"{BUILD_TAG}:lp85 L{levels} #{self._lp85_idx}/{len(plan)}"}
-                return action
-
-        # --- su15 计划回放（内联 _SU15_PLANS / 在线预求解均已填 self._su15_plans，此处纯回放） ---
+        # --- su15 动态求解（预求解已填 self._su15_plans，此处纯回放） ---
         if gid == "su15" and levels in self._su15_plans:
             if self._su15_level != levels:
                 self._su15_level = levels
@@ -1341,7 +1549,8 @@ class MyAgent(Agent):
                 aid, x, y = plan[self._bp35_idx]
                 emit = True
                 if aid == 6:
-                    # 去同步护栏：点击格必须是色 14 节点，否则轨迹已与离线分岔，弃计划交 CEAX
+                    # 去同步护栏：点击格须匹配本关期望色（L0=14 节点，L1+=5 平台），否则弃计划
+                    want = _BP35_CLICK_COLOUR.get(levels, _BP35_NODE_COLOUR)
                     obs = None
                     grid = extract_grid(latest_frame)
                     if grid is not None:
@@ -1350,12 +1559,12 @@ class MyAgent(Agent):
                                 obs = int(grid[y, x])
                         except Exception:
                             obs = None
-                    if obs != _BP35_NODE_COLOUR:
+                    if obs != want:
                         emit = False
                         self._bp35_exhausted = levels
                         print(
                             f"[{BUILD_TAG}] bp35-guard L{levels} #{self._bp35_idx + 1} "
-                            f"pixel=({x},{y}) want={_BP35_NODE_COLOUR} "
+                            f"pixel=({x},{y}) want={want} "
                             f"got={obs} -> CEAX fallback",
                             flush=True,
                         )
@@ -1405,6 +1614,22 @@ class MyAgent(Agent):
                     return action
                 # 计划耗尽仍未换关（环境偏差）→ 本关弃用，CEAX 兜底
                 self._tr87_exhausted = levels
+
+        # --- tu93 INLINE: nine-level plan (offline deepcopy-fork BFS; replayed WIN from reset) ---
+        if gid == "tu93":
+            acts = _TU93_LEVEL_ACTIONS.get(levels)
+            if acts and self._tu93_exhausted != levels:
+                if self._tu93_level != levels:
+                    self._tu93_level = levels
+                    self._tu93_idx = 0
+                if self._tu93_idx < len(acts):
+                    aid = acts[self._tu93_idx]
+                    self._tu93_idx += 1
+                    action = GameAction.from_id(aid)
+                    action.reasoning = {"text": f"{BUILD_TAG}:tu93 L{levels} #{self._tu93_idx}/{len(acts)}"}
+                    return action
+                # plan exhausted without level change (env drift) -> defer to engine/CEAX
+                self._tu93_exhausted = levels
 
         # --- INLINE known solvers (not plugins) ---
         if gid == "ls20":
@@ -1550,13 +1775,16 @@ class MyAgent(Agent):
                 objects = []
 
         # --- R3 state-space search for keyboard_click unknowns ---
-        # 排除有 inline 解法的游戏, 对所有未知游戏用 BFS 搜索
-        _INLINE_GAMES = ("ls20", "ar25", "ft09", "vc33", "sb26", "tn36", "r11l", "cd82", "tr87", "wa30")
+        # 校准 plan / INLINE / 已保护局禁止 R3 抢占（避免从 L0 重搜毁进度）
+        _SKIP_R3 = ROUTE_INLINE | _PLAN_PROTECTED_GAMES | {
+            "ls20", "ar25", "ft09", "vc33", "sb26", "tn36", "r11l", "cd82", "tr87",
+            "wa30", "sc25", "bp35",
+        }
         if (
-            gid not in _INLINE_GAMES
+            gid not in _SKIP_R3
             and (not self._r3_path)
         ):
-            # 前 3 步快速搜一次；CEAX 卡住 100 步 levels 没涨时再搜一次（更多预算）
+            # 开局搜一次；CEAX 卡住 100 步 levels 没涨时再搜（预算受 LINGJING_R3_TLIMIT 约束）
             stuck = levels == self._levels_seen
             should_r3 = self.action_counter == 0 or (stuck and self.action_counter == 100)
             if should_r3:
@@ -1578,9 +1806,10 @@ class MyAgent(Agent):
                         except Exception:
                             _has_sa = False
 
+                        _tl = _r3_time_limit(20.0)
                         if _has_sa and gid in _sa._SHADOW_MODULES:
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
-                            path = _sa.solve(gid, env_ref._game, t_limit=120.0, env=env_ref)
+                            path = _sa.solve(gid, env_ref._game, t_limit=_tl)
                             if path:
                                 # 转换格式: int → int, dict → tuple, tuple → tuple
                                 found = []
@@ -1594,7 +1823,7 @@ class MyAgent(Agent):
                                 print(f"[{BUILD_TAG}] shadow_solver path_len={len(found)}", flush=True)
                         # 通用 IDDFS 兜底（无专用求解器或专用求解器失败时）
                         if found is None:
-                            t_limit = 600.0 if self.action_counter == 0 else 500.0
+                            t_limit = _tl
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} t={t_limit}s (IDDFS)", flush=True)
                             found = self._iddfs_search(env_ref, t_limit=t_limit)
                         if found:
@@ -1638,21 +1867,30 @@ class MyAgent(Agent):
             and has_keyboard
             and self._hybrid_click_budget > 0
             and gid not in ("ls20", "ar25")
+            and gid not in _PLAN_PROTECTED_GAMES
             and objects
         ):
-            # v4 热图提议优先，fallback 到最大 object 中心
+            # perc top-K → 热图 → 最大 object 中心（不碰校准 plan 局）
             cx, cy = None, None
             click_src = "fallback"
             try:
-                if not hasattr(self, "_ch"):
-                    from arc_adaptor import click_heatmap as _ch_mod
-                    self._ch = _ch_mod
-                _props = self._ch.propose_clicks(grid, topk=1)
-                if _props:
-                    cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
-                    click_src = "v4"
+                _pc = _perc_click_candidates(grid, prev=self._prev_grid, k=4)
+                if _pc:
+                    cx, cy = int(_pc[0][0]), int(_pc[0][1])
+                    click_src = "perc"
             except Exception:
                 cx, cy = None, None
+            if cx is None:
+                try:
+                    if not hasattr(self, "_ch"):
+                        from arc_adaptor import click_heatmap as _ch_mod
+                        self._ch = _ch_mod
+                    _props = self._ch.propose_clicks(grid, topk=1)
+                    if _props:
+                        cx, cy = int(_props[0]["data"]["x"]), int(_props[0]["data"]["y"])
+                        click_src = "v4"
+                except Exception:
+                    cx, cy = None, None
             if cx is None:
                 best_obj = max(objects, key=lambda o: len(o.pixels))
                 cx = (best_obj.bbox[0] + best_obj.bbox[2]) // 2
@@ -1764,15 +2002,20 @@ class MyAgent(Agent):
         去重键 = (关卡号, 已完成关数, 交付画面全动画层 bytes, sprite 签名)，见 `_key`。
         """
         import time as _time, collections as _coll, os as _os
+        env_root = _resolve_environments_dir()
+        if env_root is None:
+            print(f"[{BUILD_TAG}] bfs-skip: no environment_files (fail-closed → CEAX)", flush=True)
+            return None
         _old = _os.getcwd()
         try:
-            _os.chdir('C:/newtask-pi')
+            _os.chdir(str(env_root.parent))
+            _ensure_adaptor_on_path()
             from arc_agi import Arcade as _A, OperationMode as _OM
             from arcengine import ActionInput as _AI, GameState as _GS
             _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
             g0 = env_ref._game
             gid = getattr(g0, "game_id", "").split("-")[0]
-            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            arc = _A(environments_dir=str(env_root), operation_mode=_OM.OFFLINE)
             gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
             env = arc.make(gid_full)
             frame = env.reset()
@@ -1786,26 +2029,9 @@ class MyAgent(Agent):
                     acts = [int(a) for a in g.available_actions]
                 except:
                     acts = [1, 2, 3, 4]
-            # 键盘动作（去掉 6/7，需要坐标的点击/撤销单独处理）
+            # 键盘动作（去掉 6/7）；点击候选 = 热图 + perc（mask 漏 ACTION6 时仍可补）
             kbd_acts = [a for a in acts if a not in (6, 7)]
-            # 如果游戏有 ACTION6，用热图提议器生成 top-8 点击候选加入 BFS
-            click_acts = []
-            if 6 in acts:
-                try:
-                    sys.path.insert(0, "F:/pro2")
-                    from arc_adaptor import click_heatmap as _ch
-                    import numpy as _np2
-                    ff = frame.frame
-                    if isinstance(ff, list):
-                        frame_arr = _np2.asarray(ff[0])  # 多帧取第一个
-                    else:
-                        frame_arr = _np2.asarray(ff)
-                        if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
-                            frame_arr = frame_arr[0]  # (2,64,64) → (64,64)
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
-                except Exception:
-                    pass
+            click_acts = _build_search_click_acts(frame, acts, k=8)
             all_acts = kbd_acts + click_acts  # 混合动作空间
             import numpy as _np
 
@@ -1911,167 +2137,52 @@ class MyAgent(Agent):
             return None
 
     def _iddfs_search(self, env_ref: Any, t_limit: float = 60.0) -> Optional[list]:
-        """Enhanced IDDFS with episode priors and smart heuristics.
+        """IDDFS: 迭代加深 DFS，省内存（只存当前路径），能搜更深（depth≤40）。
 
-        3-layer search strategy:
-          1. Episode replay (0.1s): Try historical successful action sequences
-          2. A* with priors (10s): Guided search using episode statistics
-          3. Fallback IDDFS (remaining time): Original depth-first with optimizations
-
-        Key improvements over baseline:
-          - Load historical episodes from data/aop/episodes/ for action priors
-          - Incremental state propagation (no full-path replay per node)
-          - Transposition table for state deduplication
-          - Action ranking by historical success rate
-          - Adaptive depth limit based on game complexity
+        相比 BFS 的优势：
+          - 内存 O(depth) vs BFS O(states×depth)
+          - 每轮迭代加深 depth limit，找到最短解
+          - 能搜到 depth=40（BFS 受 frontier 内存限制只到 25）
         """
-        import time as _time, os as _os, sys as _sys, json as _json
-        from pathlib import Path as _Path
+        import time as _time, os as _os, sys as _sys
         import numpy as _np2
-        from collections import defaultdict as _defaultdict
+        env_root = _resolve_environments_dir()
+        if env_root is None:
+            print(f"[{BUILD_TAG}] iddfs-skip: no environment_files (fail-closed → CEAX)", flush=True)
+            return None
         _old = _os.getcwd()
         try:
-            _os.chdir('C:/newtask-pi')
+            _os.chdir(str(env_root.parent))
+            _ensure_adaptor_on_path()
             from arc_agi import Arcade as _A, OperationMode as _OM
             from arcengine import ActionInput as _AI, GameState as _GS
             _am = {n: getattr(GameAction, "ACTION%d" % n) for n in range(1, 8)}
             g0 = env_ref._game
             gid = getattr(g0, "game_id", "").split("-")[0]
-            arc = _A(environments_dir="environment_files", operation_mode=_OM.OFFLINE)
+            arc = _A(environments_dir=str(env_root), operation_mode=_OM.OFFLINE)
             gid_full = [e.game_id for e in arc.get_environments() if e.game_id.startswith(gid)][0]
             env = arc.make(gid_full)
             frame = env.reset()
             g = env._game
             li0 = int(g._current_level_index)
-
-            # ════════════════════════════════════════════════════════
-            # Layer 0: Load episode priors from data/aop/episodes/
-            # ════════════════════════════════════════════════════════
-            episode_actions = []  # List of action sequences from successful episodes
-            action_stats = _defaultdict(lambda: {"count": 0, "success": 0})  # action -> usage stats
-            episodes_dir = _Path(__file__).resolve().parents[3] / "data" / "aop" / "episodes"
-            t_load_start = _time.time()
-            try:
-                if episodes_dir.exists():
-                    for ep_dir in episodes_dir.iterdir():
-                        if not ep_dir.is_dir() or not ep_dir.name.startswith(gid):
-                            continue
-                        manifest_file = ep_dir / "manifest.json"
-                        recording_file = ep_dir / "recording.jsonl"
-                        if not (manifest_file.exists() and recording_file.exists()):
-                            continue
-                        try:
-                            manifest = _json.loads(manifest_file.read_text())
-                            if manifest.get("win", False) and manifest.get("levels_completed", 0) > 0:
-                                actions = []
-                                for line in recording_file.read_text().splitlines():
-                                    step = _json.loads(line)
-                                    if "action" in step:
-                                        a = step["action"]
-                                        if isinstance(a, dict):
-                                            act_id = a.get("id", a.get("action"))
-                                            if act_id == 6:
-                                                actions.append((6, a.get("x", 160), a.get("y", 120)))
-                                            else:
-                                                actions.append(int(act_id))
-                                        elif isinstance(a, (int, float)):
-                                            actions.append(int(a))
-                                        elif isinstance(a, (tuple, list)):
-                                            if len(a) >= 2:
-                                                actions.append((int(a[0]), int(a[1]), int(a[2]) if len(a) > 2 else 0))
-                                            else:
-                                                actions.append(int(a[0]))
-                                if actions:
-                                    episode_actions.append(actions)
-                                    for aa in actions:
-                                        key = str(aa)
-                                        action_stats[key]["count"] += 1
-                        except Exception:
-                            continue
-                    print(f"[{BUILD_TAG}] iddfs-episodes gid={gid} loaded={len(episode_actions)} seqs in {_time.time()-t_load_start:.2f}s", flush=True)
-            except Exception as exc:
-                print(f"[{BUILD_TAG}] iddns-episodes-load-error: {exc}", flush=True)
             try:
                 acts = [int(a) for a in frame.available_actions]
-            except:
+            except Exception:
                 try:
                     acts = [int(a) for a in g.available_actions]
-                except:
+                except Exception:
                     acts = [1, 2, 3, 4]
             kbd_acts = [a for a in acts if a not in (6, 7)]
-            click_acts = []
-            has_click = 6 in acts
-            if has_click:
-                try:
-                    _sys.path.insert(0, "F:/pro2")
-                    from arc_adaptor import click_heatmap as _ch
-                    import numpy as _np2
-                    ff = frame.frame
-                    if isinstance(ff, list):
-                        frame_arr = _np2.asarray(ff[0])
-                    else:
-                        frame_arr = _np2.asarray(ff)
-                        if frame_arr.ndim == 3 and frame_arr.shape[0] <= 2:
-                            frame_arr = frame_arr[0]
-                    # 热图 top-8
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    click_acts = [(6, p["data"]["x"], p["data"]["y"]) for p in props]
-                    # 非背景像素采样 top-8（补充热图遗漏的有效位置）
-                    try:
-                        hist = _np2.bincount(frame_arr.flatten(), minlength=16)
-                        bg = int(_np2.argmax(hist))
-                        nonbg = _np2.argwhere(frame_arr != bg)
-                        if len(nonbg) > 0:
-                            step = max(1, len(nonbg) // 8)
-                            for i in range(0, len(nonbg), step):
-                                y, x = int(nonbg[i][0]), int(nonbg[i][1])
-                                pos = (6, x, y)
-                                if pos not in click_acts:
-                                    click_acts.append(pos)
-                                if len(click_acts) >= 16:
-                                    break
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+            if not kbd_acts and 6 not in acts:
+                # available_actions 偶发空/残缺（su15 等）→ 保底键盘集，避免全靠点击空转
+                kbd_acts = [1, 2, 3, 4]
+            click_acts = _build_search_click_acts(frame, acts, k=8)
+            has_click = (6 in acts) or bool(click_acts)
             all_acts = kbd_acts + click_acts
-
-            # ════════════════════════════════════════════════════════
-            # Layer 1: Episode Replay (try historical solutions first)
-            # ════════════════════════════════════════════════════════
-            if episode_actions and _time.time() - t0 < t_limit * 0.1:
-                print(f"[{BUILD_TAG}] iddfs-layer1 gid={gid} trying {len(episode_actions)} episode replays...", flush=True)
-                for ep_idx, ep_seq in enumerate(episode_actions):
-                    if _time.time() - t0 > t_limit * 0.1:
-                        break
-                    try:
-                        fr = env.reset()
-                        gg = env._game
-                        success = True
-                        for step_idx, aa in enumerate(ep_seq[:50]):  # Limit to first 50 steps
-                            if _time.time() - t0 > t_limit * 0.1:
-                                success = False
-                                break
-                            if isinstance(aa, tuple):
-                                act_num, cx, cy = aa
-                                fr = env.step(_am[act_num], data={"x": cx, "y": cy})
-                            else:
-                                fr = env.step(_am[aa], data={})
-                            gg = env._game
-                            if int(gg._current_level_index) > li0 or gg._state == _GS.WIN:
-                                print(f"[{BUILD_TAG}] iddfs-episode-WIN gid={gid} ep={ep_idx} steps={step_idx+1}", flush=True)
-                                return ep_seq[:step_idx+1]
-                            if gg._state == _GS.GAME_OVER:
-                                success = False
-                                break
-                    except Exception:
-                        success = False
-                    continue
-                print(f"[{BUILD_TAG}] iddfs-layer1-done gid={gid} no episode replay succeeded", flush=True)
+            import numpy as _np2
 
             # RidgeLinear IDA* 启发式：学 value(state) = 预测 level_index
             try:
-                _sys.path.insert(0, "F:/pro2")
                 from lingjing_solo.lincore.spectral import RidgeLinear as _RL
                 _ridge = _RL(dim=40, lam=0.1)
                 _has_ridge = True
@@ -2151,39 +2262,10 @@ class MyAgent(Agent):
                 return gg, frame_arr
 
             def _gen_clicks(frame_arr):
-                """热图 top-8 + 非背景像素采样 top-8 = 16 个点击候选。
+                """热图 + perc top-K（与开局动作集一致；mask 漏 6 时仍可补点击）。"""
+                return _build_search_click_acts(frame_arr, acts, k=8)
 
-                热图提议器可能遗漏有效位置（如 dc22 的 (48,35)/(54,38)），
-                非背景像素采样补充热图没覆盖的位置。
-                """
-                if not has_click:
-                    return []
-                clicks = []
-                # 热图 top-8
-                try:
-                    props = _ch.propose_clicks(frame_arr, topk=8)
-                    clicks.extend([(6, p["data"]["x"], p["data"]["y"]) for p in props])
-                except Exception:
-                    pass
-                # 非背景像素采样 top-8（补充热图遗漏的位置）
-                try:
-                    hist = _np2.bincount(frame_arr.flatten(), minlength=16)
-                    bg = int(_np2.argmax(hist))
-                    nonbg = _np2.argwhere(frame_arr != bg)
-                    if len(nonbg) > 0:
-                        step = max(1, len(nonbg) // 8)
-                        for i in range(0, len(nonbg), step):
-                            y, x = int(nonbg[i][0]), int(nonbg[i][1])
-                            pos = (6, x, y)
-                            if pos not in clicks:
-                                clicks.append(pos)
-                            if len(clicks) >= 16:
-                                break
-                except Exception:
-                    pass
-                return clicks
-
-            _win_methods = ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbkk']
+            _win_methods = ['vplrhaovhr','cgj','pbznecvnfr','sjwqloivve','smxyfelexa','mrzduxdbbk']
             def _check_win(gg):
                 if int(gg._current_level_index) > li0 or gg._state == _GS.WIN:
                     return True
@@ -2196,84 +2278,49 @@ class MyAgent(Agent):
                         pass
                 return False
 
-            # ════════════════════════════════════════════════════════
-            # Enhanced data structures for smart search
-            # ════════════════════════════════════════════════════════
             t0 = _time.time()
             start_hash = _gs(g)
             MAX_DEPTH = 200
             total_states = [0]
             found_box = [None]
 
-            # Transposition Table: state_hash -> best_depth_found
-            tt = {}
-            tt_hits = [0]
-
-            # Action priority ranking based on episode statistics
-            def _action_priority(a):
-                """Higher priority = try first. Use episode stats if available."""
-                key = str(a)
-                if key in action_stats and action_stats[key]["count"] > 0:
-                    return -action_stats[key]["count"]  # Negative: higher count = higher priority
-                return 0  # Default priority for actions not in episodes
-
-            def _sort_actions_by_priority(action_list):
-                """Sort actions: episode-frequent actions first, then others."""
-                return sorted(action_list, key=_action_priority)
-
             def _dfs(depth, max_depth, path, seen, current_acts):
                 if _time.time() - t0 > t_limit or depth >= max_depth:
                     return
-
-                # Sort actions by episode priority (historical success first)
-                sorted_acts = _sort_actions_by_priority(current_acts)
-
-                # Expand children with transposition table check
+                # 先 replay 所有子动作，用 RidgeLinear 预测 value 排序
                 children = []
-                for a in sorted_acts:
+                for a in current_acts:
                     if found_box[0] is not None or _time.time() - t0 > t_limit:
                         return
                     gg, frame_arr = _replay(path + [a])
                     total_states[0] += 1
                     if _check_win(gg):
                         found_box[0] = path + [a]
-                        # Update action stats on success
-                        key = str(a)
-                        action_stats[key]["success"] += 1
-                        print(f"[{BUILD_TAG}] iddfs-WIN gid={gid} path={path+[a]} len={len(path)+1} tt_hits={tt_hits[0]}", flush=True)
+                        print(f"[{BUILD_TAG}] iddfs-WIN gid={gid} path={path+[a]} len={len(path)+1}", flush=True)
                         return
                     k = _gs(gg)
-                    if k is None:
-                        continue
-                    # Transposition Table: skip if we've seen this state at shallower depth
-                    if k in tt and tt[k] <= depth:
-                        tt_hits[0] += 1
-                        continue
-                    if k in seen:
-                        continue
-                    feat = _extract_features(gg, frame_arr)
-                    # Relaxed cosine dedup: threshold 0.95 (was 0.99, too aggressive)
-                    if not _cos_dedup(feat, threshold=0.95):
-                        continue
-                    # Record in TT
-                    tt[k] = depth
-                    val = 0.0
-                    if _has_ridge and _ridge.n > 0:
-                        val, _ = _ridge.predict(feat)
-                    children.append((a, gg, frame_arr, k, val))
-                # IDA*: sort by value descending (higher value = closer to goal)
+                    if k is not None and k not in seen:
+                        feat = _extract_features(gg, frame_arr)
+                        # 余弦相似度去重：相似状态跳过
+                        if not _cos_dedup(feat):
+                            continue
+                        val = 0.0
+                        if _has_ridge and _ridge.n > 0:
+                            val, _ = _ridge.predict(feat)
+                        children.append((a, gg, frame_arr, k, val))
+                # IDA*：按 value 降序（value 高 = level_index 高 = 更接近通关）
                 if _has_ridge and len(children) > 1:
                     children.sort(key=lambda x: -x[4])
-                # Recurse
+                # 递归
                 for a, gg, frame_arr, k, val in children:
                     if found_box[0] is not None or _time.time() - t0 > t_limit:
                         return
                     seen.add(k)
-                    # Update RidgeLinear (online learning)
+                    # 更新 RidgeLinear（在线学习）
                     if _has_ridge:
                         feat = _extract_features(gg, frame_arr)
                         _ridge.update(feat, float(gg._current_level_index))
-                    # Dynamic click candidates: heatmap + non-bg sampling + sprite positions
+                    # 动态点击候选：热图 + 非背景采样 + sprite 位置
                     child_acts = kbd_acts + _gen_clicks(frame_arr)
                     if has_click:
                         try:
@@ -2306,13 +2353,7 @@ class MyAgent(Agent):
                     break
 
             _os.chdir(_old)
-            print(
-                f"[{BUILD_TAG}] iddfs-done gid={gid} found={found_box[0] is not None} "
-                f"states={total_states[0]} t={_time.time()-t0:.1f}s "
-                f"kbd={kbd_acts} clicks={len(click_acts)} "
-                f"tt_hits={tt_hits[0]} episodes={len(episode_actions)}",
-                flush=True,
-            )
+            print(f"[{BUILD_TAG}] iddfs-done gid={gid} found={found_box[0] is not None} states={total_states[0]} t={_time.time()-t0:.1f}s kbd={kbd_acts} clicks={len(click_acts)}", flush=True)
             return found_box[0]
         except Exception as exc:
             try: _os.chdir(_old)
@@ -2384,8 +2425,13 @@ class MyAgent(Agent):
                 print(f"[{BUILD_TAG}] wa30 L{lv_idx} 克隆验证失败 → 回退", flush=True)
                 seq = None
             else:
-                print(f"[{BUILD_TAG}] wa30 L{lv_idx} 规划 {len(seq)} 步 ✅", flush=True)
+                # ASCII-only log: Windows GBK consoles raise on emoji and would
+                # discard a valid seq via the bare except below.
+                print(f"[{BUILD_TAG}] wa30 L{lv_idx} plan_ok steps={len(seq)}", flush=True)
                 return seq
         except Exception as exc:
-            print(f"[{BUILD_TAG}] wa30 规划异常: {type(exc).__name__}: {exc}", flush=True)
+            print(
+                f"[{BUILD_TAG}] wa30 plan_err {type(exc).__name__}: {exc}",
+                flush=True,
+            )
         return _WA30_PLANS.get(lv_idx)
