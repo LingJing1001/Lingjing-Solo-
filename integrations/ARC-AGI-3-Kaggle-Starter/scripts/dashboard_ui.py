@@ -24,6 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 VENDOR = ROOT / "vendor" / "ARC-AGI-3-Agents"
 sys.path.insert(0, str(VENDOR))
+# 仓库根（放着 lingjing_solo/）**追加**在末尾，不能用 insert(0)：仓库根下也有一个
+# `scripts/` 目录，插到最前会把下面的 `scripts.mind_zh` 解析抢走。
+sys.path.append(str(ROOT.parents[1]))
+
+from lingjing_solo.core.frame_decode import grid_from_frame  # noqa: E402
 
 from scripts.mind_zh import (
     ACTION_CN,
@@ -161,13 +166,8 @@ def _log_slot(slot_id: str, msg: str) -> None:
 
 
 def _grid_from_frame(frame) -> list[list[int]]:
-    raw = frame.frame or []
-    if not raw:
-        return []
-    layer = raw[-1]
-    if isinstance(layer[0], list):
-        return [[int(c) for c in row] for row in layer]
-    return [[int(c) for c in row] for row in raw]
+    """提帧网格：委托全仓唯一解码入口（``core.frame_decode``），取不到给 ``[]``。"""
+    return grid_from_frame(frame) or []
 
 
 def load_agent_class():

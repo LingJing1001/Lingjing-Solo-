@@ -23,9 +23,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "vendor" / "ARC-AGI-3-Agents"))
 sys.path.insert(0, str(ROOT))
+# 仓库根（放着 lingjing_solo/）**追加**在末尾，不能用 insert(0)：仓库根下也有一个
+# `scripts/` 目录，插到最前会把 `scripts.*` 的解析抢走。
+# 顺带修好下方 `from lingjing_solo.planning...` —— 在原有 sys.path 下它是找不到包的。
+sys.path.append(str(ROOT.parents[1]))
 
 import arc_agi
 from arc_agi import OperationMode
+
+from lingjing_solo.core.frame_decode import grid_from_frame  # noqa: E402
 
 from lingjing_solo.planning.ls20_solver import (
     _find_goal_markers,
@@ -120,13 +126,8 @@ LEVEL_INFO = [
 
 
 def _grid_from_frame(frame) -> list[list[int]]:
-    raw = frame.frame or []
-    if not raw:
-        return []
-    layer = raw[-1]
-    if isinstance(layer[0], list):
-        return [[int(c) for c in row] for row in layer]
-    return [[int(c) for c in row] for row in raw]
+    """提帧网格：委托全仓唯一解码入口（``core.frame_decode``），取不到给 ``[]``。"""
+    return grid_from_frame(frame) or []
 
 
 def _annotate_step(solver, grid_list: list[list[int]], action: str, rationale: str) -> dict:

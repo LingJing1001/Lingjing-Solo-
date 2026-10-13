@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 from arcengine import FrameData, GameAction, GameState
 from lingjing_solo import LingjingSoloAgent
+from lingjing_solo.core.frame_decode import grid_from_frame
 
 from ..agent import Agent
 from ..strategies import GameStrategyRegistry, level_plan
@@ -18,9 +19,16 @@ def _ls20_level_plan(level_index: int) -> list[str]:
 
 
 def _frame_grid(frame: FrameData) -> np.ndarray:
-    """Convert official FrameData.frame into Lingjing's numpy grid."""
-    array = np.asarray(frame.frame, dtype=np.int8)
-    return array[0] if array.ndim == 3 else array
+    """Official ``FrameData`` → Lingjing numpy grid.
+
+    解码统一到 ``lingjing_solo.core.frame_decode``（全仓唯一入口），本适配器不再自带
+    一份。多层帧取**最后一层**（全仓约定：渲染层在最上）；``FrameData.frame`` 实践上
+    恒为单层，故与旧实现逐字节一致。
+    """
+    grid = grid_from_frame(frame)
+    if grid is None:
+        raise ValueError("frame carries no readable grid")
+    return np.asarray(grid, dtype=np.int8)
 
 
 def _available_actions(frame: FrameData) -> list[GameAction]:

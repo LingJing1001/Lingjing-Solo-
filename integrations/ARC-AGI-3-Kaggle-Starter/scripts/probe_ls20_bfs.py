@@ -12,16 +12,22 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "vendor" / "ARC-AGI-3-Agents"))
 sys.path.insert(0, str(ROOT))
+# 仓库根（放着 lingjing_solo/）**追加**在末尾：仓库根下也有 `scripts/`，插到最前会抢解析。
+sys.path.append(str(ROOT.parents[1]))
 
 import arc_agi
 from arc_agi import OperationMode
 from arcengine import GameAction, GameState
 
+from lingjing_solo.core.frame_decode import grid_from_frame  # noqa: E402
+
 
 def grid_of(frame) -> np.ndarray:
-    raw = frame.frame or []
-    layer = raw[-1] if raw and isinstance(raw[0][0], list) else raw
-    return np.array(layer, dtype=np.int8)
+    """提帧网格：委托全仓唯一解码入口（``core.frame_decode``）。"""
+    grid = grid_from_frame(frame)
+    if grid is None:
+        raise ValueError("frame carries no readable grid")
+    return np.array(grid, dtype=np.int8)
 
 
 # ls20 level 1 landmarks (from game source)

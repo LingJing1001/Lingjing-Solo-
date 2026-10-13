@@ -468,21 +468,22 @@ def _perc_click_candidates(grid: Any, prev: Any = None, k: int = 8) -> list[tupl
 
 
 def _frame_to_grid(frame_or_arr: Any) -> Any:
-    """Normalize Arcade frame / ndarray to 2D int grid for click proposers."""
+    """Normalize Arcade frame / ndarray to 2D int grid for click proposers.
+
+    结构解析统一到全仓唯一入口 ``core.extract_grid``（→ ``core.frame_decode``）：
+    本文件此前自带**第三份**解码，且对裸 2D list 会静默返回 ``None``（它把 list 当成
+    "帧的列表"，取 ``ff[0]`` 得到一行而非一张网格）。这里只保留 numpy 侧的两条归一化，
+    因为调用方直接把返回值喂进数组运算。
+    """
     import numpy as _np
 
-    if frame_or_arr is None:
+    arr = extract_grid(frame_or_arr)
+    if arr is None:
         return None
-    ff = getattr(frame_or_arr, "frame", frame_or_arr)
-    if isinstance(ff, list):
-        arr = _np.asarray(ff[0])
-    else:
-        arr = _np.asarray(ff)
+    arr = _np.asarray(arr)
     if arr.ndim == 3 and arr.shape[0] <= 2:
         arr = arr[0]
-    if arr.ndim != 2:
-        return None
-    return arr
+    return arr if arr.ndim == 2 else None
 
 
 def _build_search_click_acts(frame_or_arr: Any, acts: list[int], k: int = 8) -> list[tuple[int, int, int]]:

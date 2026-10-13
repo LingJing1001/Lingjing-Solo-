@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 
+from lingjing_solo.core.frame_decode import grid_from_frame
 from lingjing_solo.planning.ls20_solver import Ls20Solver
 
 
@@ -26,12 +27,15 @@ def level_plan(level_index: int) -> list[str]:
 
 
 def _frame_grid(frame: Any) -> np.ndarray | None:
+    """Official frame → numpy grid（委托全仓唯一解码入口）。"""
     try:
-        array = np.asarray(frame.frame, dtype=np.int8)
+        grid = grid_from_frame(frame)
     except Exception:
         return None
-    grid = array[0] if array.ndim == 3 else array
-    return grid if grid.ndim == 2 else None
+    if grid is None:
+        return None
+    array = np.asarray(grid, dtype=np.int8)
+    return array if array.ndim == 2 else None
 
 
 class LS20Strategy:
