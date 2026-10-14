@@ -4,7 +4,8 @@
 职责边界
 --------
 各 `arc_shadow_*` 模块是**别人机器上的专用解法工厂**，返回的动作方言互不一致：
-dc22 用 `("m", 3)` / `("c", 13, 30)`，另一些用 int、`(6, x, y)`、`{"a":6,"x":..,"y":..}`。
+dc22 用 `("m", 3)` / `("c", 13, 30)`，sp80 用 `("p", 5)`（放水宏），另一些用 int、
+`(6, x, y)`、`{"a":6,"x":..,"y":..}`。
 `my_agent.py` 原先假定"int 就是 int、二元组就是点击"，于是 dc22 的 `("m", 3)`
 被当成点击坐标（后面 `int('m')` 炸），`("c", x, y)` 直接撞 `int(tuple)` 的 TypeError，
 整段 R3 尝试连同 IDDFS 兜底一起被外层 except 吞掉（2026-10-11 `_bench_main_root.log:130`）。
@@ -69,14 +70,35 @@ _locks: dict = {}
 _state_logged: set = set()
 
 
+#: 历史别名，保留给外部引用。**solver_dir 已不再依赖它**：写死的 ``parents[3]``
+#: 只在本地 checkout 的目录形状下成立（见 :func:`_shadow_dir_candidates`）。
 _DEFAULT_SHADOW_DIR = Path(__file__).resolve().parents[3] / "lingjing_solo" / "planning"
+
+
+def _shadow_dir_candidates() -> list[Path]:
+    """默认候选目录，按优先级排列。
+
+    上线时本文件被拷到 ``ARC-AGI-3-Agents/agents/templates/``，而 ``lingjing_solo``
+    是 ``agents/`` 的**兄弟**目录 —— 包落在 ``parents[2]`` 而不是 ``parents[3]``。
+    旧写法在 Kaggle 上解析到 ``/kaggle/working``（不存在），于是专用求解器整体
+    静默失效；本地却因为恰好深一层而一直正常（2026-10-14 定位）。
+    """
+    here = Path(__file__).resolve()
+    candidates: list[Path] = []
+    for up in (2, 3):
+        parents = here.parents
+        if len(parents) > up:
+            candidates.append(parents[up] / "lingjing_solo" / "planning")
+    # 求解器与适配器同目录铺放（dataset 直接铺平的形态）
+    candidates.append(here.parent)
+    return candidates
 
 
 def solver_dir() -> Optional[Path]:
     """解析专用求解器目录。
 
-    优先使用环境变量 ``SHADOW_SOLVER_DIR``；
-    未配置时 fallback 到 ``lingjing_solo/planning/``（项目内置 shadow 模块）；
+    优先使用环境变量 ``SHADOW_SOLVER_DIR``（比赛里由 ``.env`` 显式写入）；
+    未配置时依次尝试 :func:`_shadow_dir_candidates`；
     都不存在时返回 None（= 不可用，不报错）。
     """
     raw = os.environ.get(SOLVER_DIR_ENV, "").strip().strip('"').strip("'")
@@ -87,8 +109,9 @@ def solver_dir() -> Optional[Path]:
                 return path
         except (OSError, RuntimeError):
             pass
-    if _DEFAULT_SHADOW_DIR.is_dir():
-        return _DEFAULT_SHADOW_DIR
+    for candidate in _shadow_dir_candidates():
+        if candidate.is_dir():
+            return candidate
     return None
 
 
@@ -167,6 +190,18 @@ def normalize_action(item: Any) -> Optional[Any]:
         # 方言 D：("r",) —— 旋转（arc_shadow_cn04 格式）
         if isinstance(head, str) and head.strip().lower() == "r":
             return 5  # ACTION5 = rotate
+        # 方言 E：("p", n) —— "放水/pour" 宏（arc_shadow_sp80 格式）
+        # sp80 的 solve_level 以 ``list(path) + [("p", 5)]`` 收尾（见
+        # ``lingjing_solo/planning/arc_shadow_sp80.py`` 的 return 处，引擎侧就是 ACTION5）。
+        # 缺这一分支时整条已算出的解法会被判成"方言不认识"而作废 →
+        # 2026-10-13 实测日志：``sp80: 解法方言不认识（首元素 tuple=('m', 4)，共 4 步）``。
+        if isinstance(head, str) and head.strip().lower() in ("p", "pour"):
+            if len(item) == 1:
+                return 5
+            if len(item) == 2:
+                val = _as_int(item[1])
+                return val if val is not None and 1 <= val <= 7 else None
+            return None
         if isinstance(head, str):
             # 其余字符串方言一律不猜
             return None

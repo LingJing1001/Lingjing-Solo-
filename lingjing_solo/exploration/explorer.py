@@ -11,13 +11,18 @@ from collections import Counter
 from math import log2
 
 from ..core import Logger, SoloConfig
+from .action_effect import decision_effects_enabled
 
 
 class ExplorationEngine:
-    def __init__(self, cfg: SoloConfig, field, logger: Logger = None):
+    def __init__(self, cfg: SoloConfig, field, logger: Logger = None,
+                 action_effect=None):
         self.cfg = cfg
         self.field = field
         self.log = logger or Logger()
+        #: 关卡无关的动作效果画像（见 exploration/action_effect.py）。
+        #: 为 None 时本引擎行为与接入前逐位一致。
+        self.action_effect = action_effect
         self._probe_budget = 0     # 当前探测剩余步数
         self._probing = False
         self.last_score_details = {}
@@ -70,6 +75,13 @@ class ExplorationEngine:
         scored = []
         self.last_score_details = {}
         recent_actions = [t.action for t in list(self.field.transition_table)[-8:]]
+        # 跨关累计里【每次都零像素变化】的动作 —— 按键语义由 harness 固定，
+        # 一个键在某关是死的，换个关往往还是死的，所以这份先验可以跨关复用。
+        # 仅在显式开启 LINGJING_ACTION_EFFECT 时参与打分（默认关 = 逐位兼容）。
+        dead_actions: set[str] = set()
+        if self.action_effect is not None and decision_effects_enabled():
+            dead_actions = self.action_effect.no_effect_actions(scope="overall")
+        dead_penalty = float(getattr(self.cfg, "effect_noop_penalty", 0.6))
         for order, a in enumerate(valid_actions):
             gain = self.info_gain(a)
             # 反循环：若动作近期重复，降低其探索优先级。
@@ -93,6 +105,9 @@ class ExplorationEngine:
                 reason.append("loop_penalty")
             if goal_bonus:
                 reason.append("goal_successor")
+            if a in dead_actions:
+                score -= dead_penalty
+                reason.append("no_effect_penalty")
             self.last_score_details[a] = {
                 "score": score,
                 "information_gain": gain,

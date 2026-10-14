@@ -31,6 +31,14 @@ class SoloConfig:
     include_levels_in_hash: bool = True
     source_term_history: int = 256      # ΔJ 历史容量
 
+    # ---------- L1/L2 状态哈希：状态条掩蔽（结构性陷阱修复）----------
+    # 把每步自变的 UI chrome（进度条/计分/计时）在哈希前抹成常量，避免状态空间爆炸。
+    # 依据 CORRECTION_HUD_DETECTOR_20261014.md：旧 roles.py 检测器在本批数据上输出为空，
+    # 正确做法是「行/列级 + 放宽自变门槛 + 自变与平移解耦 + 位置仅作其一」。
+    mask_status_bars: bool = True
+    status_bar_edge_px: int = 2         # 边缘带宽度（top/bottom/left/right）
+    status_bar_anim_ratio: float = 0.6  # 固定行/列自变率门槛（实测上限 55-63%）
+
     # ---------- L2 探索 ----------
     probe_max_steps: int = 2
     rule_confidence_init: float = 0.5

@@ -9,6 +9,12 @@ from .action_diff import (
 from .click_sweep import BubbleClickPlanner
 from .explorer import ExplorationEngine
 
+from .action_effect import (
+    ActionEffect,
+    ActionEffectModel,
+    decision_effects_enabled,
+)
+
 from .hotspot_candidates import (
     HotspotCandidate,
     HotspotDetectionResult,
@@ -46,8 +52,11 @@ from .temporal_noise import (
 
 __all__ = [
     "ActionDelta",
+    "ActionEffect",
+    "ActionEffectModel",
     "ActionObservation",
     "ActionSummary",
+    "decision_effects_enabled",
     "BubbleClickPlanner",
     "ExplorationEngine",
 

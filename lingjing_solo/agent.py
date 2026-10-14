@@ -12,6 +12,7 @@ from .core import (
 from .perception import PerceptionEncoder
 from .world_model import WorldModelField
 from .exploration import ExplorationEngine
+from .exploration.action_effect import ActionEffectModel
 from .exploration.click_sweep import BubbleClickPlanner
 from .planning import SearchEngine, StrategicAdvisor
 from .planning.discrete_nav import DiscreteNavPlanner
@@ -83,7 +84,11 @@ class LingjingSoloAgent:
 
         self.encoder = PerceptionEncoder(self.cfg, self.log)
         self.field = WorldModelField(self.cfg, self.log)
-        self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
+        # 关卡无关的动作效果画像：先建，再交给 explorer 在打分时消费。
+        self.action_effect = ActionEffectModel(self.cfg, self.log)
+        self.explorer = ExplorationEngine(
+            self.cfg, self.field, self.log, action_effect=self.action_effect
+        )
         self.clicks = BubbleClickPlanner(self.cfg, self.log, click_proposer=self._click_proposer)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor = StrategicAdvisor(self.cfg, self.log)
@@ -106,7 +111,11 @@ class LingjingSoloAgent:
         if getattr(self, "transfer", None) is not None:
             exported = self.transfer.on_episode_end(self.field)
         self.field.reset()
-        self.explorer = ExplorationEngine(self.cfg, self.field, self.log)
+        # 新 episode：重建画像（换游戏后按键语义可能不同，先验不跨游戏）。
+        self.action_effect = ActionEffectModel(self.cfg, self.log)
+        self.explorer = ExplorationEngine(
+            self.cfg, self.field, self.log, action_effect=self.action_effect
+        )
         self.clicks = BubbleClickPlanner(self.cfg, self.log, click_proposer=self._click_proposer)
         self.search = SearchEngine(self.cfg, self.field, self.explorer, self.log)
         self.advisor.calls_used = 0
@@ -242,6 +251,15 @@ class LingjingSoloAgent:
                 curr.grid,
                 self._last_action,
                 curr.levels_completed,
+            )
+            # 通用动作效果画像：**关卡无关**，25 局每步都记（含 ACTION6）。
+            # 上面那条属于 ls20 专用观察器；这条才是给所有关卡的。
+            self.action_effect.observe(
+                self._last_action,
+                self._prev_frame.grid if self._prev_frame else None,
+                curr.grid,
+                progressed=curr.levels_completed > self._levels_seen,
+                level=curr.levels_completed,
             )
             # shadow 旁路：回填上一 tick 的 actual（used_for_control=False，不改动作）
             if self.shadow_observer is not None and self._episode_id is not None:

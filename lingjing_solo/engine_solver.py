@@ -13,8 +13,13 @@
   - 每次探测结果落盘 state/engine_solver_cache.json，键 = 游戏源码指纹（文件名+内容 sha1）。
     源码没变 → 直接复用上次结论（有解法就回放，没解法就立刻返回 None），不再重复搜。
     ENGINE_SOLVER_CACHE=0 关缓存；删该 json 即清空。
-  - 无 maps 的局会走 _generic_bfs_solve（真引擎逐步 BFS，单局 20~30s，2026-10-10 全量
-    25 局里 14 次探测 0 次搜出，纯属耗时）→ 改为默认关，按需 ENGINE_SOLVER_GENERIC=1 打开。
+  - 无 maps 的局走**公共孪生世界模型引擎** lingjing_solo.twin_engine（2026-10-14 加）：
+    自动 deepcopy 活引擎副本 + step() 做 BFS（Twin 论文的 twin world model），覆盖所有
+    "有引擎代码但无预抽取 maps"的关卡。搜出则缓存计划，搜不出优雅回退 harness 盲探。
+    ENGINE_SOLVER_TWIN=0 可关（默认开）。
+  - （旧）_generic_bfs_solve 只搜移动动作、跳过点击，2026-10-10 全量 14 局 0 搜出，已被
+    twin_engine 取代；保留代码但不再从 _solve 调用。
+  - m0r0 另有专用快路径（先于 maps 查找，走 lingjing_solo.m0r0_solver）。
 """
 from __future__ import annotations
 
@@ -71,6 +76,7 @@ class EngineSolver:
         self,
         environments_dir: str = "environment_files",
         enable_generic_bfs: Optional[bool] = None,
+        enable_twin_engine: Optional[bool] = None,
         cache_path: Optional[str] = None,
         use_cache: Optional[bool] = None,
     ):
@@ -82,6 +88,14 @@ class EngineSolver:
             _env_flag("ENGINE_SOLVER_GENERIC", False)
             if enable_generic_bfs is None
             else bool(enable_generic_bfs)
+        )
+        # 公共孪生世界模型引擎（twin_engine）：deepcopy 活引擎副本 + step() 做 BFS，
+        # 覆盖所有"有引擎代码但无预抽取 maps"的关卡（Twin 论文的孪生世界模型）。
+        # 默认开（搜不出会优雅回退到 harness 的 IDDFS/CEAX 盲探，无回归）。
+        self.enable_twin_engine = (
+            _env_flag("ENGINE_SOLVER_TWIN", True)
+            if enable_twin_engine is None
+            else bool(enable_twin_engine)
         )
         self.use_cache = (
             _env_flag("ENGINE_SOLVER_CACHE", True)
@@ -127,6 +141,7 @@ class EngineSolver:
             not isinstance(entry, dict)
             or entry.get("fingerprint") != fingerprint
             or entry.get("generic") != self.enable_generic_bfs
+            or entry.get("twin") != self.enable_twin_engine
         ):
             return False, None
         outcome = entry.get("outcome")
@@ -145,6 +160,7 @@ class EngineSolver:
         self._cache[short_id] = {
             "fingerprint": fingerprint,
             "generic": self.enable_generic_bfs,
+            "twin": self.enable_twin_engine,
             "outcome": "solution" if solution else "none",
             "solution": [list(item) for item in solution] if solution else [],
             "n_steps": len(solution) if solution else 0,
@@ -212,30 +228,84 @@ class EngineSolver:
             print(f"  [engine_solver] {short_id}: import 失败: {e}", flush=True)
             return None
 
+        # 3. m0r0 专用求解器（有引擎代码但无 maps 数据；镜像合并机制）
+        #    直接走 lingjing_solo.m0r0_solver，返回完整多关计划供逐帧回放。
+        if short_id == "m0r0":
+            try:
+                import arc_agi
+                from arc_agi import OperationMode
+                _arc = arc_agi.Arcade(
+                    operation_mode=OperationMode.OFFLINE,
+                    environments_dir=self.environments_dir,
+                )
+                _env = _arc.make(short_id)
+                if _env is None:
+                    self._record(short_id, fingerprint, None)
+                    return None
+                _env.reset()
+                _game = _env._game
+                if hasattr(_game, "on_set_level"):
+                    _game.on_set_level(_game.current_level)
+                from lingjing_solo.m0r0_solver import solve as _m0r0_solve
+                result = _m0r0_solve(_game, t_limit=360.0)
+                print(
+                    f"  [engine_solver] m0r0: m0r0_solver 规划 "
+                    f"{len(result) if result else 0} 步",
+                    flush=True,
+                )
+                self._record(short_id, fingerprint, result)
+                return result
+            except Exception as _e:
+                import traceback
+                print(f"  [engine_solver] m0r0: m0r0_solver 异常: {_e}", flush=True)
+                traceback.print_exc()
+                self._record(short_id, fingerprint, None)
+                return None
+
         # 3. 找 maps 数据
         maps_data = self._find_maps(mod)
         if maps_data is None:
-            if not self.enable_generic_bfs:
-                # 真引擎逐步 BFS 单局 20~30s，2026-10-10 全量 14 局探测 0 次搜出 → 默认不走。
+            # 无 maps 数据 → 走公共孪生世界模型引擎（lingjing_solo.twin_engine）。
+            # 这是所有"有引擎代码但无预抽取 maps"关卡的通用回退路径：自动 deepcopy 活引擎
+            # 副本 + step() 做 BFS（Twin 论文的孪生世界模型）。搜出则缓存计划，搜不出则
+            # 回退到 harness 的 IDDFS/CEAX 盲探（与改动前一致，无回归）。
+            if not self.enable_twin_engine:
                 print(
-                    f"  [engine_solver] {short_id}: 无 maps 数据，通用 BFS 已关"
-                    f"（ENGINE_SOLVER_GENERIC=1 可开）",
+                    f"  [engine_solver] {short_id}: 无 maps 数据，孪生引擎已关"
+                    f"（ENGINE_SOLVER_TWIN=1 可开）",
                     flush=True,
                 )
                 self._record(short_id, fingerprint, None)
                 return None
-            print(f"  [engine_solver] {short_id}: 无 maps 数据，试通用 BFS...", flush=True)
-            # 通用 BFS（角色移动类）
             try:
-                result = self._generic_bfs_solve(game_id, mod)
-                if result:
-                    print(f"  [engine_solver] {short_id}: 通用 BFS 搜出 {len(result)} 步", flush=True)
-                else:
-                    print(f"  [engine_solver] {short_id}: 通用 BFS 搜不出", flush=True)
+                import arc_agi
+                from arc_agi import OperationMode
+                _arc = arc_agi.Arcade(
+                    operation_mode=OperationMode.OFFLINE,
+                    environments_dir=self.environments_dir,
+                )
+                _env = _arc.make(short_id)
+                if _env is None:
+                    self._record(short_id, fingerprint, None)
+                    return None
+                _env.reset()
+                _game = _env._game
+                if hasattr(_game, "on_set_level"):
+                    _game.on_set_level(_game.current_level)
+                from lingjing_solo.twin_engine import solve as _twin_solve
+                result = _twin_solve(_game, t_limit=300.0)
+                print(
+                    f"  [engine_solver] {short_id}: twin_engine 规划 "
+                    f"{len(result) if result else 0} 步",
+                    flush=True,
+                )
                 self._record(short_id, fingerprint, result)
                 return result
-            except Exception as e:
-                print(f"  [engine_solver] {short_id}: 通用 BFS 异常: {e}", flush=True)
+            except Exception as _e:
+                import traceback
+                print(f"  [engine_solver] {short_id}: twin_engine 异常: {_e}", flush=True)
+                traceback.print_exc()
+                self._record(short_id, fingerprint, None)
                 return None
         print(f"  [engine_solver] {short_id}: 找到 maps, {len(maps_data)} 关", flush=True)
 

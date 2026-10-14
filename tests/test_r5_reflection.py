@@ -21,7 +21,9 @@ from lingjing_solo.world_model import WorldModelField
 def grid_with_marker(x: int | None = None) -> np.ndarray:
     grid = np.zeros((64, 64), dtype=np.int8)
     if x is not None:
-        grid[0, x] = 1
+        # interior cell, clear of the masked edge band (status-bar masking would
+        # otherwise treat an edge pixel as chrome and merge the two successors).
+        grid[32, 30 + x] = 1
     return grid
 
 

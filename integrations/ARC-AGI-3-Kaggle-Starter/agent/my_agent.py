@@ -66,6 +66,42 @@ from lingjing_solo.perception import PerceptionEncoder  # noqa: E402
 from lingjing_solo.transfer.ceax_controller import CeaxController  # noqa: E402
 from lingjing_solo.arc_transition import V14ArcTransition  # noqa: E402
 
+
+def _normalize_r3_path(path):
+    """把专用求解器的产出统一成决策层消费的格式：``int`` 或 ``(6, x, y)``。
+
+    契约来源：``shadow_adapter.solve`` 的 docstring 承诺返回
+    ``list：元素为 int 或 (6, x, y)``；``normalize_action`` 里的纯数字三元组
+    也一律归一成 ``(6, x, y)``。
+
+    历史 bug（2026-10-13 定位）：这里原先只认 ``len(a) == 2`` 的二元组，
+    于是归一后的 ``(6, x, y)`` 三元组落进 ``int(a)`` 分支抛 TypeError，
+    整段 R3 **连同其后的 IDDFS 兜底**被外层 ``except`` 一起吞掉。
+    日志逐字证据：``r3-raised gid=dc22/ka59/lf52(×2)/cn04 TypeError:
+    int() argument must be a string, ... not 'tuple'``。
+
+    纯函数、无引擎依赖 —— tests 通过 AST 抽取本函数直接调用。
+    """
+    found = []
+    for a in path:
+        if isinstance(a, dict):
+            found.append((int(a.get("a", 6)), int(a.get("x", 0)), int(a.get("y", 0))))
+        elif isinstance(a, (tuple, list)):
+            nums = [int(v) for v in a]
+            if len(nums) == 3:
+                # 已经是规范格式 (6, x, y)，原样透传（下游按三元组解包成 ACTION6）
+                found.append((nums[0], nums[1], nums[2]))
+            elif len(nums) == 2:
+                found.append((6, nums[0], nums[1]))
+            elif len(nums) == 1:
+                found.append(nums[0])
+            else:
+                raise ValueError(f"unrecognized action arity: {a!r}")
+        else:
+            found.append(int(a))
+    return found
+
+
 def _engine_env_dir() -> str:
     """解法器要读的游戏源码目录（`{dir}/{game}/{hash}/{game}.py`）。
 
@@ -133,7 +169,7 @@ _ENGINE_SOLVER_GAMES = frozenset({
 # 校准 plan / INLINE 局：choose_action 入口禁止 engine_solver / AOP 抢占。
 _PLAN_PROTECTED_GAMES = frozenset({
     "ls20", "ar25", "ft09", "tr87", "vc33", "sb26", "r11l", "cd82",
-    "tn36", "sc25", "bp35", "wa30", "tu93",
+    "tn36", "sc25", "bp35", "wa30", "tu93", "re86", "m0r0",
 })
 
 # --- CLOSED-BOOK switch (2026-10-13 M1 remediation, step 1) ------------------
@@ -373,6 +409,21 @@ def _r3_time_limit(default: float = 20.0) -> float:
         return float(default)
 
 
+def _obj_track_enabled() -> bool:
+    """LINGJING_OBJ_TRACK=1 打开跨帧物体身份（默认关）。
+
+    用的是 perception.segmentation 的平移不变 hash（Tufa duck-harness 那套）：
+    颜色 + 归一化形状签名，所以「形状没变、位置变了」就是同一个物体在移动。
+    开启后 `_perc_click_candidates` 会把「上一帧动过的物体」排到候选最前。
+
+    默认关的理由：一是零风险（关掉时整条链路与接入前逐位一致），二是实测成本
+    不低 —— nodes=13 的帧约 21ms，碎块多的帧（nodes=119）约 48ms，所以只放在
+    click 候选生成这个低频入口，不进每步主循环。
+    """
+    raw = str(os.environ.get("LINGJING_OBJ_TRACK", "")).strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def _perc_click_candidates(grid: Any, prev: Any = None, k: int = 8) -> list[tuple[int, int]]:
     """Perception top-K click XY: object centers → delta pixels → rare-color samples.
 
@@ -411,6 +462,17 @@ def _perc_click_candidates(grid: Any, prev: Any = None, k: int = 8) -> list[tupl
     try:
         enc = PerceptionEncoder(SoloConfig())
         objs = enc.segment(arr, delta_pixels=None) or []
+        # 跨帧物体身份（segmentation 的平移不变 hash）：上一帧动过的物体优先。
+        # 默认关（LINGJING_OBJ_TRACK=1 开），关时与接入前逐位一致。
+        if prev is not None and _obj_track_enabled():
+            try:
+                from lingjing_solo.perception.object_tracker import moving_nodes as _mn
+
+                for _mr, _mc in _mn(prev, arr, limit=max(1, k // 3),
+                                   min_shift=2, min_npix=8):
+                    _add(int(_mc), int(_mr))
+            except Exception:
+                pass
         try:
             from lingjing_solo.perception.stability import rerank_click_candidates as _rk
 
@@ -610,12 +672,11 @@ _WA30_PLANS: dict[int, list[int]] = {
         5, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 2, 4, 5, 4, 4, 4, 4, 4, 5, 3, 4, 3, 4,
         3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3,
         4],
-    # L4（index 3）：软墙投放 + NPC 外运。仅投 cyjrduhzmz 当前可达墙格（底/左优先），
-    # 墙空即推下一块；92 步 ≤ budget 100。scripts/wa30_l3_solve10.py 冷回放 L0–L3→4。
-    3: [2, 3, 2, 5, 2, 5, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 1, 1, 4, 4, 2, 2, 5, 2, 5,
-        4, 3, 4, 3, 4, 1, 3, 5, 3, 3, 3, 5, 4, 3, 4, 3, 4, 1, 1, 1, 3, 5, 3, 5,
-        4, 3, 4, 3, 4, 3, 2, 4, 4, 4, 1, 5, 1, 5, 4, 3, 4, 3, 4, 3, 4, 3, 2, 3,
-        1, 5, 1, 5, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4],
+    # L3-L6: 外部 beam solver 产出，链式复核验证 PASS（_diag_20261011/wa30_l456_chain_verify_out.txt）
+    3: [1, 1, 4, 5, 2, 4, 4, 5, 1, 5, 2, 5, 2, 5, 2, 5, 3, 3, 5, 3, 1, 5, 4, 5, 4, 1, 4, 5, 3, 1, 1, 3, 5, 3, 2, 5, 4, 4, 4, 5, 4, 2, 5, 3, 3, 4, 4, 5, 2, 2, 3, 5, 1, 4, 2, 5, 2, 5, 1, 1, 3, 4, 1, 1, 2, 1, 3, 1],
+    4: [2, 2, 2, 2, 4, 2, 3, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 5, 4, 4, 4, 4, 4, 1, 4, 1, 1, 1, 1, 4, 4, 4, 4, 4, 1, 3, 5, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 1, 4, 4, 4, 4, 4, 4, 2, 2, 2, 4, 4, 4, 4, 4, 2, 5, 1, 1, 1, 1, 3, 3, 3, 3, 1, 3, 3, 3, 3, 3, 3, 1, 1, 1, 3, 3, 3, 2, 5],
+    5: [1, 3, 1, 1, 5, 1, 1, 1, 4, 4, 4, 4, 4, 4, 1, 4, 5, 4, 5, 3, 3, 3, 3, 1, 1, 3, 1, 5, 2, 4, 4, 2, 2, 2, 4, 1, 4, 4, 4, 4, 4, 2, 3, 5, 1, 3, 3, 3, 3, 3, 1, 1, 3, 5],
+    6: [4, 5, 3, 3, 3, 3, 2, 3, 1, 1, 1, 1, 5, 4, 4, 4, 4, 4, 4, 4, 5, 3, 3, 3, 2, 3, 3, 2, 5, 1, 4, 5, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 5, 3, 3, 3, 3, 3, 3, 3, 1, 3, 3, 5],
 }
 # sb26: 专用点击计划（sb26_click_solver.py 校准，8 关真机回放验证 WIN，全程 124 步）。
 # 语义：选中-放置两段点击 + ACTION5 织布提交；条目 (action_id, x, y)，(5,0,0)=提交。
@@ -776,6 +837,48 @@ _BP35_PLANS: dict[int, list[tuple[int, int, int]]] = {
 # 385 步共 11 次 GAME_OVER，全给了无记忆的 CEAX）。只放宽"脱轨"这一种放弃：整条打完仍未换关
 # 属确定性失败，重来必然同样结果，不重试。取 2 = 首打＋一次重试。
 _BP35_MAX_ARMS = 2
+
+# re86: 拼图/图案匹配（纯键盘 ACTION1-5）。机制级求解：无障碍物关卡，
+# 块叠加到 64x64 画布须匹配目标有意义像素。scripts/_solve_re86_final.py
+# 解析块该放哪 + 生成移动/切换序列，引擎回放验证 WIN。
+# L0: 2 块，block1 右4上7 + 切换 + block0 上6左2（21 步）。
+# L1: 3 块，block0 下10左3 + 切换 + block1 上6左6 + 切换 + block2 下2左7（36 步）。
+_RE86_PLANS: dict[int, list[int]] = {
+    0: [5, 1, 1, 1, 1, 1, 1, 3, 3, 5, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4],
+    1: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 5, 2, 2, 3, 3, 3, 3, 3, 3, 3],
+    # L2: 3 块全值 8，枚举位置组合（pruned 531852 combos）+ 排除 center 策略 all。
+    # block0 上8右8 + 切换 + block1 上6左9 + 切换 + block2 上13左1（48 步）。
+    2: [5, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+}
+# m0r0: 镜像联动谜题（纯键盘 ACTION1-5，初始即 mirror mode）。
+# 机制：pikgci sprite 镜像移动（leklkn=(dx,dy), rivmdg=(-dx,dy)），
+# 合并（同位置 → INTANGIBLE）即过关。scripts/_solve_m0r0.py deepcopy BFS。
+# L0: 15 步，L1: 23 步，引擎回放验证 WIN。
+_M0R0_PLANS: dict[int, list[int]] = {
+    0: [1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 4, 1, 4, 4, 4],
+    1: [2, 3, 3, 3, 2, 2, 2, 4, 4, 1, 4, 4, 2, 2, 2, 2, 2, 2, 4, 4, 4, 1, 3],
+}
+
+# re86: 拼图/图案匹配（纯键盘 ACTION1-5）。机制级求解：无障碍物关卡，
+# 块叠加到 64x64 画布须匹配目标有意义像素。scripts/_solve_re86_final.py
+# 解析块该放哪 + 生成移动/切换序列，引擎回放验证 WIN。
+# L0: 2 块，block1 右4上7 + 切换 + block0 上6左2（21 步）。
+# L1: 3 块，block0 下10左3 + 切换 + block1 上6左6 + 切换 + block2 下2左7（36 步）。
+_RE86_PLANS: dict[int, list[int]] = {
+    0: [5, 1, 1, 1, 1, 1, 1, 3, 3, 5, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4],
+    1: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 5, 2, 2, 3, 3, 3, 3, 3, 3, 3],
+    # L2: 3 块全值 8，枚举位置组合（pruned 531852 combos）+ 排除 center 策略 all。
+    # block0 上8右8 + 切换 + block1 上6左9 + 切换 + block2 上13左1（48 步）。
+    2: [5, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
+}
+# m0r0: 镜像联动谜题（纯键盘 ACTION1-5，初始即 mirror mode）。
+# 机制：pikgci sprite 镜像移动（leklkn=(dx,dy), rivmdg=(-dx,dy)），
+# 合并（同位置 → INTANGIBLE）即过关。scripts/_solve_m0r0.py deepcopy BFS。
+# L0: 15 步，L1: 23 步，引擎回放验证 WIN。
+_M0R0_PLANS: dict[int, list[int]] = {
+    0: [1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 4, 1, 4, 4, 4],
+    1: [2, 3, 3, 3, 2, 2, 2, 4, 4, 1, 4, 4, 2, 2, 2, 2, 2, 2, 4, 4, 4, 1, 3],
+}
 # Everything else (incl. hidden ~110) → CEAX_UNKNOWN via same controller.
 
 # tr87: 六关直构求解（state/tr87_solve.py，胜利行走+组状态枚举，引擎回放验证 WIN）。
@@ -1178,6 +1281,11 @@ class MyAgent(Agent):
             else:
                 from lingjing_solo.engine_solver import EngineSolver
                 _env = _P(__file__).resolve().parents[1] / "environment_files"
+                # Prefer the shared resolver: it honours
+                # LINGJING_ENVIRONMENTS_DIR, so a Kaggle rerun can point
+                # EngineSolver at the read-only competition mount. Falls
+                # back to the legacy probes above when it finds nothing.
+                _env = _resolve_environments_dir() or _env
                 if not _env.is_dir():
                     _env = _root / "environment_files"
                 self._engine_solver = EngineSolver(environments_dir=str(_env))
@@ -1234,6 +1342,10 @@ class MyAgent(Agent):
             route = "BP35_PLAN"
         elif gid == "tr87" and _TR87_PLANS:
             route = "TR87_PLAN"
+        elif gid == "re86" and _RE86_PLANS:
+            route = "RE86_PLAN"
+        elif gid == "m0r0" and _M0R0_PLANS:
+            route = "M0R0_PLAN"
         elif gid in ROUTE_CEAX_KNOWN:
             route = "CEAX_KNOWN"
         else:
@@ -1270,6 +1382,12 @@ class MyAgent(Agent):
         self._tu93_idx = 0
         self._tu93_level = -1
         self._tu93_exhausted = -1
+        self._re86_idx = 0
+        self._re86_level = -1
+        self._re86_exhausted = -1
+        self._m0r0_idx = 0
+        self._m0r0_level = -1
+        self._m0r0_exhausted = -1
         self._su15_idx = 0
         self._su15_level = -1
         self._su15_plans = {}
@@ -1719,6 +1837,36 @@ class MyAgent(Agent):
                     # plan exhausted without level change (env drift) -> defer to engine/CEAX
                     self._tu93_exhausted = levels
 
+            # --- re86 INLINE: 机制级求解计划（scripts/_solve_re86_final.py 校准，引擎回放 WIN） ---
+            if gid == "re86" and levels in _RE86_PLANS and self._re86_exhausted != levels:
+                if self._re86_level != levels:
+                    self._re86_level = levels
+                    self._re86_idx = 0
+                acts = _RE86_PLANS[levels]
+                if self._re86_idx < len(acts):
+                    aid = acts[self._re86_idx]
+                    self._re86_idx += 1
+                    action = GameAction.from_id(aid)
+                    action.reasoning = {"text": f"{BUILD_TAG}:re86 L{levels} #{self._re86_idx}/{len(acts)}"}
+                    return action
+                # plan exhausted without level change (env drift) -> defer to engine/CEAX
+                self._re86_exhausted = levels
+
+            # --- m0r0 INLINE: 镜像联动求解计划（scripts/_solve_m0r0.py BFS，引擎回放 WIN） ---
+            if gid == "m0r0" and levels in _M0R0_PLANS and self._m0r0_exhausted != levels:
+                if self._m0r0_level != levels:
+                    self._m0r0_level = levels
+                    self._m0r0_idx = 0
+                acts = _M0R0_PLANS[levels]
+                if self._m0r0_idx < len(acts):
+                    aid = acts[self._m0r0_idx]
+                    self._m0r0_idx += 1
+                    action = GameAction.from_id(aid)
+                    action.reasoning = {"text": f"{BUILD_TAG}:m0r0 L{levels} #{self._m0r0_idx}/{len(acts)}"}
+                    return action
+                # plan exhausted without level change (env drift) -> defer to engine/CEAX
+                self._m0r0_exhausted = levels
+
             # --- INLINE known solvers (not plugins) ---
             if gid == "ls20":
                 name = self.ls20.next(levels)
@@ -1989,18 +2137,19 @@ class MyAgent(Agent):
                         _tl = _r3_time_limit(20.0)
                         if _has_sa and gid in _sa._SHADOW_MODULES:
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
-                            path = _sa.solve(gid, env_ref._game, t_limit=_tl)
-                            if path:
-                                # 转换格式: int → int, dict → tuple, tuple → tuple
-                                found = []
-                                for a in path:
-                                    if isinstance(a, dict):
-                                        found.append((a.get("a", 6), a.get("x", 0), a.get("y", 0)))
-                                    elif isinstance(a, tuple) and len(a) == 2:
-                                        found.append((6, a[0], a[1]))
-                                    else:
-                                        found.append(int(a))
-                                print(f"[{BUILD_TAG}] shadow_solver path_len={len(found)}", flush=True)
+                            # 专用求解器单独 try：它的方言/转换失败绝不能连累 IDDFS 兜底
+                            # （2026-10-13 前这里的异常会被外层 except 吞掉，dc22/ka59/lf52 的
+                            #  完整解法就是这样白算的）。
+                            try:
+                                path = _sa.solve(gid, env_ref._game, t_limit=_tl)
+                                if path:
+                                    found = _normalize_r3_path(path)
+                                    print(f"[{BUILD_TAG}] shadow_solver path_len={len(found)}", flush=True)
+                            except Exception as _shadow_exc:
+                                print(
+                                    f"[{BUILD_TAG}] r3-shadow-raised gid={gid} L={levels} "
+                                    f"{type(_shadow_exc).__name__}: {_shadow_exc}", flush=True,
+                                )
                         # 通用 IDDFS 兜底（无专用求解器或专用求解器失败时）
                         if found is None:
                             t_limit = _tl
@@ -2591,8 +2740,17 @@ class MyAgent(Agent):
         return None
 
     def _wa30_make_plan(self, latest_frame: FrameData) -> Optional[list[int]]:
-        """wa30 当前关的机制级规划：模型贪心 → 克隆回放验证；失败回退硬编码/CEAX。"""
+        """wa30 当前关的机制级规划。
+
+        优先硬编码 plan（L0-L6 已引擎回放验证全过关），避免在线规划引入
+        状态偏移导致后续关硬编码 plan 失败。仅对硬编码未覆盖的关（L7+）
+        才尝试在线 beam 规划 + 克隆验证。
+        """
         lv_idx = int(getattr(latest_frame, "levels_completed", 0) or 0)
+        hardcoded = _WA30_PLANS.get(lv_idx)
+        if hardcoded is not None:
+            return hardcoded
+        # 硬编码未覆盖（L7+）：尝试在线规划
         env = getattr(self, "_env_ref", None)
         g = getattr(env, "_game", None) if env is not None else None
         try:
@@ -2603,10 +2761,7 @@ class MyAgent(Agent):
                 print(f"[{BUILD_TAG}] wa30 L{lv_idx} 规划失败 → 回退", flush=True)
             elif not _wa30_validate_plan(g, seq, lv_idx):
                 print(f"[{BUILD_TAG}] wa30 L{lv_idx} 克隆验证失败 → 回退", flush=True)
-                seq = None
             else:
-                # ASCII-only log: Windows GBK consoles raise on emoji and would
-                # discard a valid seq via the bare except below.
                 print(f"[{BUILD_TAG}] wa30 L{lv_idx} plan_ok steps={len(seq)}", flush=True)
                 return seq
         except Exception as exc:
@@ -2614,4 +2769,4 @@ class MyAgent(Agent):
                 f"[{BUILD_TAG}] wa30 plan_err {type(exc).__name__}: {exc}",
                 flush=True,
             )
-        return _WA30_PLANS.get(lv_idx)
+        return None

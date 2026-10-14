@@ -18,6 +18,7 @@ from ..core import (
     hash_grid, clamp, canonicalize,
     compute_phi, compute_bubble, curvature_proxy,
 )
+from ..perception.status_mask import StatusMasker
 
 
 class WorldModelField:
@@ -25,6 +26,7 @@ class WorldModelField:
         self.cfg = cfg
         self.log = logger or Logger()
         self._ar25 = None
+        self._masker = None
         self.reset()
 
     @property
@@ -67,6 +69,15 @@ class WorldModelField:
         self._last_levels = 0
         self.pending_source: SourceTerm | None = None
         self._ar25 = None
+        # 状态条掩蔽器：把每步自变的 UI chrome 在哈希前抹成常量（结构性陷阱修复）。
+        # 用 cfg 的开关，便于 A/B。reset 时仅清空统计，不重置形状（形状由首帧确定）。
+        if self.cfg.mask_status_bars and self._masker is None:
+            self._masker = StatusMasker(
+                edge_px=self.cfg.status_bar_edge_px,
+                anim_ratio=self.cfg.status_bar_anim_ratio,
+            )
+        if self._masker is not None:
+            self._masker.reset()
 
     # ---------- 协议 5：注入源项（决策写回意图）----------
     def inject_source_term(self, action: str, rationale: str = "",
@@ -103,11 +114,14 @@ class WorldModelField:
         prev_hash = None
         if self.grid_state is not None:
             prev_levels = self._last_levels if self.cfg.include_levels_in_hash else None
-            prev_hash = hash_grid(self.grid_state, prev_levels)
+            prev_hash = self._hash(self.grid_state, prev_levels)
 
         prev_np = prev_grid.grid if prev_grid is not None and hasattr(prev_grid, "grid") else None
         self.grid_state = grid.grid.copy() if grid.grid is not None else None
-        cur_hash = hash_grid(self.grid_state, levels_for_hash) if self.grid_state is not None else ""
+        # 状态条掩蔽：以新帧喂给掩蔽器（旧→新 转移计入统计），再用掩蔽后的网格算哈希。
+        if self._masker is not None and self.grid_state is not None:
+            self._masker.observe(self.grid_state, level=self.levels)
+        cur_hash = self._hash(self.grid_state, levels_for_hash) if self.grid_state is not None else ""
 
         # Φ + 泡壁（协议 2/7）
         if self.grid_state is not None:
@@ -236,11 +250,19 @@ class WorldModelField:
                 out.append((a, nxt))
         return out
 
+    def _hash(self, grid, levels):
+        """State hash with status-bar masking applied (no-op when masking off)."""
+        if grid is None:
+            return ""
+        if self._masker is not None:
+            grid = self._masker.masked(grid)
+        return hash_grid(grid, levels)
+
     def current_hash(self) -> str:
         if self.grid_state is None:
             return ""
         levels = self.levels if self.cfg.include_levels_in_hash else None
-        return hash_grid(self.grid_state, levels)
+        return self._hash(self.grid_state, levels)
 
     def propose_rule(self, premise: str, conclusion: str, confidence=None) -> RuleHypothesis:
         r = RuleHypothesis(
@@ -342,7 +364,7 @@ class WorldModelField:
             return
         lv = self.levels if levels is None else levels
         levels_for_hash = lv if self.cfg.include_levels_in_hash else None
-        h = hash_grid(grid, levels_for_hash)
+        h = self._hash(grid, levels_for_hash)
         self.win_hashes.add(h)
         self.state_value[h] += 20.0
         self.update_goal(f"win:{h}", 1.0, state_hash=h, kind="win")
@@ -353,7 +375,7 @@ class WorldModelField:
             return True
         if grid is not None:
             levels = self.levels if self.cfg.include_levels_in_hash else None
-            h = hash_grid(grid, levels)
+            h = self._hash(grid, levels)
             if h in self.win_hashes:
                 return True
         return False
