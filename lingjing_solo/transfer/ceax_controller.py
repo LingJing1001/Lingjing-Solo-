@@ -42,6 +42,24 @@ from .skill_library import SkillLibrary
 from .world_model import CounterfactualWorldModel
 from .counterfactual import CounterfactualPlanner
 
+# 图探索器接线：包内轻量模块，导入失败则整条图链路自动缺席（fail-closed）
+try:
+    from ..exploration.graph_explorer import (
+        GraphExplorer,
+        GraphExplorerConfig,
+        action_int_to_name,
+        action_name_to_int,
+    )
+except Exception:  # noqa: BLE001
+    GraphExplorer = None  # type: ignore[assignment]
+    GraphExplorerConfig = None  # type: ignore[assignment]
+
+    def action_name_to_int(a):  # type: ignore[misc]
+        return None
+
+    def action_int_to_name(n):  # type: ignore[misc]
+        return ""
+
 
 def _obj_centroid(obj) -> Optional[Tuple[int, int]]:
     pixels = getattr(obj, "pixels", None) or []
@@ -382,6 +400,9 @@ class CeaxController:
         self._last_key: Optional[Tuple] = None
         self._last_action: Optional[str] = None
         self._prev_hash: Optional[str] = None
+        # 图状态键（改状态键）：当前帧的位姿键与其原始哈希（背景微变免疫）
+        self._graph_cur_key: Optional[str] = None
+        self._graph_raw_key: str = ""
         self._levels = 0
         self._step = 0
         self._exploit_streak = 0
@@ -435,6 +456,10 @@ class CeaxController:
         self._heat_on = _heat_enabled()
         self._heat_props: Dict[str, List[Tuple[int, int, float, int]]] = {}
         self._heat_failed = False
+        self._graph_error = False
+        self._graph = self._new_graph()
+        self._graph_cur_key = None
+        self._graph_raw_key = ""
         self.metrics = {
             "experiments": 0,
             "exploits": 0,
@@ -449,6 +474,25 @@ class CeaxController:
             "heat_trials": 0,
             "heat_hits": 0,
         }
+
+    def _new_graph(self):
+        """状态空间图探索器实例（每局/每关重建；不可用时返回 None）。
+
+        GRAPH_EXPLORER=off 环境变量：整条图链路退出（喂图+咨询+A 档盲步），
+        用于增益归属 A/B 对照；不设＝默认开。
+        """
+        if GraphExplorer is None or getattr(self.cfg, "graph_explorer_enabled", True) is False:
+            return None
+        if str(os.environ.get("GRAPH_EXPLORER", "")).strip().lower() in {"off", "0", "none"}:
+            return None
+        try:
+            return GraphExplorer(
+                GraphExplorerConfig(
+                    max_nodes=int(getattr(self.cfg, "graph_nodes_cap", 800)),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            return None
 
     def set_field_gradient(self, gradient: Optional[np.ndarray]) -> None:
         """Install a normalized V14.2 gradient map for candidate scoring."""
@@ -481,6 +525,9 @@ class CeaxController:
         self.hyps = CompetingHypotheses()
         self._ledger_step = 0
         self.model = CounterfactualWorldModel()
+        self._graph = self._new_graph()
+        self._graph_cur_key = None
+        self._graph_raw_key = ""
         self.targets.clear()
         self._grid_i = 0
         self._last_click = None
@@ -889,6 +936,19 @@ class CeaxController:
 
         if self._prev_hash and self._last_action:
             self.model.observe(self._prev_hash, self._last_action, grid_hash or "changed")
+            # 图探索器接线：喂真实转移（改状态键：位姿键变＝成功边；按了位姿不变＝自环撞墙）
+            if self._graph is not None and grid_hash:
+                try:
+                    ai = action_name_to_int(self._last_action)
+                    if ai is not None:
+                        from_key = self._graph_cur_key or self._prev_hash
+                        to_key = self._state_key(grid, grid_hash)
+                        self._graph.record_transition(
+                            from_key, ai,
+                            to_key != from_key, to_key,
+                        )
+                except Exception:  # noqa: BLE001
+                    self._graph = None
         self._prev_hash = grid_hash or self._prev_hash
 
         # ---- verdict ledger（CEAX_LEDGER=1 启用；追加写，绝不影响决策与返回）----
@@ -938,6 +998,18 @@ class CeaxController:
         valid = [a for a in valid if not (a in seen or seen.add(a))]
         if not valid:
             return "ACTION1", None, "ceax_empty"
+
+        # 图探索器接线：登记当前状态节点（动作集=valid；占位节点在此补齐动作）
+        # 改状态键：节点键＝位姿键（背景微变免疫），定位失败自动回退整帧哈希
+        if self._graph is not None and grid_hash:
+            try:
+                ints = [i for i in (action_name_to_int(a) for a in valid) if i is not None]
+                key = self._state_key(grid, grid_hash)
+                self._graph_cur_key = key
+                self._graph_raw_key = grid_hash
+                self._graph.ensure_node(key, ints)
+            except Exception:  # noqa: BLE001
+                self._graph = None
 
         if self._align_gap is None and grid is not None:
             self._align_gap = _dual_marker_gap(grid)
@@ -1547,6 +1619,21 @@ class CeaxController:
         return xy
 
     def _rank_simple(self, actions: Sequence[str], grid_hash: str) -> List[str]:
+        # 图探索器咨询：当前节点已有实测边才采信（首访节点无信息优势）
+        adv: Optional[str] = None
+        gnode = None
+        gsh = ""
+        if self._graph is not None and grid_hash:
+            try:
+                gkey = self._gk(grid_hash)
+                gsh = self._graph.hash_state(gkey)
+                gnode = self._graph.nodes.get(gsh)
+                if gnode is not None and gnode.tested_actions:
+                    pick = self._graph.choose_action(gkey)
+                    if pick is not None:
+                        adv = action_int_to_name(pick[0])
+            except Exception:  # noqa: BLE001
+                adv, gnode = None, None
         rows = []
         for a in actions:
             pred = self.model.predict(grid_hash, a) if grid_hash else None
@@ -1556,9 +1643,97 @@ class CeaxController:
             recent = list(self._recent_actions).count(a)
             loop_pen = 0.35 * recent
             score = epistemic * 1.2 + ema - loop_pen
+            if gnode is not None:
+                ai = action_name_to_int(a)
+                if ai is not None and gnode.transitions.get(ai) == gsh:
+                    score -= 0.35      # 图证实：该状态按下是空转自环
+            if adv is not None and a == adv:
+                score += 0.4           # 图建议：未测新边或通往前沿的最短路首步
             rows.append((score, a))
         rows.sort(reverse=True)
         return [a for _, a in rows]
+
+    def _state_key(self, grid, raw_hash: str) -> str:
+        """图状态键（改状态键）：能定位玩家位姿就用 关卡+位姿（背景微变免疫），否则回退整帧哈希。"""
+        try:
+            pc = self._kb_player_colors
+            if pc and isinstance(grid, np.ndarray) and grid.size:
+                play = grid[:58, :] if grid.shape[0] >= 58 else grid
+                mask = np.zeros_like(play, dtype=bool)
+                for c in pc:
+                    mask |= (play == c)
+                ys, xs = np.where(mask)
+                if len(xs):
+                    px = int(round(float(xs.mean())))
+                    py = int(round(float(ys.mean())))
+                    return f"pose:L{self._levels}:{px},{py}"
+        except Exception:  # noqa: BLE001
+            pass
+        return raw_hash
+
+    def _gk(self, grid_hash: str) -> str:
+        """当前帧原始哈希 → 图状态键；非当前帧/未登记则原样返回。"""
+        if self._graph_cur_key is not None and grid_hash == self._graph_raw_key:
+            return self._graph_cur_key
+        return grid_hash
+
+    def _graph_advice_action(
+        self, grid_hash: str, dirs: Sequence[str]
+    ) -> Optional[str]:
+        """图对当前状态的建议动作（须在 dirs 内）；无信息/异常一律 None。"""
+        if self._graph is None or not grid_hash:
+            return None
+        try:
+            key = self._gk(grid_hash)
+            gsh = self._graph.hash_state(key)
+            node = self._graph.nodes.get(gsh)
+            if node is None or not node.tested_actions:
+                return None
+            pick = self._graph.choose_action(key)
+            if pick is None:
+                return None
+            name = action_int_to_name(pick[0])
+            return name if name in dirs else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _graph_selfloop(self, grid_hash: str, action: str) -> bool:
+        """图实测：该状态按下该动作仍回到本状态（自环）？未知/异常一律 False。"""
+        if self._graph is None or not grid_hash:
+            return False
+        try:
+            gsh = self._graph.hash_state(self._gk(grid_hash))
+            node = self._graph.nodes.get(gsh)
+            if node is None:
+                return False
+            ai = action_name_to_int(action)
+            return ai is not None and node.transitions.get(ai) == gsh
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _graph_dir_alternative(
+        self, grid_hash: str, nav: str, dirs: Sequence[str]
+    ) -> Optional[str]:
+        """nav 被实测自环后的替代方向：先未测方向，再测过但非自环方向；全无→None。"""
+        if self._graph is None or not grid_hash:
+            return None
+        try:
+            gsh = self._graph.hash_state(self._gk(grid_hash))
+            node = self._graph.nodes.get(gsh)
+            if node is None:
+                return None
+            alts = [a for a in dirs if a != nav]
+            for a in alts:  # 首选：完全没试过的方向
+                ai = action_name_to_int(a)
+                if ai is not None and ai not in node.tested_actions:
+                    return a
+            for a in alts:  # 次选：试过但不会原地不动的方向
+                ai = action_name_to_int(a)
+                if ai is not None and node.transitions.get(ai) != gsh:
+                    return a
+            return None
+        except Exception:  # noqa: BLE001
+            return None
 
     def _choose_keyboard(
         self, valid: Sequence[str], grid_hash: str, grid=None
@@ -1583,10 +1758,27 @@ class CeaxController:
                         if (self._kb_prev_pos[0], self._kb_prev_pos[1], a) not in self._kb_blocked:
                             self._kb_last = a
                             return a
+                # B 档接线（档2 放宽）：主判 nav 方向被图实测为本状态自环（按下不动）→
+                # 优先让位图建议；图给不出完整建议时，就近换一个非自环方向；全无才维持 nav
+                if self._graph is not None and grid_hash and self._graph_selfloop(grid_hash, nav):
+                    bdirs = [a for a in ("ACTION1", "ACTION2", "ACTION3", "ACTION4") if a in valid]
+                    adv = self._graph_advice_action(grid_hash, bdirs)
+                    pick = adv if adv is not None else self._graph_dir_alternative(grid_hash, nav, bdirs)
+                    if pick is not None:
+                        self._kb_last = pick
+                        return pick
                 return nav
         dirs = [a for a in ("ACTION1", "ACTION2", "ACTION3", "ACTION4") if a in valid]
         if not dirs:
             return valid[0]
+
+        # A 档接线：导航给不出方向的盲步，先让图带路（未测新边 / 到前沿最短路首步）
+        # 仅当当前状态节点已有实测边才采信；否则维持原盲轮换行为
+        adv = self._graph_advice_action(grid_hash, dirs)
+        if adv is not None:
+            self._kb_last = adv
+            return adv
+
         combos = [
             ("ACTION1", "ACTION4"),
             ("ACTION2", "ACTION3"),
@@ -2127,6 +2319,8 @@ class CeaxController:
             "metrics": dict(self.metrics),
             "targets": len(self.targets),
             "skills": len(self.skills.skills),
+            "graph_nodes": (len(self._graph.nodes) if self._graph is not None else -1),
+            "graph_frontier": (len(self._graph.frontier) if self._graph is not None else -1),
             "effective_clicks": self._effective_clicks,
             "submit_trials": self._submit_trials,
             "arrange_plan": len(self._arrange_plan),

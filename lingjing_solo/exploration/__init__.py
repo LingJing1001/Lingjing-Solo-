@@ -8,6 +8,7 @@ from .action_diff import (
 )
 from .click_sweep import BubbleClickPlanner
 from .explorer import ExplorationEngine
+from .graph_explorer import GraphExplorer, GraphExplorerConfig
 
 from .hotspot_candidates import (
     HotspotCandidate,
@@ -50,6 +51,8 @@ __all__ = [
     "ActionSummary",
     "BubbleClickPlanner",
     "ExplorationEngine",
+    "GraphExplorer",
+    "GraphExplorerConfig",
 
     "HotspotCandidate",
     "HotspotDetectionResult",

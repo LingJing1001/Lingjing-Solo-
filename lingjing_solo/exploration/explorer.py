@@ -9,8 +9,28 @@
 """
 from collections import Counter
 from math import log2
+from typing import Optional
 
-from ..core import Logger, SoloConfig
+import numpy as np
+
+from ..core import Logger, SoloConfig, hash_grid
+from ..exploration.graph_explorer import (
+    GraphExplorer,
+    GraphExplorerConfig,
+    action_int_to_name,
+    action_name_to_int,
+)
+
+
+# 默认动作优先级：上下优先级高，左右优先级低
+_DEFAULT_ACTION_PRIORITIES = {
+    1: 0,  # UP
+    2: 0,  # DOWN
+    3: 1,  # LEFT
+    4: 1,  # RIGHT
+    5: 2,  # ROTATE
+    6: 2,  # CLICK
+}
 
 
 class ExplorationEngine:
@@ -22,6 +42,15 @@ class ExplorationEngine:
         self._probing = False
         self.last_score_details = {}
         self._failure_counts = {}
+
+        # 图探索器：状态空间探索
+        self._graph_explorer = GraphExplorer(
+            GraphExplorerConfig(
+                max_nodes=int(getattr(cfg, "graph_nodes_cap", 800)),
+                default_action_priorities=_DEFAULT_ACTION_PRIORITIES,
+            )
+        ) if getattr(cfg, "graph_explorer_enabled", True) else None
+        self._graph_initialized = False
 
     # ---------- 信息增益估算 ----------
     def info_gain(self, action: str) -> float:
@@ -70,6 +99,11 @@ class ExplorationEngine:
         scored = []
         self.last_score_details = {}
         recent_actions = [t.action for t in list(self.field.transition_table)[-8:]]
+        # 图探索器咨询：当前状态已有实测边时，给导航/新边建议加分
+        graph_advice = self.graph_advice()
+        graph_bonus = float(getattr(self.cfg, "graph_advice_bonus", 0.3))
+        if graph_advice is None:
+            graph_bonus = 0.0
         for order, a in enumerate(valid_actions):
             gain = self.info_gain(a)
             # 反循环：若动作近期重复，降低其探索优先级。
@@ -93,6 +127,9 @@ class ExplorationEngine:
                 reason.append("loop_penalty")
             if goal_bonus:
                 reason.append("goal_successor")
+            if graph_bonus and a == graph_advice:
+                score += graph_bonus
+                reason.append("graph_advice")
             self.last_score_details[a] = {
                 "score": score,
                 "information_gain": gain,
@@ -155,9 +192,17 @@ class ExplorationEngine:
         return float(base) * fp / (1.0 + fp)
 
     def on_environment_feedback(self, state: str, levels: int, previous_levels: int) -> None:
-        """关卡变化后清理上一关的失败计数。"""
+        """关卡变化后清理上一关的失败计数，并重置状态图（新关卡=新空间）。"""
         if levels > previous_levels:
             self._failure_counts.clear()
+            if getattr(self.cfg, "graph_explorer_enabled", True):
+                self._graph_explorer = GraphExplorer(
+                    GraphExplorerConfig(
+                        max_nodes=int(getattr(self.cfg, "graph_nodes_cap", 800)),
+                        default_action_priorities=_DEFAULT_ACTION_PRIORITIES,
+                    )
+                )
+                self._graph_initialized = False
 
     # ---------- 探测模式控制 ----------
     def start_probe(self):
@@ -198,3 +243,94 @@ class ExplorationEngine:
             return description
         goals = sorted(self.field.goals, key=lambda goal: goal.confidence, reverse=True)
         return goals[0].description if goals else "unknown"
+
+    # ---------- 图探索器接口（实盘字符串动作 ↔ 图内 int，fail-closed）----------
+
+    @staticmethod
+    def _gkey(state) -> str:
+        """np 网格 → 确定性哈希串；其余原样（CEAX/field 已给哈希）。"""
+        if isinstance(state, np.ndarray):
+            return hash_grid(state)
+        return str(state) if state is not None else ""
+
+    def _graph_on(self) -> bool:
+        return (
+            bool(getattr(self.cfg, "graph_explorer_enabled", True))
+            and self._graph_explorer is not None
+        )
+
+    @staticmethod
+    def _to_int_actions(actions) -> list:
+        return [i for i in (action_name_to_int(a) for a in (actions or [])) if i is not None]
+
+    def _ensure_graph_initialized(self, state, actions):
+        """确保图探索器已初始化（只建起点一次）。"""
+        if self._graph_initialized or not self._graph_on():
+            return
+        ints = self._to_int_actions(actions)
+        key = self._gkey(state)
+        if not key or not ints:
+            return
+        try:
+            self._graph_explorer.initialize(key, ints)
+            self._graph_initialized = True
+        except Exception:
+            self._graph_explorer = None
+
+    def record_graph_transition(self, from_state, action, success, to_state, to_actions):
+        """记录状态转移到图探索器（字符串动作自动转 int；异常静默降级）。"""
+        if not self._graph_on():
+            return
+        if not self._graph_initialized:
+            self._ensure_graph_initialized(from_state, to_actions)
+            if not self._graph_initialized:
+                return
+        ai = action_name_to_int(action)
+        if ai is None:
+            return
+        try:
+            self._graph_explorer.record_transition(
+                self._gkey(from_state), ai, bool(success),
+                self._gkey(to_state), self._to_int_actions(to_actions),
+            )
+        except Exception:
+            self._graph_explorer = None
+
+    def get_graph_distance(self, state):
+        """获取到最近前沿节点的距离。"""
+        if not self._graph_initialized or not self._graph_on():
+            return float("inf")
+        try:
+            return self._graph_explorer.get_distance(self._gkey(state))
+        except Exception:
+            return float("inf")
+
+    def choose_graph_action(self, state):
+        """从图探索器选择动作，返回 "ACTIONn" 字符串或 None。"""
+        if not self._graph_initialized or not self._graph_on():
+            return None
+        try:
+            pick = self._graph_explorer.choose_action(self._gkey(state))
+            if pick is None:
+                return None
+            return action_int_to_name(pick[0])
+        except Exception:
+            return None
+
+    def graph_advice(self) -> Optional[str]:
+        """当前状态已有实测边时的图导航建议（避免首访节点的退化建议）。"""
+        if not self._graph_initialized or not self._graph_on():
+            return None
+        current = self.field.current_hash() if self.field is not None else ""
+        state = getattr(self.field, "grid_state", None) if self.field is not None else None
+        key = self._gkey(state) if state is not None else (current or "")
+        if not key:
+            return None
+        try:
+            gsh = self._graph_explorer.hash_state(key)
+            node = self._graph_explorer.nodes.get(gsh)
+            if node is None or not node.tested_actions:
+                return None
+            return self.choose_graph_action(key)
+        except Exception:
+            return None

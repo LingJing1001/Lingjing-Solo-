@@ -219,6 +219,14 @@ class LingjingSoloAgent:
         )
         self.last_perception = snap
 
+        # 图探索器接线：首帧用当前可用动作建起点节点（fail-closed，不影响主链）
+        try:
+            self.explorer._ensure_graph_initialized(
+                curr.grid, list(curr.available_actions or self.cfg.allowed_actions)
+            )
+        except Exception:
+            pass
+
         if self._prev_frame is not None and self._last_action is not None:
             self.clicks.observe_effect(
                 delta_pixels=len(snap.delta_pixels) if snap.delta_pixels else 0,
@@ -230,6 +238,18 @@ class LingjingSoloAgent:
                 len(snap.delta_pixels) if snap.delta_pixels else 0,
                 curr.levels_completed > self._levels_seen,
             )
+            # 图探索器接线：喂上一 tick 的真实转移（有向边 = 动作 → 新状态）
+            try:
+                self.explorer.record_graph_transition(
+                    self._prev_frame.grid,
+                    self._last_action,
+                    (len(snap.delta_pixels) if snap.delta_pixels else 0) > 0
+                    or curr.levels_completed > self._levels_seen,
+                    curr.grid,
+                    list(curr.available_actions or self.cfg.allowed_actions),
+                )
+            except Exception:
+                pass
             self.discrete_nav.observe(
                 self._prev_frame.raw if self._prev_frame else None,
                 curr.raw,

@@ -48,6 +48,11 @@ class SoloConfig:
     rha_penalty_power: float = 2.0          # RHA 指数（默认平方）
     top_n_hypotheses: int = 8               # explorer 输出 Top-N 规则
 
+    # ---------- L2b 状态空间图探索器（GraphExplorer 接线）----------
+    graph_explorer_enabled: bool = True     # 总开关：喂图 + 决策咨询
+    graph_advice_bonus: float = 0.3         # explorer.score_actions 图导航建议加分
+    graph_nodes_cap: int = 800              # 每局图节点上限（超限逐出旧节点）
+
     # ---------- 泡壁点击（ACTION6 / 面积律）----------
     enable_mouse: bool = True             # ARC 多数关需要点击
     enable_click_sweep: bool = True
