@@ -1,0 +1,27 @@
+{
+  "artifacts": [
+    {
+      "file": "artifacts/aop-integrated-shadow-v3.pt",
+      "sha256": "347ff6f220fc5c261191a75bce499f95b3d6625afb20ff0756037174e1c6ca57",
+      "size": 389765,
+      "source": "/tmp/lingjing-aop-shadow-v3/aop-integrated-shadow-v3.pt"
+    },
+    {
+      "file": "artifacts/counterfactual-holdout-report.json",
+      "sha256": "53359b07255e62fe362290b9f27a267be13c13b54742a9e45e0778a88d18afa0",
+      "size": 859,
+      "source": "/srv/agent-platform/projects/Lingjing-Solo-/mc-evidence/appendix-a/counterfactual-holdout-report.json"
+    },
+    {
+      "file": "artifacts/manifest.json",
+      "sha256": "6db62bdca45e624441111300eb634d40b473239c5b366f4f0d3e7213293b8237",
+      "size": 328,
+      "source": "/srv/agent-platform/projects/Lingjing-Solo-/mc-evidence/appendix-a/projection/manifest.json"
+    }
+  ],
+  "authority_status": "shadow",
+  "external_ugc": "disabled",
+  "mode": "restore-only",
+  "runtime_authority": false,
+  "schema": "appendix_a.rollback.v1"
+}

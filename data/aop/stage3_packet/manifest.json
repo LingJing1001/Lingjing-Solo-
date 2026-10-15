@@ -1,0 +1,118 @@
+{
+  "artifacts": {
+    "coverage.json": {
+      "sha256": "f1b744f0025856905ae08539c2a54c8d0360a873e9186cf07de4040002d31cee"
+    },
+    "holdout.jsonl": {
+      "rows": 1552,
+      "sha256": "c550692a1d0962eda0b29d1a2ea9f2359ce2458dafe36f3aa13147107ecb37d4"
+    },
+    "train.jsonl": {
+      "rows": 1572,
+      "sha256": "9c08652f314fa57cb6b84ba92790afd4429e0ad9361d81e6155997183e9fd82c"
+    }
+  },
+  "inputs": [
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/ar25_success_rep0/recording.jsonl",
+      "rows": 276,
+      "sha256": "948699d1b6867875488cd6e53b4624f18e36e821b5e0f7c68546ee6ded13e605",
+      "skipped_reset": 0,
+      "transitions": 276
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/ar25_success_rep1/recording.jsonl",
+      "rows": 276,
+      "sha256": "359c5c7ff447986a8ea3e1562031fb97eea3fdc17c20651fb7f32685e694f4ba",
+      "skipped_reset": 0,
+      "transitions": 276
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/dc22_fail_rep0/recording.jsonl",
+      "rows": 396,
+      "sha256": "67c1037a2bddf5c546d44a39776cb2c87d629828ca518d85c2762a4946c441d1",
+      "skipped_reset": 4,
+      "transitions": 400
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/dc22_fail_rep1/recording.jsonl",
+      "rows": 396,
+      "sha256": "35714fd2d7e4a28a1b6fb5af6b36999badcbaef6f4a6761ee21dd8ea07399a62",
+      "skipped_reset": 4,
+      "transitions": 400
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/ls20_success_rep0/recording.jsonl",
+      "rows": 309,
+      "sha256": "8b489047377415fa0ccc35ce9fa5646be1269bcf8e4432fe75cab9bc283e82e0",
+      "skipped_reset": 0,
+      "transitions": 309
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/ls20_success_rep1/recording.jsonl",
+      "rows": 309,
+      "sha256": "b8ebc5af9ff376cf7cc2754d94a217715842b1dac1a2178546f9220be0b1972c",
+      "skipped_reset": 0,
+      "transitions": 309
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/re86_fail_rep0/recording.jsonl",
+      "rows": 396,
+      "sha256": "ccaa1d8f7e046e2b873500bd29e3388e23174d0df1d85aa8c78da092e439fa7d",
+      "skipped_reset": 4,
+      "transitions": 400
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/re86_fail_rep1/recording.jsonl",
+      "rows": 396,
+      "sha256": "73d1ffb8e684be9246ce40526ba7c19f0adebd20e7c157a6434f90f3932d0ac9",
+      "skipped_reset": 4,
+      "transitions": 400
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/vc33_success_rep0/recording.jsonl",
+      "rows": 167,
+      "sha256": "b91fb4b0e8961263f7c1cfbcef44c56e83e109b3face254c72b3fb8621fbf7a4",
+      "skipped_reset": 0,
+      "transitions": 167
+    },
+    {
+      "kind": "remote_recording",
+      "path": "data/aop/episodes/vc33_success_rep1/recording.jsonl",
+      "rows": 167,
+      "sha256": "519ea5ad7802cbc2abf0d5b58c477b9be73fb858012c33e5d0de637bc9ef45e3",
+      "skipped_reset": 0,
+      "transitions": 167
+    },
+    {
+      "kind": "remote_counterfactual",
+      "path": "data/aop/collection/shards/20261013-003020-ar25-action6/counterfactual_labels.jsonl",
+      "rows": 12,
+      "sha256": "50132d2ad689282a3c0154360758ab47f4522ed94fcb5f2088f859fa9301ebc1"
+    },
+    {
+      "kind": "remote_counterfactual",
+      "path": "data/aop/collection/shards/20261013-004023-ar25-action6/counterfactual_labels.jsonl",
+      "rows": 12,
+      "sha256": "1c715429a73cd283d77fbd7380e412ab283e01d2f29acc9699ddf488d4f3850c"
+    },
+    {
+      "kind": "remote_counterfactual",
+      "path": "data/aop/collection/shards/20261013-005025-ar25-action6/counterfactual_labels.jsonl",
+      "rows": 12,
+      "sha256": "b9c78b48c9d43d76834ccbab69a2b894630f6bd7d2765f93c843c5c238cb3e77"
+    }
+  ],
+  "schema_version": "aop-stage3-dataset-v1",
+  "status": "complete",
+  "validation_fraction": 0.2
+}

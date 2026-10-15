@@ -24,7 +24,7 @@ from typing import Any, Optional
 import torch
 
 from .action_mask import choose_masked_action
-from .aop_encoder import encode_label
+from .aop_encoder import encode_label, profile_key
 from .aop_model import load_checkpoint
 
 
@@ -59,6 +59,8 @@ class AOPController:
         self.action_to_id = {name: i for i, name in enumerate(self.action_names)}
         self.action_count = max(2, len(self.action_names))
         self.model_version = str(self.config.get("version", "aop.model.v1"))
+        self.profile_log_priors = self.config.get("profile_log_priors") or {}
+        self.profile_prior_alpha = float(self.config.get("profile_prior_alpha", 0.0))
         self.threshold = threshold
         self.control_log_path = Path(control_log_path) if control_log_path else None
         if self.control_log_path is not None:
@@ -117,6 +119,7 @@ class AOPController:
                     "requested_action": {"name": act, "id": None, "payload": {}},
                     "legal_actions": legal_actions,
                     "step_id": step_id,
+                    "episode_id": episode_id or "",
                     "state_delta": {},
                 }
                 features_list.append(encode_label(
@@ -132,6 +135,9 @@ class AOPController:
                 dtype=torch.long,
             )
             candidate_scores = out["action"][torch.arange(len(legal_actions)), candidate_ids]
+            if self.profile_log_priors and self.profile_prior_alpha:
+                prior = self.profile_log_priors.get(profile_key({"episode_id": episode_id}), [0.0] * self.action_count)
+                candidate_scores = candidate_scores + self.profile_prior_alpha * torch.tensor([prior[i] for i in candidate_ids], dtype=candidate_scores.dtype)
             candidate_probs = torch.softmax(candidate_scores, dim=0)
             best_index = int(candidate_probs.argmax().item())
             best_prob = float(candidate_probs[best_index].item())

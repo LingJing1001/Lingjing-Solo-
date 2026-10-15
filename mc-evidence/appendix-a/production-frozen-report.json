@@ -1,0 +1,78 @@
+{
+  "cycles": [
+    {
+      "cycle": 1,
+      "observed_at": 1792018408.9567995,
+      "scan": {
+        "files": 288,
+        "groups": 1618,
+        "invalid_rows_or_files": 0,
+        "rows": 3296,
+        "schemas": {
+          "aop-canonical-v2": 3296
+        },
+        "snapshot_sha256": "ef5dc1df0905af37c8cb68d8ff1e220f10cfeff9934b4b2c9cc8c4bcd14ed5fb"
+      }
+    },
+    {
+      "cycle": 2,
+      "observed_at": 1792018409.9861772,
+      "scan": {
+        "files": 288,
+        "groups": 1618,
+        "invalid_rows_or_files": 0,
+        "rows": 3296,
+        "schemas": {
+          "aop-canonical-v2": 3296
+        },
+        "snapshot_sha256": "ef5dc1df0905af37c8cb68d8ff1e220f10cfeff9934b4b2c9cc8c4bcd14ed5fb"
+      }
+    },
+    {
+      "cycle": 3,
+      "observed_at": 1792018411.0153868,
+      "scan": {
+        "files": 288,
+        "groups": 1618,
+        "invalid_rows_or_files": 0,
+        "rows": 3296,
+        "schemas": {
+          "aop-canonical-v2": 3296
+        },
+        "snapshot_sha256": "ef5dc1df0905af37c8cb68d8ff1e220f10cfeff9934b4b2c9cc8c4bcd14ed5fb"
+      }
+    },
+    {
+      "cycle": 4,
+      "observed_at": 1792018412.044342,
+      "scan": {
+        "files": 288,
+        "groups": 1618,
+        "invalid_rows_or_files": 0,
+        "rows": 3296,
+        "schemas": {
+          "aop-canonical-v2": 3296
+        },
+        "snapshot_sha256": "ef5dc1df0905af37c8cb68d8ff1e220f10cfeff9934b4b2c9cc8c4bcd14ed5fb"
+      }
+    },
+    {
+      "cycle": 5,
+      "observed_at": 1792018413.0736542,
+      "scan": {
+        "files": 288,
+        "groups": 1618,
+        "invalid_rows_or_files": 0,
+        "rows": 3296,
+        "schemas": {
+          "aop-canonical-v2": 3296
+        },
+        "snapshot_sha256": "ef5dc1df0905af37c8cb68d8ff1e220f10cfeff9934b4b2c9cc8c4bcd14ed5fb"
+      }
+    }
+  ],
+  "passed": true,
+  "root": "/tmp/lingjing-aop-canonical-freeze-20261014-prod",
+  "schema": "aop.cross_group_compatibility_watch.v1",
+  "stable": true
+}

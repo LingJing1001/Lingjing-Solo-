@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 import hashlib
 import json
+import math
 
 
 class LabelError(ValueError):
@@ -37,11 +38,43 @@ def _hash_json(value: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+_VOLATILE_OBSERVATION_KEYS = {
+    "action_input",
+    "episode_id",
+    "frame_id",
+    "guid",
+    "reasoning",
+    "requested_action",
+    "tick",
+    "timestamp",
+}
+
+
+def _semantic_observation(value: Any) -> Any:
+    """Remove transport metadata that changes even when game state does not."""
+    if isinstance(value, dict):
+        return {
+            key: _semantic_observation(child)
+            for key, child in value.items()
+            if key not in _VOLATILE_OBSERVATION_KEYS
+        }
+    if isinstance(value, list):
+        return [_semantic_observation(child) for child in value]
+    return value
+
+
 def _action(row: dict[str, Any]) -> dict[str, Any]:
     action = row.get("requested_action")
     if not isinstance(action, dict) or not action.get("name") or action.get("name") == "RESET":
         raise LabelError("row has no non-RESET requested_action")
-    return {"name": str(action["name"]), "id": action.get("id")}
+    payload = action.get("payload")
+    if payload is not None and not isinstance(payload, dict):
+        raise LabelError("requested_action.payload must be an object")
+    normalized = {"name": str(action["name"]), "id": action.get("id")}
+    if payload is not None:
+        normalized["payload"] = dict(payload)
+    _require_finite(normalized, "requested_action")
+    return normalized
 
 
 def _obs(row: dict[str, Any], key: str) -> dict[str, Any]:
@@ -49,6 +82,17 @@ def _obs(row: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise LabelError(f"row missing object field: {key}")
     return value
+
+
+def _require_finite(value: Any, path: str) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise LabelError(f"observation contains non-finite value at {path}")
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _require_finite(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _require_finite(child, f"{path}[{index}]")
 
 
 def _number(obs: dict[str, Any], *paths: tuple[str, ...], default: float = 0.0) -> float:
@@ -69,6 +113,8 @@ def row_to_label(row: dict[str, Any], *, episode_id: str | None = None, step_id:
         raise LabelError("recording row must be an object")
     before = _obs(row, "observation")
     after = _obs(row, "data")
+    _require_finite(before, "observation")
+    _require_finite(after, "data")
     action = _action(row)
     episode = episode_id or str(row.get("episode_id") or after.get("episode_id") or "")
     if not episode:
@@ -83,8 +129,8 @@ def row_to_label(row: dict[str, Any], *, episode_id: str | None = None, step_id:
     after_levels = _number(after, ("levels_completed",), ("game_specific", "levels_completed"))
     before_score = _number(before, ("score",), ("game_specific", "score"))
     after_score = _number(after, ("score",), ("game_specific", "score"))
-    before_hash = before.get("state_hash") or _hash_json(before)
-    after_hash = after.get("state_hash") or _hash_json(after)
+    before_hash = _hash_json(_semantic_observation(before))
+    after_hash = _hash_json(_semantic_observation(after))
     frame_before = before.get("frame") or before.get("grid")
     frame_after = after.get("frame") or after.get("grid")
     visual_changed = frame_before is not None and frame_after is not None and frame_before != frame_after

@@ -37,6 +37,12 @@ data/aop/labels.jsonl
 # Continuous AOP runtime state, logs, and rolling labels stay on the host.
 data/aop/continuous/
 data/aop/labels/merged_58eps_targeted_20261011.jsonl
+# Collection is live, append-only runtime data; do not commit raw/log/lock/state/backups.
+data/aop/collection/
+# Canonical backup snapshots are local migration artifacts; commit the frozen model only.
+data/aop/canonical/provenance-backup-*/
+# Session-local orchestration notes stay on the host.
+memory/
 # Large persisted AOP run artifacts stay on the host; commit only provenance.
 data/aop/runs/*
 !data/aop/runs/*/

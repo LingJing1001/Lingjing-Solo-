@@ -1,0 +1,27 @@
+{
+  "artifacts": [
+    {
+      "file": "artifacts/aop-integrated-shadow-v3.pt",
+      "sha256": "347ff6f220fc5c261191a75bce499f95b3d6625afb20ff0756037174e1c6ca57",
+      "size": 389765,
+      "source": "/tmp/lingjing-aop-shadow-v3/aop-integrated-shadow-v3.pt"
+    },
+    {
+      "file": "artifacts/report.json",
+      "sha256": "d0f888f2c44848b96ce0bdbcb9e4a2564ae2cb957e230447a6d71a93d678fba8",
+      "size": 3509,
+      "source": "/tmp/lingjing-appendix-a-readiness/report.json"
+    },
+    {
+      "file": "artifacts/frozen-report.json",
+      "sha256": "2e306ae5173ac476b8e3f5f9b2db0aae70b543a59af8a553ca3a4ff7b7ccc956",
+      "size": 1970,
+      "source": "/tmp/lingjing-aop-compatibility-watch/frozen-report.json"
+    }
+  ],
+  "authority_status": "shadow",
+  "external_ugc": "disabled",
+  "mode": "restore-only",
+  "runtime_authority": false,
+  "schema": "appendix_a.rollback.v1"
+}
