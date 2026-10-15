@@ -29,6 +29,14 @@ def test_registry_exports_rollback_snapshot_without_activation(tmp_path):
     assert snapshot["authority_status"] == "shadow"
     assert (tmp_path / "c-1.rollback.json").exists()
     assert registry.activate("c-1") is False
+    assert registry.activate("c-1", approval={
+        "verdict": "passed", "verifier_task_id": "task-v", "report_sha256": "r" * 64,
+        "candidate_sha256": "c" * 64, "approved_at": "2026-10-14T23:00:00Z", "candidate_id": "c-1",
+    }) is True
+    activated = registry.get("c-1")
+    assert activated is not None
+    assert activated.authority_status == "production"
+    assert (tmp_path / "c-1.production.json").exists()
 
 
 def test_registry_checked_submission_reuses_sica_gates():

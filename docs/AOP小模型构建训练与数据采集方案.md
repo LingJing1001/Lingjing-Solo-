@@ -102,6 +102,8 @@ python3 tools/aop/train.py labels.jsonl \
 - [x] **阶段 4 纠偏：runtime-aligned candidate scoring** — 已完成并推送 `8ba4749`、`6d13b3d`；已验证训练指标与独立 evaluator 的 raw/masked 正确计数一致，未把 candidate echo 当作能力证据。
 - [ ] **阶段 4 后续：低覆盖动作质量** — v4 在不修改 frozen holdout 的前提下加入 train-only 的 profile×action 平滑先验，独立 evaluator masked accuracy `0.485825→0.550258`（854/1,552），ACTION2 `0.263158`、ACTION4 `0.608607`、ACTION5 `0.375000`；ACTION5 仅 `16` 条 holdout support，ACTION7 为 `0` 条 support，仍需补充经 gate 的非 IOP 证据或继续改进。未达到部署门槛前不得进入阶段 5。
 - [ ] **2026-10-13 ACTION7 补采候选** — 三个 ar25 ACTION7 shard 通过 counterfactual QA，共 `20` groups / `40` rows；候选 packet `data/aop/stage3_packet_action7_candidate/` freeze `complete`，按 group 切分 train `1,576`、holdout `1,552`。ACTION7 holdout support `4`，ACTION7 accuracy `0.750000`，但整体 masked accuracy `0.531572` 低于 v4 `0.550258`，因此该候选 rejected/shadow-only，继续补采后再训练。
+- [x] **2026-10-14 model-thread → sandbox canonical ingest** — 新增 `tools/aop/canonical_ingest.py`：要求 `provenance_complete=true`、校验 source SHA、生成 `aop-canonical-v1`、按 `counterfactual_group_id` 做幂等去重，并输出 freeze-compatible `manifest.json`；`continuous_runner.py` 改为只写 raw/canonical shard，停止直接以 cumulative labels 自动训练，状态改为 `candidate_requires_freeze`。无 provenance 的旧 continuous labels 不会被自动接纳。
+- [ ] **model-thread 数据迁移** — 现有 `data/aop/continuous/labels.jsonl` 中的历史 rows 仍需逐条追溯 raw recording/provenance 后才能进入 candidate packet；找不到 provenance 的 rows 保持 quarantine，不得用于 sandbox 训练或验证。
 - [ ] **阶段 5：线上接入** — 未接入 runtime；确定性/legal-action 路径仍是唯一 authority。
 
 ### 阶段 3 的调整
@@ -110,3 +112,15 @@ python3 tools/aop/train.py labels.jsonl \
 2. 每个 profile 至少保留一份通过 gate 的 recording；阶段 3 完成前还要覆盖 action/no-op/失败/推进四类样本，并保留 `episode_id`、legal actions、settled after-state 和 provenance。
 3. 在进入真实训练前，按 episode 做 train/holdout 切分；holdout 非空且不得与训练 episode 重叠。
 4. 采集 runner 的 raw replay、失败日志和临时 state 仍属于本地证据，不自动纳入 Git；Git 只纳入可复建 Stage 3 packet 所需的成功 shard manifest/labels、冻结工具、测试和 packet artifact。
+
+## 7. 跨 thread canonical ingest 标准（2026-10-14）
+
+model thread 与 sandbox thread 共享 `aop-canonical-v1`，但不直接拼接两个 `labels.jsonl`。统一入口为：
+
+```text
+raw shard → manifest/provenance → canonical ingest → QA → episode/group split → freeze candidate → shadow train/evaluate
+```
+
+硬门槛定义在 `src/aop/standards/acceptance_criteria.md`：source/labels SHA、`collector_exit=0`、行数一致、counterfactual group 至少两个 candidate、replay verification、episode/group 无泄漏 split 均为必需条件。任一条件失败即 quarantine/fail-closed。
+
+`data/aop/continuous/labels.jsonl` 仍是 model thread 的累计缓存，不是 sandbox packet。缺少 raw provenance 的历史 rows 不做无依据回填；只有更新后的 collector 生成并通过 canonical ingest 的新 shard 才能进入 candidate freeze。canonical ingest 不触发训练，`runtime_authority` 继续关闭。

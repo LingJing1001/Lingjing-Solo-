@@ -33,6 +33,22 @@ def test_label_separates_visual_change_from_progress():
     assert label.reward == 0.0
 
 
+def test_label_preserves_complex_action_payload():
+    item = row(requested_action={
+        "name": "ACTION6",
+        "id": 6,
+        "payload": {"game_id": "ar25-example", "x": 15, "y": 31},
+    })
+    label = row_to_label(item)
+    assert label.requested_action == item["requested_action"]
+
+
+def test_label_rejects_non_object_action_payload():
+    item = row(requested_action={"name": "ACTION6", "id": 6, "payload": "15,31"})
+    with pytest.raises(LabelError, match="payload"):
+        row_to_label(item)
+
+
 def test_level_advance_is_progress():
     item = row()
     item["data"]["levels_completed"] = 1

@@ -67,7 +67,14 @@ def _action(row: dict[str, Any]) -> dict[str, Any]:
     action = row.get("requested_action")
     if not isinstance(action, dict) or not action.get("name") or action.get("name") == "RESET":
         raise LabelError("row has no non-RESET requested_action")
-    return {"name": str(action["name"]), "id": action.get("id")}
+    payload = action.get("payload")
+    if payload is not None and not isinstance(payload, dict):
+        raise LabelError("requested_action.payload must be an object")
+    normalized = {"name": str(action["name"]), "id": action.get("id")}
+    if payload is not None:
+        normalized["payload"] = dict(payload)
+    _require_finite(normalized, "requested_action")
+    return normalized
 
 
 def _obs(row: dict[str, Any], key: str) -> dict[str, Any]:

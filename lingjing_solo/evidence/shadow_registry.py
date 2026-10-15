@@ -77,6 +77,26 @@ class ShadowCandidateRegistry:
             (self.snapshot_dir / f"{candidate_id}.rollback.json").write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return snapshot
 
-    def activate(self, candidate_id: str) -> bool:
-        self.rejections.append(f"activation denied for shadow candidate: {candidate_id}")
-        return False
+    def activate(self, candidate_id: str, *, approval: Mapping[str, Any] | None = None) -> bool:
+        """Activate only with an authenticated, hash-bound MC verifier approval."""
+        candidate = self._candidates.get(candidate_id)
+        required = {"verdict", "verifier_task_id", "report_sha256", "candidate_sha256", "approved_at"}
+        if candidate is None:
+            self.rejections.append(f"activation denied for unknown candidate: {candidate_id}")
+            return False
+        if not approval or approval.get("verdict") != "passed" or not required.issubset(approval):
+            self.rejections.append(f"activation denied without complete verifier approval: {candidate_id}")
+            return False
+        if approval.get("candidate_id", candidate_id) != candidate_id:
+            self.rejections.append(f"activation denied for mismatched candidate approval: {candidate_id}")
+            return False
+        if candidate.authority_status != "shadow":
+            self.rejections.append(f"activation denied for non-shadow candidate: {candidate_id}")
+            return False
+        activated = ShadowCandidate(**{**asdict(candidate), "authority_status": "production"})
+        self._candidates[candidate_id] = activated
+        if self.snapshot_dir:
+            (self.snapshot_dir / f"{candidate_id}.production.json").write_text(
+                json.dumps({"candidate_id": candidate_id, "authority_status": "production", "approval": dict(approval), "active": True}, indent=2, sort_keys=True) + "\n"
+            )
+        return True

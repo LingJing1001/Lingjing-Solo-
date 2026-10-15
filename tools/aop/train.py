@@ -199,7 +199,30 @@ def evaluate(model, labels, action_to_id, class_weights, profile_log_priors=None
         "action_effective_accuracy": float((effective_logits.argmax(dim=1) == y_effective).float().mean().item()),
         "progressed_accuracy": float((progressed_logits.argmax(dim=1) == y_progressed).float().mean().item()),
         "per_action": {name: per_action[name] for name in names},
+        "action_macro_accuracy": macro_action_accuracy({"per_action": per_action}),
     }
+
+
+def macro_action_accuracy(metrics: dict) -> float:
+    values = [
+        item["masked_accuracy"]
+        for item in metrics["per_action"].values()
+        if item["support"] > 0
+    ]
+    if not values:
+        raise ValueError("macro action accuracy requires supported actions")
+    return float(sum(values) / len(values))
+
+
+def better_holdout(candidate: dict, baseline: dict) -> bool:
+    """Accept action and macro-action gains without material progress regression."""
+    candidate_macro = candidate.get("action_macro_accuracy", candidate["action_masked_accuracy"])
+    baseline_macro = baseline.get("action_macro_accuracy", baseline["action_masked_accuracy"])
+    return (
+        candidate["action_masked_accuracy"] > baseline["action_masked_accuracy"]
+        and candidate_macro > baseline_macro
+        and candidate["progressed_accuracy"] >= baseline["progressed_accuracy"] - 0.02
+    )
 
 
 def main() -> int:
@@ -209,13 +232,19 @@ def main() -> int:
     parser.add_argument("--dataset-manifest", type=Path)
     parser.add_argument("--metrics-output", type=Path)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--rank-loss-weight", type=float, default=0.5)
+    parser.add_argument("--prior-alpha", type=float, default=0.0)
     parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=20261013)
     parser.add_argument("--synthetic", action="store_true", help="mark output as synthetic smoke evidence")
     args = parser.parse_args()
     if args.epochs < 1:
         raise SystemExit("--epochs must be positive")
+    if args.patience < 1 or args.learning_rate <= 0 or args.rank_loss_weight < 0 or args.prior_alpha < 0:
+        raise SystemExit("invalid optimization arguments")
     torch.manual_seed(args.seed)
     torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
@@ -233,7 +262,7 @@ def main() -> int:
         names.append("__UNUSED__")
     action_to_id = {name: i for i, name in enumerate(names)}
     model = AOPModel(16, len(names))
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     criterion = nn.CrossEntropyLoss()
     class_counts = torch.bincount(
         torch.tensor([action_to_id[x["requested_action"]["name"]] for x in train]),
@@ -243,10 +272,13 @@ def main() -> int:
     class_weights[class_counts == 0] = 0.0
     class_weights = class_weights / class_weights[class_counts > 0].mean()
     profile_log_priors = profile_priors(train, action_to_id)
-    prior_alpha = 0.5
+    prior_alpha = args.prior_alpha
     model.eval()
     baseline = evaluate(model, valid, action_to_id, class_weights, profile_log_priors, prior_alpha)
-    for _ in range(args.epochs):
+    best_metrics = baseline
+    best_state = {name: value.detach().clone() for name, value in model.state_dict().items()}
+    best_epoch = 0
+    for epoch in range(1, args.epochs + 1):
         model.train()
         y_effective = torch.tensor([int(bool(x["state_delta"]["action_effective"])) for x in train])
         y_progressed = torch.tensor([int(bool(x["state_delta"]["progressed"])) for x in train])
@@ -257,11 +289,20 @@ def main() -> int:
             criterion(effective_logits, y_effective)
             + criterion(progressed_logits, y_progressed)
             + action_loss(candidate_scores, y_action, legal, class_weights)
-            + counterfactual_rank_loss(candidate_scores, y_action, train)
+            + args.rank_loss_weight * counterfactual_rank_loss(candidate_scores, y_action, train)
         )
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        model.eval()
+        candidate_metrics = evaluate(model, valid, action_to_id, class_weights, profile_log_priors, prior_alpha)
+        if better_holdout(candidate_metrics, best_metrics):
+            best_metrics = candidate_metrics
+            best_state = {name: value.detach().clone() for name, value in model.state_dict().items()}
+            best_epoch = epoch
+        elif epoch - best_epoch >= args.patience:
+            break
+    model.load_state_dict(best_state)
     model.eval()
     trained = evaluate(model, valid, action_to_id, class_weights, profile_log_priors, prior_alpha)
     train_hash = _sha256(args.labels)
@@ -288,6 +329,11 @@ def main() -> int:
         "training_command": " ".join(sys.argv),
         "seed": args.seed,
         "epochs": args.epochs,
+        "selected_epoch": best_epoch,
+        "patience": args.patience,
+        "learning_rate": args.learning_rate,
+        "rank_loss_weight": args.rank_loss_weight,
+        "profile_prior_alpha": prior_alpha,
         "evidence": evidence,
         "runtime_authority": False,
         "profile_log_priors": profile_log_priors,
@@ -301,6 +347,11 @@ def main() -> int:
         "runtime_authority": False,
         "seed": args.seed,
         "epochs": args.epochs,
+        "selected_epoch": best_epoch,
+        "patience": args.patience,
+        "learning_rate": args.learning_rate,
+        "rank_loss_weight": args.rank_loss_weight,
+        "profile_prior_alpha": prior_alpha,
         "train_rows": len(train),
         "holdout_rows": len(valid),
         "train_sha256": train_hash,

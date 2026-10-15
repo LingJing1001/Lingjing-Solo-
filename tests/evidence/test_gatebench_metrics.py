@@ -19,6 +19,8 @@ def test_gatebench_metrics_and_determinism():
     assert metrics["false_accept"] == 1 / 3
     assert metrics["false_reject"] == 1 / 3
     assert metrics["combination_activation_failure_rate"] == 0.25
+    assert metrics["gate_drift_by_environment"]["env-a"]["false_accept"] == 0.5
+    assert metrics["gate_drift_by_environment"]["env-b"]["gate_drift"] == -1.0
 
 
 def test_empty_cases_and_invalid_denominators_fail_closed():

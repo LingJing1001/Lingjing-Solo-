@@ -6,7 +6,7 @@ import torch
 from lingjing_solo.neural.aop_encoder import encode_label
 from lingjing_solo.neural.aop_model import AOPModel, load_checkpoint, save_checkpoint
 from tools.aop.dataset import split_labels
-from tools.aop.train import assert_disjoint, evaluate
+from tools.aop.train import assert_disjoint, evaluate, better_holdout, macro_action_accuracy
 
 
 def label(ep, step, effective=1, progressed=0):
@@ -104,3 +104,16 @@ def test_checkpoint_round_trip(tmp_path):
     model.eval()
     assert config["input_width"] == 16
     assert torch.allclose(model(torch.zeros(1, 16))["progressed"], restored(torch.zeros(1, 16))["progressed"])
+
+
+def test_better_holdout_prefers_masked_action_without_progress_regression():
+    baseline = {"action_masked_accuracy": 0.40, "progressed_accuracy": 0.90}
+    candidate = {"action_masked_accuracy": 0.41, "progressed_accuracy": 0.89}
+    assert better_holdout(candidate, baseline)
+    rejected = {"action_masked_accuracy": 0.42, "progressed_accuracy": 0.79}
+    assert not better_holdout(rejected, baseline)
+
+
+def test_macro_action_accuracy_ignores_zero_support():
+    metrics = {"per_action": {"A": {"support": 2, "masked_accuracy": 0.5}, "B": {"support": 0, "masked_accuracy": None}, "C": {"support": 1, "masked_accuracy": 1.0}}}
+    assert macro_action_accuracy(metrics) == 0.75

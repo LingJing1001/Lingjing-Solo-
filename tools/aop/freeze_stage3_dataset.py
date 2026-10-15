@@ -63,17 +63,97 @@ def compact_label(label: dict[str, Any], provenance: dict[str, Any]) -> dict[str
     return label
 
 
-def refresh_counterfactual(row: dict[str, Any], shard_id: str, source_hash: str) -> dict[str, Any]:
+def _action_id(value: Any) -> int | None:
+    if isinstance(value, str) and value.startswith("ACTION"):
+        value = value.removeprefix("ACTION")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def validate_counterfactual_row(row: dict[str, Any], shard_id: str) -> None:
+    """Validate replay identity and action semantics before normalization."""
     if row.get("source") != "remote_counterfactual_v1" or row.get("replay_verified") is not True:
         raise ValueError(f"{shard_id}: counterfactual row lacks verified remote provenance")
     action = row.get("requested_action")
     legal = row.get("legal_actions")
-    if not isinstance(action, dict) or action.get("id") not in (legal or []):
+    if not isinstance(action, dict):
+        raise ValueError(f"{shard_id}: requested_action must be an object")
+    action_id = _action_id(action.get("id"))
+    candidate_id = _action_id(row.get("candidate_action_id"))
+    legal_ids = {_action_id(value) for value in (legal or [])}
+    if action_id is None or action_id not in legal_ids:
         raise ValueError(f"{shard_id}: counterfactual action is not legal")
+    if candidate_id != action_id or action.get("name") != f"ACTION{action_id}":
+        raise ValueError(f"{shard_id}: candidate/requested action mismatch")
+    payload = action.get("payload", {})
+    if not isinstance(payload, dict):
+        raise ValueError(f"{shard_id}: action payload must be an object")
+    if action_id == 6:
+        if (
+            not isinstance(payload.get("game_id"), str)
+            or not payload.get("game_id")
+            or not isinstance(payload.get("x"), int)
+            or isinstance(payload.get("x"), bool)
+            or not isinstance(payload.get("y"), int)
+            or isinstance(payload.get("y"), bool)
+        ):
+            raise ValueError(f"{shard_id}: ACTION6 payload requires game_id and integer x,y")
+    recorded_action = (((row.get("observation_after") or {}).get("frame") or {}).get("action_input"))
+    if isinstance(recorded_action, dict):
+        if _action_id(recorded_action.get("id")) != action_id or recorded_action.get("data") != payload:
+            raise ValueError(f"{shard_id}: requested action does not match recorded action payload")
+    replay_hash = row.get("replay_state_hash")
+    delta = row.get("state_delta")
+    if not isinstance(replay_hash, str) or not replay_hash:
+        raise ValueError(f"{shard_id}: replay_state_hash is missing")
+    if not isinstance(delta, dict) or delta.get("before_hash") != replay_hash:
+        raise ValueError(f"{shard_id}: state_delta.before_hash must equal replay_state_hash")
+    if not isinstance(delta.get("after_hash"), str) or not delta.get("after_hash"):
+        raise ValueError(f"{shard_id}: state_delta.after_hash is missing")
     group = row.get("counterfactual_group_id")
     episode = row.get("episode_id")
     if not isinstance(group, str) or not group or not isinstance(episode, str) or not episode:
         raise ValueError(f"{shard_id}: counterfactual identity is missing")
+
+
+def validate_counterfactual_groups(rows: list[dict[str, Any]], shard_id: str) -> None:
+    groups: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
+    for row in rows:
+        validate_counterfactual_row(row, shard_id)
+        groups[str(row["counterfactual_group_id"])].append(row)
+    if not groups:
+        raise ValueError(f"{shard_id}: no counterfactual groups")
+    for group_id, candidates in groups.items():
+        if len(candidates) < 2:
+            raise ValueError(f"{shard_id}:{group_id}: counterfactual group must contain at least two candidates")
+        replay_hashes = {row["replay_state_hash"] for row in candidates}
+        candidate_ids = {_action_id(row.get("candidate_action_id")) for row in candidates}
+        legal_sets = {
+            tuple(sorted(value for value in (_action_id(item) for item in row.get("legal_actions", [])) if value is not None))
+            for row in candidates
+        }
+        prefix_sequences = {
+            tuple(row.get("prefix_action_ids") or [])
+            for row in candidates
+            if "prefix_action_ids" in row
+        }
+        if len(replay_hashes) != 1:
+            raise ValueError(f"{shard_id}:{group_id}: counterfactual group has mixed replay states")
+        if len(legal_sets) != 1:
+            raise ValueError(f"{shard_id}:{group_id}: counterfactual group has mixed legal actions")
+        if len(prefix_sequences) > 1:
+            raise ValueError(f"{shard_id}:{group_id}: counterfactual group has mixed replay prefixes")
+        if len(candidate_ids) != len(candidates):
+            raise ValueError(f"{shard_id}:{group_id}: duplicate candidate action")
+
+
+def refresh_counterfactual(row: dict[str, Any], shard_id: str, source_hash: str, source_commit: str | None = None) -> dict[str, Any]:
+    validate_counterfactual_row(row, shard_id)
+    action = row["requested_action"]
+    group = row["counterfactual_group_id"]
+    episode = row["episode_id"]
     normalized = row_to_label(
         {
             "episode_id": f"{shard_id}:{episode}",
@@ -88,9 +168,15 @@ def refresh_counterfactual(row: dict[str, Any], shard_id: str, source_hash: str)
     normalized["replay_state_hash"] = row.get("replay_state_hash")
     normalized["replay_verified"] = True
     normalized["source"] = "remote_counterfactual_v1"
+    # Preserve hashes/effect labels computed from raw replay frames. Recomputing
+    # after observation compaction would discard the visual state boundary.
+    normalized["state_delta"] = dict(row["state_delta"])
+    provenance = {"kind": "remote_counterfactual", "shard_id": shard_id, "sha256": source_hash}
+    if source_commit:
+        provenance["source_commit"] = source_commit
     return compact_label(
         normalized,
-        {"kind": "remote_counterfactual", "shard_id": shard_id, "sha256": source_hash},
+        provenance,
     )
 
 
@@ -232,6 +318,7 @@ def build_packet(episodes_dir: Path, shards_dir: Path, output: Path, validation_
             or manifest.get("labels_sha256") != source_hash
         ):
             raise ValueError(f"{shard}: manifest integrity check failed")
+        validate_counterfactual_groups(rows, shard.name)
         refreshed = [refresh_counterfactual(row, shard.name, source_hash) for row in rows]
         counts = collections.Counter(row["counterfactual_group_id"] for row in refreshed)
         if not counts or any(count < 2 for count in counts.values()):
