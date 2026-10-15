@@ -69,21 +69,32 @@ from lingjing_solo.arc_transition import V14ArcTransition  # noqa: E402
 def _engine_env_dir() -> str:
     """解法器要读的游戏源码目录（`{dir}/{game}/{hash}/{game}.py`）。
 
-    本地 checkout 里它就是仓库根；Kaggle 上这个文件被复制到
-    `/kaggle/working/ARC-AGI-3-Agents/agents/templates/my_agent.py`，
-    所以不能写死 `parents[3]`。按 ENVIRONMENTS_DIR → 本文件各级祖先 → cwd 依次找，
-    并把结论打进启动日志，这样下次真实跑分能直接回答"Kaggle 上有没有源码"。
+    本地 checkout 里它是含 25 局的 startpack 目录（`<repo>/integrations/
+    ARC-AGI-3-Kaggle-Starter/environment_files`）；Kaggle 上这个文件被复制到
+    `/kaggle/working/ARC-AGI-3-Agents/agents/templates/my_agent.py`，祖先层级不同，
+    所以不写死某一级。做法：把 ENVIRONMENTS_DIR / 各级祖先 / cwd 都当候选，逐个探
+    游戏目录数后取最多的那个（显式 ENVIRONMENTS_DIR 优先），并把每个候选的 game_dirs
+    打进启动日志，这样下次真实跑分能直接回答"Kaggle 上有没有源码、认出了几局"。
     """
     candidates: list[Path] = []
     configured = os.environ.get("ENGINE_ENVIRONMENTS_DIR") or os.environ.get("ENVIRONMENTS_DIR")
     if configured:
-        candidates.append(Path(configured).expanduser())
+        c = Path(configured).expanduser()
+        if c.is_dir():
+            games = sum(1 for p in c.iterdir() if p.is_dir())
+            print(
+                f"[engine_solver] env_dir={c} game_dirs={games} (ENVIRONMENTS_DIR)",
+                flush=True,
+            )
+            return str(c)
     here = Path(__file__).resolve()
-    # 优先级点名，不靠"逐级往上"的顺序：
-    #   parents[3] = 本地 checkout 的仓库根（8/8 那次证明用的就是它，必须优先，
-    #                因为 Starter 下另有一份内容不同的 environment_files 副本）
-    #   parents[2] = Kaggle 上 /kaggle/working/ARC-AGI-3-Agents（框架自带的源码位）
-    for idx in (3, 2, 1, 0, 4):
+    # 收集候选：不靠"逐级往上"的固定顺序，而是把每个候选都探一遍游戏目录数，取最多的。
+    # 原因：本地 checkout 里 parents[3]（=<repo>）下确有一份 environment_files，但只有
+    # ar25 一个目录；真正含 25 局的是 parents[1]（integrations/ARC-AGI-3-Kaggle-Starter），
+    # 也正是同文件 _resolve_environments_dir() 用的那个 —— 过去固定先返回 parents[3]，
+    # 于是 EngineSolver 只认得 ar25，twin 一直打 "无 .py 文件"。择优后本地与 Kaggle
+    # （my_agent.py 被复制到 agents/templates/ 下，祖先层级不同）都能自洽。
+    for idx in (1, 3, 2, 0, 4):
         try:
             candidates.append(here.parents[idx] / "environment_files")
         except IndexError:
@@ -96,18 +107,24 @@ def _engine_env_dir() -> str:
         if key not in seen:
             seen.add(key)
             ordered.append(cand)
-    candidates = ordered
-    for cand in candidates:
+
+    best: Any = None
+    for cand in ordered:
         try:
-            if cand.is_dir():
-                games = sum(1 for p in cand.iterdir() if p.is_dir())
-                print(f"[engine_solver] env_dir={cand} game_dirs={games}", flush=True)
-                return str(cand)
+            if not cand.is_dir():
+                continue
+            games = sum(1 for p in cand.iterdir() if p.is_dir())
         except OSError:
             continue
+        print(f"[engine_solver] env_dir 候选 {cand} game_dirs={games}", flush=True)
+        if best is None or games > best[0]:
+            best = (games, cand)
+    if best is not None:
+        print(f"[engine_solver] env_dir={best[1]} game_dirs={best[0]}", flush=True)
+        return str(best[1])
     print(
-        f"[engine_solver] env_dir=not-found tried={len(candidates)} "
-        f"first={candidates[0] if candidates else '?'}",
+        f"[engine_solver] env_dir=not-found tried={len(ordered)} "
+        f"first={ordered[0] if ordered else '?'}",
         flush=True,
     )
     return ""

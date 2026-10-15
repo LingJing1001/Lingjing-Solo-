@@ -35,7 +35,17 @@ from lingjing_solo.harness.engine_action_adapter import (
 
 # 缓存条目结构版本；结构变了旧条目按 miss 处理
 # 2 = 每只按钮组只发一次点击（1 是旧的"按字母逐个发"，解法不可用）
-_CACHE_VERSION = 2
+# 3 = 引入孪生世界模型引擎（twin_engine）作为无 maps 关的通用回退，旧缓存失效
+#     （3 之后不再整体升版本：条目新增 path/max_nodes 字段，由 _cached_solution 做
+#      精准失效，避免连 maps 解法一起作废）
+_CACHE_VERSION = 3
+
+# twin 引擎的单局节点配额。必须与 standalone 验证口径一致（verify_large_t.py /
+# state/bench_large_t.log 用的就是 5_000_000）。twin_engine.solve 按关数均分：
+# per_nodes = max(50000, max_nodes // n_levels)。agent 侧不传时取默认 2_000_000，
+# sk48（8 关）只有 250k/关，恰好卡在 L0 解的上方 → 规划 0 步；给到 5_000_000
+# 即 625k/关，266s 搜出 14 步、覆盖 1 关。对照实验见 verify_twin_maxnodes_ab.py。
+_TWIN_MAX_NODES = 5_000_000
 
 
 def _default_cache_path() -> Path:
@@ -71,6 +81,7 @@ class EngineSolver:
         self,
         environments_dir: str = "environment_files",
         enable_generic_bfs: Optional[bool] = None,
+        enable_twin_engine: Optional[bool] = None,
         cache_path: Optional[str] = None,
         use_cache: Optional[bool] = None,
     ):
@@ -82,6 +93,14 @@ class EngineSolver:
             _env_flag("ENGINE_SOLVER_GENERIC", False)
             if enable_generic_bfs is None
             else bool(enable_generic_bfs)
+        )
+        # 公共孪生世界模型引擎（twin_engine）：deepcopy 活引擎副本 + step() 做 BFS，
+        # 覆盖所有"有引擎代码但无预抽取 maps"的关卡（Twin 论文的孪生世界模型）。
+        # 默认开（搜不出会优雅回退到通用 BFS / harness 的 IDDFS/CEAX 盲探，无回归）。
+        self.enable_twin_engine = (
+            _env_flag("ENGINE_SOLVER_TWIN", True)
+            if enable_twin_engine is None
+            else bool(enable_twin_engine)
         )
         self.use_cache = (
             _env_flag("ENGINE_SOLVER_CACHE", True)
@@ -120,16 +139,36 @@ class EngineSolver:
         except Exception:  # noqa: BLE001
             pass
 
-    def _cached_solution(self, short_id: str, fingerprint: str) -> tuple[bool, Optional[list]]:
-        """(是否命中, 解法或 None)。命中即免去整轮探测。"""
+    def _cached_solution(
+        self, short_id: str, fingerprint: str, max_nodes: Optional[int] = None
+    ) -> tuple[bool, Optional[list]]:
+        """(是否命中, 解法或 None)。命中即免去整轮探测。
+
+        max_nodes: twin 分支的节点配额。twin 的"无解"结论与配额直接相关 —— 配额上调后
+        必须重搜，否则陈旧负缓存会短路（sk48 就是这样：旧条目在默认 2_000_000 下记
+        none，改成 5_000_000 后不清缓存的话 twin 根本不会被再调用）。
+        没有 path 字段的旧条目无法判定来源，其中 outcome="none" 的一律按 twin 条目
+        重验（代价一次探测）；outcome="solution" 的保留 —— 解法本身不受配额影响。
+        """
         entry = self._cache.get(short_id)
         if (
             not isinstance(entry, dict)
             or entry.get("fingerprint") != fingerprint
             or entry.get("generic") != self.enable_generic_bfs
+            or entry.get("twin") != self.enable_twin_engine
         ):
             return False, None
         outcome = entry.get("outcome")
+        if max_nodes is not None and self.enable_twin_engine:
+            src = entry.get("path")
+            _is_twin_entry = src == "twin" or (src is None and outcome == "none")
+            if _is_twin_entry and entry.get("max_nodes") != max_nodes:
+                print(
+                    f"  [engine_solver] {short_id}: 缓存配额过期"
+                    f"（{entry.get('max_nodes')} → {max_nodes}），重搜",
+                    flush=True,
+                )
+                return False, None
         if outcome == "none":
             return True, None
         if outcome == "solution":
@@ -138,17 +177,35 @@ class EngineSolver:
                 return True, [tuple(item) for item in sol]
         return False, None
 
-    def _record(self, short_id: str, fingerprint: str, solution: Optional[list]) -> None:
-        """落一条探测结论（搜出的解法一起存，下次直接回放）。"""
+    def _record(
+        self,
+        short_id: str,
+        fingerprint: str,
+        solution: Optional[list],
+        max_nodes: Optional[int] = None,
+        path: Optional[str] = None,
+    ) -> None:
+        """落一条探测结论（搜出的解法一起存，下次直接回放）。
+
+        path/max_nodes 记录结论由哪条分支（maps / generic / twin）、在什么节点配额下
+        得出，供 _cached_solution 做精准失效：twin 的配额变化只让 twin 条目失效，
+        maps 分支搜出的解法照常命中。
+        """
         if not self.use_cache:
             return
-        self._cache[short_id] = {
+        entry: dict[str, Any] = {
             "fingerprint": fingerprint,
             "generic": self.enable_generic_bfs,
+            "twin": self.enable_twin_engine,
             "outcome": "solution" if solution else "none",
             "solution": [list(item) for item in solution] if solution else [],
             "n_steps": len(solution) if solution else 0,
         }
+        if path is not None:
+            entry["path"] = path
+        if max_nodes is not None:
+            entry["max_nodes"] = max_nodes
+        self._cache[short_id] = entry
         self._cache_dirty = True
         self._save_cache()
 
@@ -190,7 +247,10 @@ class EngineSolver:
             return None
 
         fingerprint = _source_fingerprint(py_files)
-        hit, cached = self._cached_solution(short_id, fingerprint)
+        # 带上配额：twin 条目在配额变化时会失效重搜（maps 条目不受影响）。
+        hit, cached = self._cached_solution(
+            short_id, fingerprint, max_nodes=_TWIN_MAX_NODES
+        )
         if hit:
             print(
                 f"  [engine_solver] {short_id}: 探测缓存命中 "
@@ -215,6 +275,52 @@ class EngineSolver:
         # 3. 找 maps 数据
         maps_data = self._find_maps(mod)
         if maps_data is None:
+            # 无 maps 数据 → 优先走公共孪生世界模型引擎（lingjing_solo.twin_engine）。
+            # 这是所有"有引擎代码但无预抽取 maps"关卡的通用回退路径：自动 deepcopy 活引擎
+            # 副本 + step() 做 BFS（Twin 论文的孪生世界模型）。搜出则缓存计划，搜不出则
+            # 回退到通用 BFS（ENGINE_SOLVER_GENERIC=1）或 harness 的 IDDFS/CEAX 盲探。
+            if self.enable_twin_engine:
+                try:
+                    import arc_agi
+                    from arc_agi import OperationMode
+                    _arc = arc_agi.Arcade(
+                        operation_mode=OperationMode.OFFLINE,
+                        environments_dir=self.environments_dir,
+                    )
+                    _env = _arc.make(short_id)
+                    if _env is None:
+                        self._record(
+                            short_id, fingerprint, None,
+                            max_nodes=_TWIN_MAX_NODES, path="twin",
+                        )
+                        return None
+                    _env.reset()
+                    _game = _env._game
+                    if hasattr(_game, "on_set_level"):
+                        _game.on_set_level(_game.current_level)
+                    from lingjing_solo.twin_engine import solve as _twin_solve
+                    result = _twin_solve(
+                        _game, t_limit=1200.0, max_nodes=_TWIN_MAX_NODES
+                    )
+                    print(
+                        f"  [engine_solver] {short_id}: twin_engine 规划 "
+                        f"{len(result) if result else 0} 步 "
+                        f"(max_nodes={_TWIN_MAX_NODES})",
+                        flush=True,
+                    )
+                    self._record(
+                        short_id, fingerprint, result,
+                        max_nodes=_TWIN_MAX_NODES, path="twin",
+                    )
+                    return result
+                except Exception as _e:
+                    import traceback
+                    print(
+                        f"  [engine_solver] {short_id}: twin_engine 异常: {_e}",
+                        flush=True,
+                    )
+                    traceback.print_exc()
+                    # 孪生引擎异常不致命：降级到通用 BFS / 原流程
             if not self.enable_generic_bfs:
                 # 真引擎逐步 BFS 单局 20~30s，2026-10-10 全量 14 局探测 0 次搜出 → 默认不走。
                 print(
@@ -222,7 +328,7 @@ class EngineSolver:
                     f"（ENGINE_SOLVER_GENERIC=1 可开）",
                     flush=True,
                 )
-                self._record(short_id, fingerprint, None)
+                self._record(short_id, fingerprint, None, path="no-maps")
                 return None
             print(f"  [engine_solver] {short_id}: 无 maps 数据，试通用 BFS...", flush=True)
             # 通用 BFS（角色移动类）
@@ -232,7 +338,7 @@ class EngineSolver:
                     print(f"  [engine_solver] {short_id}: 通用 BFS 搜出 {len(result)} 步", flush=True)
                 else:
                     print(f"  [engine_solver] {short_id}: 通用 BFS 搜不出", flush=True)
-                self._record(short_id, fingerprint, result)
+                self._record(short_id, fingerprint, result, path="generic")
                 return result
             except Exception as e:
                 print(f"  [engine_solver] {short_id}: 通用 BFS 异常: {e}", flush=True)
@@ -252,7 +358,7 @@ class EngineSolver:
                 print(f"  [engine_solver] {short_id}: BFS 搜不出", flush=True)
             else:
                 print(f"  [engine_solver] {short_id}: BFS 搜出 {len(result)} 步", flush=True)
-            self._record(short_id, fingerprint, result)
+            self._record(short_id, fingerprint, result, path="maps")
             return result
         except Exception as e:
             import traceback
