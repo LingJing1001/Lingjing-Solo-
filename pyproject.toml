@@ -25,6 +25,7 @@ cnn = [
 dev = [
   "pytest>=8",
   "pytest-timeout>=2.3",
+  "arc-agi==0.9.9; python_version >= '3.12'",
   "ruff>=0.8",
   "scipy>=1.11,<2",
 ]
