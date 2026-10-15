@@ -1,11 +1,11 @@
 {
-  "schema_version": "aop-counterfactual-shard-v1",
+  "schema_version": "aop-counterfactual-shard-v2",
   "status": "qa_pass",
   "game": "ar25",
   "focus_action": "ACTION7",
   "rows": 12,
   "groups": 6,
-  "labels_sha256": "f85bd923b08842033909db0040df423711bb00cbcd665cf9014d0e4241fb3eb6",
+  "labels_sha256": "eb10056583c51feda116bf240bb31ca7febfa7b6a94667fc844c250cd75956c1",
   "created_at": 1791869543.085215,
   "training_performed": false,
   "qa": {
@@ -20,5 +20,16 @@
     "has_action7_rows": true,
     "all_replay_verified": true
   },
-  "collector_exit": 0
+  "collector_exit": 0,
+  "unique_rows": 12,
+  "source_sha256": "eb10056583c51feda116bf240bb31ca7febfa7b6a94667fc844c250cd75956c1",
+  "provenance_complete": true,
+  "migration": {
+    "name": "counterfactual-contract-v2",
+    "previous_labels_sha256": "eb10056583c51feda116bf240bb31ca7febfa7b6a94667fc844c250cd75956c1",
+    "reconstructed_from_marked_remote_recordings": true
+  },
+  "shard_id": "20261013-053059-ar25-action7",
+  "thread": "model",
+  "source": "remote_counterfactual_v1"
 }

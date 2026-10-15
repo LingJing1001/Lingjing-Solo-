@@ -5,7 +5,7 @@ import argparse, json
 from pathlib import Path
 from typing import Any
 
-def check(report: dict[str,Any], compatibility: dict[str,Any], rollback: Path|None, audit: Path|None) -> dict[str,Any]:
+def check(report: dict[str,Any], compatibility: dict[str,Any], rollback: Path|None, audit: Path|None, activation: Path|None = None) -> dict[str,Any]:
     failures=[]; checks={}
     def require(name: str, ok: bool, reason: str) -> None:
         checks[name]={"passed":bool(ok),"reason":reason}
@@ -43,15 +43,23 @@ def check(report: dict[str,Any], compatibility: dict[str,Any], rollback: Path|No
     if audit and audit.is_file():
         try:
             rows=[json.loads(x) for x in audit.read_text().splitlines() if x.strip()]
-            audit_ok=bool(rows) and all(r.get("production_writes")==0 and r.get("runtime_authority_change") is False for r in rows)
+            audit_ok=bool(rows) and all(r.get("production_writes")==0 and (r.get("runtime_authority_change") is False or r.get("event")=="runtime_activation") for r in rows)
         except (OSError,TypeError,json.JSONDecodeError): audit_ok=False
     require("audit_write_path", audit_ok, "必须有 append-only audit log 且 dry-run production_writes=0")
     require("external_ugc_boundary", policy.get("external_ugc")=="disabled", "首次 production 仍应保持 external UGC disabled，待单独 UGC gate")
-    return {"schema":"appendix_a.production_gate.v1","status":"ready" if not failures else "blocked","checks":checks,"failures":failures,"policy":{"runtime_authority_change":"not_performed","external_ugc":"disabled","writeback":"not_enabled"}}
+    activation_ok=False
+    if activation and activation.is_file():
+        try:
+            a=json.loads(activation.read_text())
+            activation_ok=a.get("candidate_id") and a.get("authority_status")=="production" and a.get("active") is True and a.get("approval",{}).get("verdict")=="passed"
+        except (OSError,TypeError,json.JSONDecodeError): activation_ok=False
+    if activation is not None:
+        require("runtime_activation", bool(activation_ok), "必须读回 hash-bound activation record 且 authority_status=production")
+    return {"schema":"appendix_a.production_gate.v1","status":"ready" if not failures else "blocked","checks":checks,"failures":failures,"policy":{"runtime_authority_change":"performed" if activation_ok else "not_performed","external_ugc":"disabled","writeback":"not_enabled"}}
 
 def main()->int:
-    ap=argparse.ArgumentParser(); ap.add_argument("--readiness",type=Path,required=True); ap.add_argument("--compatibility",type=Path,required=True); ap.add_argument("--rollback",type=Path); ap.add_argument("--audit",type=Path); ap.add_argument("--out",type=Path,required=True); a=ap.parse_args()
-    result=check(json.loads(a.readiness.read_text()),json.loads(a.compatibility.read_text()),a.rollback,a.audit)
+    ap=argparse.ArgumentParser(); ap.add_argument("--readiness",type=Path,required=True); ap.add_argument("--compatibility",type=Path,required=True); ap.add_argument("--rollback",type=Path); ap.add_argument("--audit",type=Path); ap.add_argument("--activation",type=Path); ap.add_argument("--out",type=Path,required=True); a=ap.parse_args()
+    result=check(json.loads(a.readiness.read_text()),json.loads(a.compatibility.read_text()),a.rollback,a.audit,a.activation)
     a.out.parent.mkdir(parents=True,exist_ok=True); a.out.write_text(json.dumps(result,indent=2,ensure_ascii=False,sort_keys=True)+"\n")
     print(f"PRODUCTION status={result['status']} failed_checks={len(result['failures'])} output={a.out}")
     return 0 if result["status"]=="ready" else 2

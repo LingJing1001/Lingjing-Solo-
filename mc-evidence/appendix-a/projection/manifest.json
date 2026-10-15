@@ -1,0 +1,10 @@
+{
+  "schema_version": "episode_event.v1",
+  "source_schema_version": "aop-canonical-v2",
+  "event_file": "episode_events.v1.jsonl",
+  "event_hash": "f0cab6e3cfef7ed69e41f54ef20726371a99f18662ee22ae5f237f3f833861cd",
+  "events": 3296,
+  "authority_status": "shadow",
+  "training_performed": false,
+  "external_ugc": "disabled"
+}
