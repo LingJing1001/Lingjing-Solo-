@@ -91,6 +91,8 @@ class EngineSolver:
         self.cache_path = Path(cache_path) if cache_path else _default_cache_path()
         self._cache: dict[str, Any] = self._load_cache()
         self._cache_dirty = False
+        # 最近一次没给出动作的原因（短 id → 中文），给 LLM 看。
+        self._reasons: dict[str, str] = {}
 
     def _load_cache(self) -> dict[str, Any]:
         """读探测缓存；任何异常当空缓存（不能让缓存把跑分搞挂）。"""
@@ -148,9 +150,20 @@ class EngineSolver:
             "outcome": "solution" if solution else "none",
             "solution": [list(item) for item in solution] if solution else [],
             "n_steps": len(solution) if solution else 0,
+            "reason": "" if solution else self.reason_for(short_id),
         }
         self._cache_dirty = True
         self._save_cache()
+
+    def reason_for(self, game_id: str) -> str:
+        """没动作时的原因：无 maps / 搜不到 / 超时 / 已耗尽 / 无源码。"""
+        short_id = str(game_id or "").split("-")[0]
+        return self._reasons.get(short_id, "")
+
+    def _set_reason(self, game_id: str, reason: str) -> None:
+        short_id = str(game_id or "").split("-")[0]
+        if short_id:
+            self._reasons[short_id] = reason
 
     def get_action(self, game_id: str) -> Optional[tuple]:
         """返回 (action_name, x, y) 或 None（回退原流程）。"""
@@ -160,13 +173,17 @@ class EngineSolver:
 
         sol = self._solutions[game_id]
         if not sol:
+            if not self.reason_for(game_id):
+                self._set_reason(game_id, "搜不到")
             return None
 
         idx = self._step_idx.get(game_id, 0)
         if idx >= len(sol):
+            self._set_reason(game_id, "已耗尽")
             return None
 
         self._step_idx[game_id] = idx + 1
+        self._set_reason(game_id, "")
         return sol[idx]
 
     def reset_episode(self, game_id: str) -> None:
@@ -187,11 +204,15 @@ class EngineSolver:
         py_files = list(game_dir.rglob("*.py"))
         if not py_files:
             print(f"  [engine_solver] {short_id}: 无 .py 文件", flush=True)
+            self._set_reason(short_id, "无源码")
             return None
 
         fingerprint = _source_fingerprint(py_files)
         hit, cached = self._cached_solution(short_id, fingerprint)
         if hit:
+            entry = self._cache.get(short_id) if isinstance(self._cache.get(short_id), dict) else {}
+            cached_reason = str(entry.get("reason") or "") if isinstance(entry, dict) else ""
+            self._set_reason(short_id, "" if cached else (cached_reason or "搜不到"))
             print(
                 f"  [engine_solver] {short_id}: 探测缓存命中 "
                 f"({'有解法 ' + str(len(cached)) + ' 步' if cached else '无解法'}，跳过搜索)",
@@ -205,11 +226,13 @@ class EngineSolver:
             spec = importlib.util.spec_from_file_location(mod_name, py_files[0])
             if spec is None or spec.loader is None:
                 print(f"  [engine_solver] {short_id}: spec 加载失败", flush=True)
+                self._set_reason(short_id, "搜不到")
                 return None
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
         except Exception as e:
             print(f"  [engine_solver] {short_id}: import 失败: {e}", flush=True)
+            self._set_reason(short_id, "搜不到")
             return None
 
         # 3. 找 maps 数据
@@ -222,6 +245,7 @@ class EngineSolver:
                     f"（ENGINE_SOLVER_GENERIC=1 可开）",
                     flush=True,
                 )
+                self._set_reason(short_id, "无 maps")
                 self._record(short_id, fingerprint, None)
                 return None
             print(f"  [engine_solver] {short_id}: 无 maps 数据，试通用 BFS...", flush=True)
@@ -230,12 +254,16 @@ class EngineSolver:
                 result = self._generic_bfs_solve(game_id, mod)
                 if result:
                     print(f"  [engine_solver] {short_id}: 通用 BFS 搜出 {len(result)} 步", flush=True)
+                    self._set_reason(short_id, "")
                 else:
                     print(f"  [engine_solver] {short_id}: 通用 BFS 搜不出", flush=True)
+                    if self.reason_for(short_id) not in {"超时", "搜不到"}:
+                        self._set_reason(short_id, "搜不到")
                 self._record(short_id, fingerprint, result)
                 return result
             except Exception as e:
                 print(f"  [engine_solver] {short_id}: 通用 BFS 异常: {e}", flush=True)
+                self._set_reason(short_id, "搜不到")
                 return None
         print(f"  [engine_solver] {short_id}: 找到 maps, {len(maps_data)} 关", flush=True)
 
@@ -250,14 +278,18 @@ class EngineSolver:
             result = self._bfs_solve(game_id, mod, maps_data, scale)
             if result is None:
                 print(f"  [engine_solver] {short_id}: BFS 搜不出", flush=True)
+                if self.reason_for(short_id) != "超时":
+                    self._set_reason(short_id, "搜不到")
             else:
                 print(f"  [engine_solver] {short_id}: BFS 搜出 {len(result)} 步", flush=True)
+                self._set_reason(short_id, "")
             self._record(short_id, fingerprint, result)
             return result
         except Exception as e:
             import traceback
             print(f"  [engine_solver] {short_id}: BFS 异常: {e}", flush=True)
             traceback.print_exc()
+            self._set_reason(short_id, "搜不到")
             return None
 
     def _generic_bfs_solve(self, game_id, mod, time_limit=30):
@@ -321,6 +353,10 @@ class EngineSolver:
                     break
 
             if sol is None:
+                self._set_reason(
+                    game_id,
+                    "超时" if time.time() - t0 >= time_limit else "搜不到",
+                )
                 return None
 
             for aid in sol:

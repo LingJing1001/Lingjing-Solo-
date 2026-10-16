@@ -397,9 +397,9 @@ def build() -> dict:
             markdown_cell(
                 "# ARC Prize 2026 — SmartRouter + optional local LLM\n\n"
                 "Submission agent = **SmartRouter** (`BUILD_TAG` starts with `smart-router`). "
-                "Plan/engine floors first; `LINGJING_LLM=on` consults local vLLM JSON policy "
-                "on stall / r3-none / CEAX giveup (fail-closed). "
-                "GPU default: RTX 6000 + Duck Qwen/vLLM datasets. "
+                "Plan/engine floors first. Unknown games ask local vLLM (ASCII + PNG) "
+                "after the engine and before CEAX; plan/INLINE games stay protected. "
+                "GPU default: RTX 6000 + vllm031-cp313 + qwen3.6-27b-fp8. "
                 "CPU fallback: `LINGJING_KAGGLE_ACCEL=cpu` → LLM off."
             ),
             install_cell,
