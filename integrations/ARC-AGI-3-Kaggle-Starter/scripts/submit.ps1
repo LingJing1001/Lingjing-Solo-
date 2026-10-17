@@ -41,11 +41,12 @@ $version = if ($pushOut -match "Kernel version (\d+)") { $Matches[1] } else { $n
 $meta = Get-Content (Join-Path $Root "notebooks\kernel-metadata.json") -Raw | ConvertFrom-Json
 $kernel = $meta.id
 Write-Host "Waiting for kernel run: $kernel" -ForegroundColor Cyan
-for ($i = 1; $i -le 60; $i++) {
+# vLLM install + 27B load can sit well past 20 minutes before COMPLETE.
+for ($i = 1; $i -le 120; $i++) {
     $status = (& $Kaggle kernels status $kernel 2>&1 | Out-String).Trim()
     Write-Host "[$i] $status"
     if ($status -match "COMPLETE|ERROR|CANCEL") { break }
-    Start-Sleep -Seconds 20
+    Start-Sleep -Seconds 30
 }
 if ($status -notmatch "COMPLETE") {
     throw "Kernel did not complete. Check Kaggle notebook page."

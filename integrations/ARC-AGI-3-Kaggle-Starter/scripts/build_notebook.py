@@ -206,11 +206,19 @@ def build() -> dict:
         import os, glob, subprocess, time, urllib.request
         from pathlib import Path
 
-        # Singleton vLLM for SmartRouter LLM policy (GPU builds only).
-        # Fail-closed: if model/wheelhouse missing, leave LINGJING_LLM=off.
-        os.environ.setdefault('LINGJING_LLM', '{llm_env_default}')
+        # Singleton vLLM for SmartRouter LLM policy.
+        # GPU submissions keep LINGJING_LLM=on. A missing wheel, a CUDA mismatch,
+        # or a server that never opens /v1/models fails the cell instead of
+        # silently scoring with the LLM switched off.
+        os.environ['LINGJING_LLM'] = '{llm_env_default}'
         os.environ.setdefault('LINGJING_LLM_URL', 'http://127.0.0.1:1234/v1')
         os.environ.setdefault('LINGJING_LLM_MODEL', 'vrfai/Qwen3.6-27B-FP8')
+        os.environ.setdefault('LINGJING_LLM_VISION', 'on')
+        os.environ.setdefault('LINGJING_LLM_PRECEAX', 'on')
+        os.environ['LINGJING_LLM_WHOLE'] = 'on'
+        os.environ['LINGJING_LLM_MAX_CALLS'] = '800'
+        os.environ['LINGJING_LLM_STRIDE'] = '1'
+        _require_llm = os.environ['LINGJING_LLM'].lower() in ('1', 'on', 'true', 'yes')
 
         def _find_input(slug_part: str):
             root = Path('/kaggle/input')
@@ -227,49 +235,127 @@ def build() -> dict:
         )
         _model = _find_input('qwen3-6-27b') or _find_input('qwen') or _find_input('vrfai')
         _llm_ready = False
-        if os.environ.get('LINGJING_LLM', 'off').lower() in ('1','on','true','yes') and _wheel and _model:
+        if _require_llm and not (_wheel and _model):
+            raise SystemExit(
+                'VLLM_INPUT_MISSING wheel=%s model=%s' % (_wheel, _model)
+            )
+        if _require_llm:
+            _links = Path(_wheel) / 'wheels' if (Path(_wheel) / 'wheels').is_dir() else Path(_wheel)
+            req = Path(_wheel) / 'requirements.lock'
+            if not req.is_file():
+                req = Path(_wheel) / 'requirements.txt'
+            if req.is_file():
+                subprocess.check_call([
+                    'pip', 'install', '--no-index', '--find-links', str(_links),
+                    '-r', str(req),
+                ])
+            # The Kaggle image already has torchaudio==2.11.0+cu128. Pip treats
+            # that as the same version as the wheelhouse's 2.11.0+cu130 and
+            # skips it, then vLLM dies on the CUDA 13.0 vs 12.8 check.
+            subprocess.check_call([
+                'pip', 'install', '--no-index', '--find-links', str(_links),
+                '--force-reinstall', '--no-deps',
+                'torchaudio==2.11.0', 'torchvision==0.28.0', 'torchcodec==0.17.0',
+            ])
+            # Lockfile replaces numpy/pydantic/dotenv. Put the competition
+            # agent stack back on top without downgrading the vLLM torch build.
+            _comp = '/kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels'
+            subprocess.check_call([
+                'pip', 'install', '--no-index', '--find-links', _comp,
+                'arc-agi', 'python-dotenv',
+            ])
+            _probe = subprocess.run(
+                [
+                    'python', '-c',
+                    'import torch, torchaudio, dotenv, arcengine, vllm; '
+                    'print(\"ENV_OK\", torch.__version__, torch.version.cuda, torchaudio.__version__, arcengine.__name__)',
+                ],
+                capture_output=True, text=True,
+            )
+            print(_probe.stdout, _probe.stderr, flush=True)
+            if _probe.returncode != 0:
+                raise SystemExit('ENV_PROBE_FAIL')
+            logf = open('/kaggle/working/vllm_server.log', 'w')
+            # RTX Pro 6000 is SM 12.0. FlashInfer's default FP8 GEMM tries to
+            # JIT sm_120 and dies when nvcc is older than CUDA 12.9. Cutlass
+            # is the backend that actually boots this FP8 checkpoint there.
+            os.environ['VLLM_USE_FLASHINFER_SAMPLER'] = '0'
+            cmd = [
+                'python', '-m', 'vllm.entrypoints.openai.api_server',
+                '--model', str(_model),
+                '--served-model-name', os.environ['LINGJING_LLM_MODEL'],
+                '--host', '127.0.0.1', '--port', '1234',
+                '--max-model-len', os.environ.get('LINGJING_VLLM_MAX_LEN', '8192'),
+                '--tensor-parallel-size', '1',
+                '--gpu-memory-utilization',
+                os.environ.get('LINGJING_VLLM_MEM', '0.90'),
+                '--linear-backend', 'cutlass',
+                # Qwen3.6 is a GDN/Mamba hybrid. On the 96GB RTX Pro 6000 the
+                # default max_num_seqs=1024 asks for more Mamba blocks than the
+                # leftover memory can hold (v10 died at 999). The agent sends
+                # one request at a time. Eager skips the CUDA-graph capture
+                # that enforces that limit.
+                '--max-num-seqs', os.environ.get('LINGJING_VLLM_MAX_SEQS', '16'),
+                '--enforce-eager',
+            ]
+            subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT)
+            for _i in range(180):
+                try:
+                    urllib.request.urlopen(
+                        'http://127.0.0.1:1234/v1/models', timeout=2
+                    )
+                    _llm_ready = True
+                    break
+                except Exception:
+                    time.sleep(5)
+            print('VLLM_READY', _llm_ready, 'model', _model, 'wheel', _wheel, flush=True)
+            if not _llm_ready:
+                try:
+                    print(Path('/kaggle/working/vllm_server.log').read_text(encoding='utf-8', errors='replace')[-4000:], flush=True)
+                except Exception:
+                    pass
+                raise SystemExit('VLLM_NOT_READY')
+            import json as _json
+            _probe_body = _json.dumps({{
+                'model': os.environ['LINGJING_LLM_MODEL'],
+                'messages': [{{'role': 'user', 'content': 'Reply with the single word READY'}}],
+                'max_tokens': 8,
+                'temperature': 0,
+                'chat_template_kwargs': {{'enable_thinking': False}},
+            }}).encode()
+            _probe_req = urllib.request.Request(
+                os.environ['LINGJING_LLM_URL'].rstrip('/') + '/chat/completions',
+                data=_probe_body,
+                headers={{'Content-Type': 'application/json'}},
+                method='POST',
+            )
             try:
-                _links = Path(_wheel) / 'wheels' if (Path(_wheel) / 'wheels').is_dir() else Path(_wheel)
-                req = Path(_wheel) / 'requirements.lock'
-                if not req.is_file():
-                    req = Path(_wheel) / 'requirements.txt'
-                if req.is_file():
-                    subprocess.check_call([
-                        'pip', 'install', '--no-index', '--find-links', str(_links),
-                        '-r', str(req),
-                    ])
-                # Prefer `vllm serve` CLI when present.
-                logf = open('/kaggle/working/vllm_server.log', 'w')
-                cmd = [
-                    'python', '-m', 'vllm.entrypoints.openai.api_server',
-                    '--model', str(_model),
-                    '--served-model-name', os.environ['LINGJING_LLM_MODEL'],
-                    '--host', '127.0.0.1', '--port', '1234',
-                    '--max-model-len', os.environ.get('LINGJING_VLLM_MAX_LEN', '8192'),
-                    '--tensor-parallel-size', '1',
-                    '--gpu-memory-utilization',
-                    os.environ.get('LINGJING_VLLM_MEM', '0.90'),
-                ]
-                subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT)
-                for _i in range(180):
-                    try:
-                        urllib.request.urlopen(
-                            'http://127.0.0.1:1234/v1/models', timeout=2
-                        )
-                        _llm_ready = True
-                        break
-                    except Exception:
-                        time.sleep(5)
-                print('VLLM_READY', _llm_ready, 'model', _model, 'wheel', _wheel, flush=True)
-            except Exception as _exc:
-                print('VLLM_START_FAIL', type(_exc).__name__, _exc, flush=True)
-                _llm_ready = False
+                with urllib.request.urlopen(_probe_req, timeout=120) as _probe_resp:
+                    _probe_status = getattr(_probe_resp, 'status', 200)
+                    _probe_resp.read(200)
+                if int(_probe_status) != 200:
+                    raise SystemExit('VLLM_PROBE_FAIL status=%s' % _probe_status)
+            except SystemExit:
+                raise
+            except Exception as _probe_exc:
+                raise SystemExit('VLLM_PROBE_FAIL %s' % _probe_exc)
+            print('VLLM_PROBE_OK', os.environ['LINGJING_LLM_MODEL'], flush=True)
+            _fp = {{
+                'vllm_ready': True,
+                'probe': 'ok',
+                'model': os.environ['LINGJING_LLM_MODEL'],
+                'enable_internet': False,
+                'required_tag': 'llm-whole-qwen',
+                'llm_whole': os.environ['LINGJING_LLM_WHOLE'],
+                'max_calls': os.environ['LINGJING_LLM_MAX_CALLS'],
+            }}
+            Path('/kaggle/working/PHASE_B_FINGERPRINT.json').write_text(
+                _json.dumps(_fp), encoding='utf-8'
+            )
+            print('PHASE_B_FINGERPRINT', _json.dumps(_fp), flush=True)
         else:
-            print('VLLM_SKIP', 'llm', os.environ.get('LINGJING_LLM'),
-                  'wheel', _wheel, 'model', _model, flush=True)
-        if not _llm_ready:
-            os.environ['LINGJING_LLM'] = 'off'
-        open('/kaggle/working/LINGJING_LLM.txt', 'w').write(os.environ.get('LINGJING_LLM', 'off'))
+            print('VLLM_SKIP cpu-build', flush=True)
+        open('/kaggle/working/LINGJING_LLM.txt', 'w').write(os.environ['LINGJING_LLM'])
         """
     )
     vllm_cell = code_cell(vllm_cell_source)
@@ -317,6 +403,25 @@ def build() -> dict:
             !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router'), BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
 
             _llm_flag = os.environ.get('LINGJING_LLM', '{llm_env_default}')
+            if _llm_flag.lower() in ('1', 'on', 'true', 'yes'):
+                import json as _json
+                from pathlib import Path as _Path
+                _fp_path = _Path('/kaggle/working/PHASE_B_FINGERPRINT.json')
+                if not _fp_path.is_file():
+                    raise SystemExit('PHASE_B_FINGERPRINT_MISSING')
+                _fp = _json.loads(_fp_path.read_text(encoding='utf-8'))
+                if (
+                    _fp.get('vllm_ready') is not True
+                    or _fp.get('probe') != 'ok'
+                    or _fp.get('enable_internet') is not False
+                    or _fp.get('required_tag') != 'llm-whole-qwen'
+                ):
+                    raise SystemExit('PHASE_B_FINGERPRINT_MISMATCH %s' % _fp)
+            _tag = open('/kaggle/working/BUILD_TAG.txt', encoding='utf-8').read()
+            if 'llm-whole-qwen' not in _tag or not _tag.startswith('smart-router'):
+                raise SystemExit('BUILD_TAG_MISMATCH %s' % _tag)
+            print('PHASE_B_OK', _tag, 'LLM', _llm_flag, flush=True)
+
             # Point the framework at the gateway sidecar.
             with open('/kaggle/working/ARC-AGI-3-Agents/.env', 'w') as f:
                 f.write(f\"\"\"SCHEME=http
@@ -332,7 +437,12 @@ def build() -> dict:
         LINGJING_LLM={{_llm_flag}}
         LINGJING_LLM_URL=http://127.0.0.1:1234/v1
         LINGJING_LLM_MODEL=vrfai/Qwen3.6-27B-FP8
+        LINGJING_LLM_VISION=on
+        LINGJING_LLM_PRECEAX=on
+        LINGJING_LLM_WHOLE=on
         LINGJING_LLM_STALL=80
+        LINGJING_LLM_STRIDE=1
+        LINGJING_LLM_MAX_CALLS=800
         \"\"\")
 
             # Run it. The gateway records every action and emits submission.parquet.
@@ -397,8 +507,10 @@ def build() -> dict:
             markdown_cell(
                 "# ARC Prize 2026 — SmartRouter + optional local LLM\n\n"
                 "Submission agent = **SmartRouter** (`BUILD_TAG` starts with `smart-router`). "
-                "Plan/engine floors first. Unknown games ask local vLLM (ASCII + PNG) "
-                "after the engine and before CEAX; plan/INLINE games stay protected. "
+                "Plan floors stay on verified plans. Every other game, including hidden "
+                "ids, is played for the whole episode by in-kernel Qwen (`llm-whole-qwen`). "
+                "Phase B refuses to start the games unless vLLM probes OK and "
+                "`enable_internet` is false. "
                 "GPU default: RTX 6000 + vllm031-cp313 + qwen3.6-27b-fp8. "
                 "CPU fallback: `LINGJING_KAGGLE_ACCEL=cpu` → LLM off."
             ),
@@ -432,6 +544,9 @@ def main() -> None:
         wanted = _ACCELERATORS[ACCELERATOR]["gpu"]
         shape = _ACCELERATORS[ACCELERATOR].get("machine_shape", "")
         dirty = False
+        if meta.get("enable_internet") is not False:
+            meta["enable_internet"] = False
+            dirty = True
         if meta.get("enable_gpu") != wanted:
             meta["enable_gpu"] = wanted
             dirty = True

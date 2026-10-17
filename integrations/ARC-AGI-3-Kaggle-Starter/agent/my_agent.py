@@ -339,13 +339,16 @@ BUILD_TAG = (
     "+perc-r3cap+iddfs-hasclick-fix+wa30-gbk-fix"
     "+cpp-explore-bfs-iddfs"  # C++ lingjing_explore 加速未知环境搜索
     "+llm-policy"  # LINGJING_LLM=on → local vLLM JSON action (fail-closed)
-    "+llm-vision"  # grid PNG in chat; unknown 局引擎之后、CEAX 之前
+    "+llm-vision"  # grid PNG in chat
+    "+llm-whole-qwen"  # 非 plan 局整局由核内千问出步；CEAX 不再主控
+    "+llm-whole-memory"  # 记录 no_effect，禁止原样重复，卡住才 RESET
     "+cn04-full"  # connector-match L0–L5 full WIN
     "+dc22-full"  # L0–L5 WIN; orckhi/F-mox/D-tele/cursor-bridge
     "+sc25-full"  # wizard puzzle L0–L5 WIN; sieesc/tevyeq/fibcey
     "+wa30-full"  # L0–L8 WIN; ferry+antagonist kill; final GameState.WIN
     "+bp35-full"  # L0–L8 WIN; inverted-grav e-shelf/x9/x0; final GameState.WIN
     "+m0r0-full"  # L0–L5 WIN; mirror-pair + mosdlc/gates/hazards; final GameState.WIN
+    "+sp80-full"  # L0–L5 WIN; paint divertors; layout (4,8)/(7,13)/(8,8)/(9,10)
 )
 AGENT_BRAND = "lingjing-smart"
 
@@ -1242,21 +1245,48 @@ def _llm_preceax_on() -> bool:
     }
 
 
+def _llm_whole_on() -> bool:
+    """非 plan 局由千问打完整局。默认开；LINGJING_LLM_WHOLE=off 退回旧的 30 次补丁。"""
+    return str(os.environ.get("LINGJING_LLM_WHOLE", "on")).strip().lower() not in {
+        "0", "off", "false", "no", "none",
+    }
+
+
 def _llm_call_budget() -> tuple[int, int]:
-    """(stride, max_calls)。stride=1 表示每步都可以问，直到 max_calls。"""
+    """(stride, max_calls)。整局模式默认每步都问，上限跟 MAX_ACTIONS 对齐。"""
     try:
         stride = max(1, int(os.environ.get("LINGJING_LLM_STRIDE", "1") or 1))
     except (TypeError, ValueError):
         stride = 1
+    default_cap = "800" if _llm_whole_on() else "30"
     try:
-        cap = max(0, int(os.environ.get("LINGJING_LLM_MAX_CALLS", "30") or 30))
+        cap = max(0, int(os.environ.get("LINGJING_LLM_MAX_CALLS", default_cap) or default_cap))
     except (TypeError, ValueError):
-        cap = 30
+        cap = 800 if _llm_whole_on() else 30
     return stride, cap
 
 
 def _plan_locked(gid: str) -> bool:
     return gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE
+
+
+def _llm_action_sig(act: GameAction) -> str:
+    name = str(getattr(act, "name", "") or "")
+    data = getattr(act, "data", None)
+    if not isinstance(data, dict):
+        data = getattr(act, "_data", None)
+    if isinstance(data, dict) and ("x" in data or "y" in data):
+        return f"{name}:{data.get('x')},{data.get('y')}"
+    return name
+
+
+def _llm_unused_action(valid: list[str], dead: set[str]) -> Optional[GameAction]:
+    """Pick a legal key that has not already been recorded as no_effect."""
+    for name in valid:
+        if name == "ACTION6" or name in dead:
+            continue
+        return _as_game_action(name)
+    return None
 
 
 def _try_llm_action(
@@ -1265,6 +1295,7 @@ def _try_llm_action(
     levels: int,
     latest_frame: FrameData,
     note: str = "",
+    history: str = "",
 ) -> Optional[GameAction]:
     """Consult local vLLM JSON policy; None on any failure (fail-closed)."""
     if not _llm_on():
@@ -1294,6 +1325,7 @@ def _try_llm_action(
             grid=grid,
             game_action_cls=GameAction,
             note=note,
+            history=history,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[{BUILD_TAG}] llm_policy error: {type(exc).__name__}: {exc}", flush=True)
@@ -1587,6 +1619,14 @@ class MyAgent(Agent):
         self._engine_reason: str = ""
         self._llm_calls: int = 0
         self._llm_took: bool = False
+        self._llm_trace: list[str] = []
+        self._llm_last_sig: str = ""
+        self._llm_last_hash: str = ""
+        self._llm_last_levels: int = -1
+        self._llm_dead: set[str] = set()
+        self._llm_same_level_steps: int = 0
+        self._llm_same_level: int = -1
+        self._llm_stuck_resets: int = 0
         # CEAX 止损：同一关连续零进展计步 + 只播一次日志
         self._stag_level: int = -1
         self._stag_count: int = 0
@@ -2185,8 +2225,15 @@ class MyAgent(Agent):
                 return action
 
         # --- EngineSolver（专用计划之后；只碰白名单卡关局）---
+        # 整局千问打开时，非 plan 局不再把步数交给读源码的引擎。
         full_gid = str(getattr(latest_frame, "game_id", "") or "")
-        if full_gid and gid in _ENGINE_SOLVER_GAMES and not self._engine_off:
+        _whole_owns = _llm_on() and _llm_whole_on() and not _plan_locked(gid)
+        if (
+            not _whole_owns
+            and full_gid
+            and gid in _ENGINE_SOLVER_GAMES
+            and not self._engine_off
+        ):
             eng = _engine_solver()
             if eng is not None:
                 got = eng.get_action(full_gid)
@@ -2232,7 +2279,115 @@ class MyAgent(Agent):
                         }
                         return action
 
-        # --- 未知局：引擎之后、CEAX 之前看图问 LLM。校准 plan / INLINE 不进。---
+        # --- 隐藏/未知局主路径：千问整局出步。plan / INLINE 已在上面返回。---
+        if _whole_owns:
+            stride, cap = _llm_call_budget()
+            calls = int(getattr(self, "_llm_calls", 0) or 0)
+            valid = _valid_names(latest_frame)
+            trace = list(getattr(self, "_llm_trace", []) or [])
+            try:
+                grid_now = extract_grid(latest_frame)
+                hash_now = hash_grid(grid_now) if grid_now is not None else ""
+            except Exception:
+                hash_now = ""
+            last_sig = str(getattr(self, "_llm_last_sig", "") or "")
+            if last_sig:
+                changed = (
+                    levels != int(getattr(self, "_llm_last_levels", -1))
+                    or hash_now != str(getattr(self, "_llm_last_hash", "") or "")
+                )
+                outcome = "changed" if changed else "no_effect"
+                trace.append(f"{last_sig} -> {outcome} L{levels}")
+                dead = set(getattr(self, "_llm_dead", set()) or set())
+                if changed:
+                    dead.discard(last_sig)
+                else:
+                    dead.add(last_sig)
+                self._llm_dead = dead
+            if levels != int(getattr(self, "_llm_same_level", -1)):
+                self._llm_same_level = levels
+                self._llm_same_level_steps = 0
+            else:
+                self._llm_same_level_steps = int(getattr(self, "_llm_same_level_steps", 0) or 0) + 1
+            self._llm_last_hash = hash_now
+            self._llm_last_levels = levels
+            stuck = int(self._llm_same_level_steps)
+            if stuck >= 80 and int(getattr(self, "_llm_stuck_resets", 0) or 0) < 2:
+                self._llm_stuck_resets = int(self._llm_stuck_resets) + 1
+                self._llm_same_level_steps = 0
+                self._llm_dead = set()
+                self._llm_last_sig = "RESET"
+                trace.append(f"RESET stuck={stuck} L{levels}")
+                self._llm_trace = trace[-12:]
+                print(
+                    f"[{BUILD_TAG}] llm-whole-reset gid={gid} L={levels} stuck={stuck}",
+                    flush=True,
+                )
+                action = GameAction.RESET
+                action.reasoning = {"text": f"{BUILD_TAG}:llm-whole-reset L{levels}"}
+                return action
+            dead = set(getattr(self, "_llm_dead", set()) or set())
+            note = "whole-game"
+            if stuck >= 24:
+                note = f"no level progress for {stuck} steps; change mechanism"
+            if dead:
+                note += " forbidden=" + ",".join(sorted(dead)[-8:])
+            history = "\n".join(trace[-12:])
+            _llm_act = None
+            if calls < cap and int(self.action_counter) % stride == 0:
+                self._llm_calls = calls + 1
+                _llm_act = _try_llm_action(
+                    game_id=gid,
+                    levels=levels,
+                    latest_frame=latest_frame,
+                    note=note,
+                    history=history,
+                )
+                sig = _llm_action_sig(_llm_act) if _llm_act is not None else ""
+                if _llm_act is not None and sig in dead:
+                    trace.append(f"reject {sig}")
+                    self._llm_calls = int(self._llm_calls) + 1
+                    _llm_act = _try_llm_action(
+                        game_id=gid,
+                        levels=levels,
+                        latest_frame=latest_frame,
+                        note=note + f" do_not_repeat={sig}",
+                        history="\n".join(trace[-12:]),
+                    )
+                    sig = _llm_action_sig(_llm_act) if _llm_act is not None else ""
+                    if sig in dead:
+                        _llm_act = None
+                if _llm_act is None:
+                    _llm_act = _llm_unused_action(valid, dead)
+                    sig = _llm_action_sig(_llm_act) if _llm_act is not None else ""
+                if _llm_act is not None:
+                    self._llm_took = True
+                    self._llm_last_sig = sig
+                    trace.append(f"do {sig} L{levels} step={self.action_counter}")
+                    self._llm_trace = trace[-12:]
+                    if self.action_counter < 3 or self.action_counter % 25 == 0:
+                        print(
+                            f"[{BUILD_TAG}] llm-whole gid={gid} L={levels} "
+                            f"{sig} calls={self._llm_calls}/{cap} stuck={stuck}",
+                            flush=True,
+                        )
+                    return _llm_act
+                print(
+                    f"[{BUILD_TAG}] llm-whole-miss gid={gid} L={levels} "
+                    f"calls={self._llm_calls}/{cap}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[{BUILD_TAG}] llm-whole-cap gid={gid} L={levels} calls={calls}/{cap}",
+                    flush=True,
+                )
+            self._llm_trace = trace[-12:]
+            action = _idle_action(valid)
+            action.reasoning = {"text": f"{BUILD_TAG}:llm-whole-hold L{levels}"}
+            return action
+
+        # --- 旧补丁路径：整局模式关闭时，引擎之后、CEAX 之前再问。---
         if (
             _llm_on()
             and _llm_preceax_on()

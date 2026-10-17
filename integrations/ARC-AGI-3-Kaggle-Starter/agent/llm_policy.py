@@ -271,6 +271,7 @@ def choose_json_action(
     valid_actions: list[str],
     grid: Any,
     note: str = "",
+    history: str = "",
 ) -> Optional[dict[str, Any]]:
     """Ask the local LLM for one JSON action. Returns dict or None."""
     if not valid_actions:
@@ -278,16 +279,21 @@ def choose_json_action(
     ascii_board = grid_to_ascii(grid)
     png_b64 = grid_png_b64(grid) if vision_enabled() else None
     system = (
-        "You play ARC-AGI-3 interactive games. Reply with ONE JSON object only. "
+        "You play an entire ARC-AGI-3 episode, one action per turn. "
+        "Reply with ONE JSON object only. "
         'Schema: {"action":"ACTION1..ACTION6|RESET","x":0-63,"y":0-63,"why":"..."}. '
-        "ACTION6 requires integer x,y. Prefer legal actions. Be action-efficient. "
-        "If an image is attached, it is the current 64x64 grid (x right, y down); "
+        "ACTION6 requires integer x,y. Use only legal actions. "
+        "History lines ending in no_effect did nothing. Never repeat those. "
+        "Lines ending in changed are useful. engine_note may list forbidden actions. "
+        "Advance the level when you can. "
+        "If an image is attached, it is the current grid (x right, y down); "
         "click coordinates must match that image."
     )
     user = (
         f"game_id={game_id} levels_completed={levels}\n"
         f"legal_actions={valid_actions}\n"
         f"engine_note={note or 'none'}\n"
+        f"history (oldest first):\n{history or '(start)'}\n"
         f"grid_ascii (row-major digits):\n{ascii_board}\n"
         "Return JSON only."
     )
@@ -375,6 +381,7 @@ def propose_action(
     grid: Any,
     game_action_cls: Any,
     note: str = "",
+    history: str = "",
 ) -> Any:
     """End-to-end: LLM JSON → GameAction or None."""
     if not llm_enabled():
@@ -385,6 +392,7 @@ def propose_action(
         valid_actions=valid_actions,
         grid=grid,
         note=note,
+        history=history,
     )
     if not obj:
         return None
