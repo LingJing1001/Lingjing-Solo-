@@ -47,6 +47,7 @@ _LLM_DATASET_SOURCES = [
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_SRC = ROOT / "agent" / "my_agent.py"
 LLM_POLICY_SRC = ROOT / "agent" / "llm_policy.py"
+EPISODE_SRC = ROOT / "agent" / "llm_episode.py"
 LINGJING_SRC = Path(
     os.environ.get("LINGJING_SRC", str(ROOT.parents[1] / "lingjing_solo"))
 ).expanduser().resolve()
@@ -178,6 +179,7 @@ def build() -> dict:
         raise SystemExit(f"Could not find {LLM_POLICY_SRC}")
     agent_body = AGENT_SRC.read_text(encoding="utf-8")
     llm_policy_body = LLM_POLICY_SRC.read_text(encoding="utf-8")
+    episode_body = EPISODE_SRC.read_text(encoding="utf-8")
     lj_files = _collect_lingjing_files()
     use_gpu = bool(_ACCELERATORS.get(ACCELERATOR, {}).get("gpu"))
     # GPU builds enable local vLLM by default; CPU stays fail-closed off.
@@ -198,6 +200,9 @@ def build() -> dict:
     )
     write_llm_policy_cell = code_cell(
         "%%writefile /tmp/llm_policy.py\n" + llm_policy_body
+    )
+    write_episode_cell = code_cell(
+        "%%writefile /tmp/llm_episode.py\n" + episode_body
     )
     write_lingjing_cell = _lingjing_write_cell(lj_files)
 
@@ -378,6 +383,8 @@ def build() -> dict:
                 /kaggle/working/ARC-AGI-3-Agents/agents/templates/my_agent.py
             !cp /tmp/llm_policy.py \\
                 /kaggle/working/ARC-AGI-3-Agents/agents/templates/llm_policy.py
+            !cp /tmp/llm_episode.py \\
+                /kaggle/working/ARC-AGI-3-Agents/agents/templates/llm_episode.py
             !rm -rf /kaggle/working/ARC-AGI-3-Agents/lingjing_solo
             !cp -r /tmp/lingjing_solo \\
                 /kaggle/working/ARC-AGI-3-Agents/lingjing_solo
@@ -518,6 +525,7 @@ def build() -> dict:
             write_lingjing_cell,
             write_agent_cell,
             write_llm_policy_cell,
+            write_episode_cell,
             vllm_cell,
             run_cell,
             dummy_submission_cell,

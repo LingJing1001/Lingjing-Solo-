@@ -57,6 +57,8 @@ def static_check() -> None:
         "PHASE_B_OK",
         "LINGJING_LLM_WHOLE=on",
         "LINGJING_LLM_MAX_CALLS=800",
+        "llm-episode-mind",
+        "llm_episode.py",
     ):
         if needle not in blob:
             _fail(f"notebook missing {needle}")

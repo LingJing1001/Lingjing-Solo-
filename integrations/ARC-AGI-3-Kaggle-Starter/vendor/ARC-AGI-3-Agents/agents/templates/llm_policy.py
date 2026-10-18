@@ -272,6 +272,7 @@ def choose_json_action(
     grid: Any,
     note: str = "",
     history: str = "",
+    briefing: str = "",
 ) -> Optional[dict[str, Any]]:
     """Ask the local LLM for one JSON action. Returns dict or None."""
     if not valid_actions:
@@ -293,6 +294,7 @@ def choose_json_action(
         f"game_id={game_id} levels_completed={levels}\n"
         f"legal_actions={valid_actions}\n"
         f"engine_note={note or 'none'}\n"
+        f"mind={briefing or 'none'}\n"
         f"history (oldest first):\n{history or '(start)'}\n"
         f"grid_ascii (row-major digits):\n{ascii_board}\n"
         "Return JSON only."
@@ -382,6 +384,7 @@ def propose_action(
     game_action_cls: Any,
     note: str = "",
     history: str = "",
+    briefing: str = "",
 ) -> Any:
     """End-to-end: LLM JSON → GameAction or None."""
     if not llm_enabled():
@@ -393,6 +396,7 @@ def propose_action(
         grid=grid,
         note=note,
         history=history,
+        briefing=briefing,
     )
     if not obj:
         return None
