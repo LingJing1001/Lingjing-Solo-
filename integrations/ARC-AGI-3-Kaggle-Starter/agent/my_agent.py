@@ -316,6 +316,79 @@ def _lp_load() -> bool:
     return True
 
 
+_POLICY_READY = False
+_POLICY_FN: Any = None
+
+
+def _load_llm_policy() -> Any:
+    """Return llm_policy.propose_plan, or None if the file cannot be located.
+
+    Only the legacy (PNG + ASCII) view needs it. It used to rely on the file
+    sitting next to my_agent.py, which breaks whenever the agent is loaded from
+    another directory (`--agent /path/to/copy.py`, or a bundle that shipped the
+    agent without the policy). Missing it silently degraded to CEAX, so every
+    caller must be able to tell "no policy" from "policy said nothing".
+    """
+    global _POLICY_READY, _POLICY_FN
+    if _POLICY_READY:
+        return _POLICY_FN
+    _POLICY_READY = True
+    import importlib
+
+    try:
+        _POLICY_FN = importlib.import_module("llm_policy").propose_plan
+        return _POLICY_FN
+    except Exception:  # noqa: BLE001 — 下面按候选目录再找
+        pass
+
+    cands: list[Path] = []
+    env = str(os.environ.get("LINGJING_LLM_POLICY_DIR", "") or "").strip()
+    if env:
+        cands.append(Path(env).expanduser())
+    src = str(os.environ.get("LINGJING_SRC", "") or "").strip()
+    if src:
+        root = Path(src).expanduser()
+        cands.extend(
+            [
+                root / "agent",
+                root / "integrations" / "ARC-AGI-3-Kaggle-Starter" / "agent",
+            ]
+        )
+    cands.extend([_FILE.parent, Path.cwd() / "agent", Path.cwd()])
+    try:
+        cands.append(Path(sys.argv[0]).resolve().parent)
+    except (TypeError, ValueError, OSError):
+        pass
+    for base in _FILE.parents[:4]:
+        cands.append(base / "agent")
+    for entry in list(sys.path):
+        try:
+            cands.append(Path(entry or ".") / "agent")
+        except (TypeError, ValueError):
+            continue
+
+    seen: set[str] = set()
+    for c in cands:
+        key = str(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            if not (c / "llm_policy.py").is_file():
+                continue
+        except OSError:
+            continue
+        if key not in sys.path:
+            sys.path.insert(0, key)
+        try:
+            _POLICY_FN = importlib.import_module("llm_policy").propose_plan
+            return _POLICY_FN
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{BUILD_TAG}] llm_policy load fail @ {key}: {exc}", flush=True)
+    print("[%s] llm_policy not found; legacy LLM view disabled" % BUILD_TAG, flush=True)
+    return None
+
+
 def _lp_action_spec(text: Any, why: str = "", code: Any = None) -> Optional[dict]:
     """`ACTION2` / `ACTION6@r,c` → the dict the batch queue already speaks.
 
@@ -1838,23 +1911,9 @@ class MyAgent(Agent):
         self, gid: str, levels: int, valid: list[str], grid: Any, note: str
     ) -> list:
         """Old path: PNG + ASCII, one call per action (kept as a fallback)."""
-        try:
-            from llm_policy import propose_plan as _llm_plan
-        except Exception:  # noqa: BLE001
-            # 仓库里 llm_policy.py 就在本文件旁边；不依赖调用方的 sys.path
-            try:
-                _here = str(Path(__file__).resolve().parent)
-                if _here not in sys.path:
-                    sys.path.insert(0, _here)
-                from llm_policy import propose_plan as _llm_plan
-            except Exception:  # noqa: BLE001
-                try:
-                    from agents.templates import llm_policy as _lp  # type: ignore
-
-                    _llm_plan = _lp.propose_plan
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[{BUILD_TAG}] llm_policy import fail: {exc}", flush=True)
-                    return []
+        _llm_plan = _load_llm_policy()
+        if _llm_plan is None:
+            return []
         try:
             return _llm_plan(
                 game_id=gid,
