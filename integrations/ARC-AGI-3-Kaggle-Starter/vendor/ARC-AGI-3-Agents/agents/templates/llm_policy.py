@@ -279,13 +279,19 @@ def choose_json_action(
         return None
     ascii_board = grid_to_ascii(grid)
     png_b64 = grid_png_b64(grid) if vision_enabled() else None
+    # Reki / Franzen lessons (M1–M2): legal actions only, never retry no_effect,
+    # optional 1-4 step plan (we execute the first), UNDO when ACTION7 is legal.
     system = (
-        "You play an entire ARC-AGI-3 episode, one action per turn. "
+        "You play an entire ARC-AGI-3 episode. "
         "Reply with ONE JSON object only. "
-        'Schema: {"action":"ACTION1..ACTION6|RESET","x":0-63,"y":0-63,"why":"..."}. '
-        "ACTION6 requires integer x,y. Use only legal actions. "
+        'Schema: {"action":"ACTION1..ACTION7|RESET","x":0-63,"y":0-63,'
+        '"actions":[{"action":"...","x":0,"y":0}],"why":"..."}. '
+        "Prefer a short actions[] plan of 1-4 steps; we execute the first now. "
+        "ACTION6 requires integer x,y. ACTION7 is UNDO when listed as legal. "
+        "Use only legal actions. "
         "History lines ending in no_effect did nothing. Never repeat those. "
         "Lines ending in changed are useful. engine_note may list forbidden actions. "
+        "After a failed attempt, change the plan before the fatal step. "
         "Advance the level when you can. "
         "If an image is attached, it is the current grid (x right, y down); "
         "click coordinates must match that image."
@@ -335,6 +341,13 @@ def to_game_action(
     if name.isdigit():
         name = f"ACTION{int(name)}"
     # map duck-style names
+    # If the model returned a Reki-style actions[] plan, take the first step.
+    if (not name) and isinstance(obj.get("actions"), list) and obj["actions"]:
+        first = obj["actions"][0] if isinstance(obj["actions"][0], dict) else {}
+        name = str(first.get("action") or first.get("name") or "").strip().upper()
+        for k in ("x", "y", "col", "row"):
+            if k in first and k not in obj:
+                obj[k] = first[k]
     alias = {
         "UP": "ACTION1",
         "DOWN": "ACTION2",
@@ -343,6 +356,7 @@ def to_game_action(
         "SPACE": "ACTION5",
         "MOUSE": "ACTION6",
         "CLICK": "ACTION6",
+        "UNDO": "ACTION7",
     }
     name = alias.get(name, name)
     legal = {a.upper() for a in valid_actions}
@@ -401,3 +415,69 @@ def propose_action(
     if not obj:
         return None
     return to_game_action(obj, valid_actions, game_action_cls)
+
+
+def propose_plan(
+    *,
+    game_id: str,
+    levels: int,
+    valid_actions: list[str],
+    grid: Any,
+    note: str = "",
+    history: str = "",
+    briefing: str = "",
+) -> list[dict[str, Any]]:
+    """Legacy batch fallback: return a short list of action specs.
+
+    Prefer the lexicon planner (`LINGJING_LLM_VIEW=planner`). This path keeps the
+    PNG/ASCII policy usable when lexicon is unavailable: one JSON reply may carry
+    `actions[]`; otherwise the single `action` becomes a 1-step plan.
+    """
+    if not llm_enabled():
+        return []
+    obj = choose_json_action(
+        game_id=game_id,
+        levels=levels,
+        valid_actions=valid_actions,
+        grid=grid,
+        note=note,
+        history=history,
+        briefing=briefing,
+    )
+    if not obj:
+        return []
+    out: list[dict[str, Any]] = []
+    why = str(obj.get("why", "") or "")[:80]
+    raw_plan = obj.get("actions")
+    if isinstance(raw_plan, list):
+        for item in raw_plan[:4]:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("action") or "").strip().upper()
+            if not name:
+                continue
+            spec: dict[str, Any] = {"action": name, "why": why}
+            if name == "ACTION6":
+                if "x" not in item or "y" not in item:
+                    continue
+                try:
+                    spec["x"] = int(item["x"])
+                    spec["y"] = int(item["y"])
+                except (TypeError, ValueError):
+                    continue
+            out.append(spec)
+    if out:
+        return out
+    name = str(obj.get("action") or "").strip().upper()
+    if not name:
+        return []
+    spec = {"action": name, "why": why}
+    if name == "ACTION6":
+        if "x" not in obj or "y" not in obj:
+            return []
+        try:
+            spec["x"] = int(obj["x"])
+            spec["y"] = int(obj["y"])
+        except (TypeError, ValueError):
+            return []
+    return [spec]

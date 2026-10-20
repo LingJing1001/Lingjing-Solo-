@@ -13,7 +13,8 @@
   "dataset_sources": [
     "jeroencottaar/taaf-kaggle-source-share",
     "bilgisarmal/vllm031-cp313-wheelhouse",
-    "driessmit1/vrfai-qwen3-6-27b-fp8-hf-snapshot"
+    "driessmit1/qwen3-8-27b-fp8-hf-017b9c7a",
+    "liaojiaxuan/lingjing-duck-franzen-overlay"
   ],
   "kernel_sources": [],
   "competition_sources": [

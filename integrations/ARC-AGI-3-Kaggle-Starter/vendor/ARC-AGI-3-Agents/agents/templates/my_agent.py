@@ -133,7 +133,7 @@ _ENGINE_SOLVER_GAMES = frozenset({
 # 校准 plan / INLINE 局：choose_action 入口禁止 engine_solver / AOP 抢占。
 _PLAN_PROTECTED_GAMES = frozenset({
     "ls20", "ar25", "ft09", "tr87", "vc33", "sb26", "r11l", "cd82",
-    "tn36", "sc25", "bp35", "wa30", "cn04", "m0r0", "sp80",
+    "tn36", "sc25", "bp35", "wa30", "cn04", "dc22", "m0r0", "sp80",
 })
 
 
@@ -342,6 +342,8 @@ BUILD_TAG = (
     "+llm-vision"  # grid PNG in chat
     "+llm-whole-qwen"  # 非 plan 局整局由核内千问出步；CEAX 不再主控
     "+llm-whole-memory"  # 记录 no_effect，禁止原样重复，卡住才 RESET
+    "+llm-structured-view"  # Franzen lexicon objects/rules/PREDICTED
+    "+llm-batch"  # 一次调用排队多步动作
     "+llm-episode-mind"  # 压缩上下文、跨关规则、因果边、假设融合
     "+cn04-full"  # connector-match L0–L5 full WIN
     "+dc22-full"  # L0–L5 WIN; orckhi/F-mox/D-tele/cursor-bridge
@@ -1271,6 +1273,206 @@ def _plan_locked(gid: str) -> bool:
     return gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE
 
 
+
+
+def _llm_spec_to_action(spec: Any, valid: list[str]) -> Optional[GameAction]:
+    """Normalized spec dict → GameAction, re-checked against the live legal list."""
+    if not isinstance(spec, dict):
+        return None
+    name = str(spec.get("action") or "").strip().upper()
+    if not name:
+        return None
+    legal = {a.upper() for a in valid}
+    if legal and name not in legal:
+        return None
+    try:
+        act = getattr(GameAction, name)
+    except AttributeError:
+        return None
+    if name == "ACTION6":
+        if "x" not in spec or "y" not in spec:
+            return None
+        try:
+            act.set_data({"x": int(spec["x"]), "y": int(spec["y"])})
+        except (TypeError, ValueError, KeyError):
+            return None
+    try:
+        act.reasoning = {"text": f"{BUILD_TAG}:llm-batch {spec.get('why', '')}"}
+    except Exception:  # noqa: BLE001
+        pass
+    return act
+
+
+# Structured lexicon LLM view (Franzen ARCAID3) + batch action queue.
+# LINGJING_LLM_VIEW=planner|legacy  (default planner; falls back if lexicon missing)
+# LINGJING_LLM_BATCH=int            actions per call (default 4, max 12)
+# LINGJING_LLM_EVERY=int            min steps between planner calls (default 1)
+# LINGJING_LEXICON_DIR=path         optional lexicon package parent
+_LP_READY = False
+_LP_PERCEPTION: Any = None
+_LP_PLANNER_CLS: Any = None
+_LP_DISPLAY_XY: Any = None
+
+
+def _llm_view() -> str:
+    v = str(os.environ.get("LINGJING_LLM_VIEW", "planner")).strip().lower()
+    return v if v in {"planner", "legacy"} else "planner"
+
+
+def _lp_chunk() -> int:
+    try:
+        n = int(os.environ.get("LINGJING_LLM_BATCH", "4") or 4)
+    except (TypeError, ValueError):
+        n = 4
+    return max(1, min(12, n))
+
+
+def _lp_load() -> bool:
+    """Import lexicon once. False → caller uses PNG/ASCII legacy path."""
+    global _LP_READY, _LP_PERCEPTION, _LP_PLANNER_CLS, _LP_DISPLAY_XY
+    if _LP_READY:
+        return _LP_PLANNER_CLS is not None
+    _LP_READY = True
+    import importlib
+
+    try:
+        importlib.import_module("lexicon")
+    except Exception:  # noqa: BLE001
+        cands: list[Path] = []
+        env = str(os.environ.get("LINGJING_LEXICON_DIR", "") or "").strip()
+        if env:
+            cands.append(Path(env).expanduser())
+        for base in (_FILE.parent, *_FILE.parents[:6], Path.cwd()):
+            if base not in cands:
+                cands.append(base)
+        for entry in list(sys.path):
+            try:
+                cands.append(Path(entry or "."))
+            except (TypeError, ValueError):
+                continue
+        found = False
+        for c in cands:
+            for sub in (
+                c / "lexicon",
+                c / "arc_adaptor" / "lexicon",
+                c / "lingjing_solo" / "arc_adaptor" / "lexicon",
+            ):
+                try:
+                    hit = (sub / "__init__.py").is_file()
+                except OSError:
+                    hit = False
+                if not hit:
+                    continue
+                parent = str(sub.parent)
+                if parent not in sys.path:
+                    sys.path.insert(0, parent)
+                found = True
+                break
+            if found:
+                break
+    try:
+        pkg = importlib.import_module("lexicon")
+        mod = importlib.import_module("lexicon.llm_planner")
+        _LP_PERCEPTION = pkg.Perception
+        _LP_DISPLAY_XY = pkg.display_xy
+        _LP_PLANNER_CLS = mod.LLMPlanner
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{BUILD_TAG}] lexicon unavailable ({type(exc).__name__}: {exc})", flush=True)
+        _LP_PERCEPTION = _LP_PLANNER_CLS = _LP_DISPLAY_XY = None
+        return False
+    return True
+
+
+_POLICY_READY = False
+_POLICY_FN: Any = None
+
+
+def _load_llm_policy_plan() -> Any:
+    """Return llm_policy.propose_plan if available (legacy batch fallback)."""
+    global _POLICY_READY, _POLICY_FN
+    if _POLICY_READY:
+        return _POLICY_FN
+    _POLICY_READY = True
+    import importlib
+
+    for mod_name in ("llm_policy", "agents.templates.llm_policy"):
+        try:
+            mod = importlib.import_module(mod_name)
+            fn = getattr(mod, "propose_plan", None)
+            if fn is not None:
+                _POLICY_FN = fn
+                return _POLICY_FN
+        except Exception:  # noqa: BLE001
+            continue
+    cands: list[Path] = [_FILE.parent, Path.cwd() / "agent", Path.cwd()]
+    for c in cands:
+        try:
+            if not (c / "llm_policy.py").is_file():
+                continue
+        except OSError:
+            continue
+        key = str(c)
+        if key not in sys.path:
+            sys.path.insert(0, key)
+        try:
+            _POLICY_FN = importlib.import_module("llm_policy").propose_plan
+            return _POLICY_FN
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{BUILD_TAG}] llm_policy.propose_plan fail @ {key}: {exc}", flush=True)
+    return None
+
+
+def _lp_action_spec(text: Any, why: str = "", code: Any = None) -> Optional[dict]:
+    """`ACTION2` / `ACTION6@r,c` → batch-queue dict (native→screen for clicks)."""
+    s = str(text or "").strip().upper().replace(" ", "")
+    if not s or not s.startswith("ACTION"):
+        return None
+    head, _, tail = s.partition("@")
+    name = head
+    if name not in {f"ACTION{i}" for i in range(1, 8)}:
+        return None
+    spec: dict[str, Any] = {"action": name, "why": why}
+    if name == "ACTION6":
+        parts = tail.split(",")
+        if len(parts) != 2:
+            return None
+        try:
+            r, c = int(parts[0]), int(parts[1])
+        except ValueError:
+            return None
+        x, y = c, r
+        if code is not None and _LP_DISPLAY_XY is not None:
+            try:
+                x, y = _LP_DISPLAY_XY(code, r, c)
+            except Exception:  # noqa: BLE001
+                x, y = c, r
+        spec["x"], spec["y"] = int(x), int(y)
+    return spec
+
+
+def _action_label(action: Any) -> tuple[str, Optional[tuple]]:
+    """Dispatched action for the lexicon rule learner."""
+    name = str(getattr(action, "name", "") or "")
+    if not name:
+        return "", None
+    if name != "ACTION6":
+        return name, None
+    d = getattr(action, "action_data", None)
+    if d is None:
+        d = getattr(action, "data", None)
+
+    def _g(k: str) -> Any:
+        return d.get(k) if isinstance(d, dict) else getattr(d, k, None)
+
+    try:
+        x, y = _g("x"), _g("y")
+        if x is None or y is None:
+            return name, None
+        return name, (int(x), int(y))
+    except (TypeError, ValueError):
+        return name, None
+
+
 def _llm_action_sig(act: GameAction) -> str:
     name = str(getattr(act, "name", "") or "")
     data = getattr(act, "data", None)
@@ -1630,6 +1832,41 @@ class MyAgent(Agent):
         self._llm_same_level_steps: int = 0
         self._llm_same_level: int = -1
         self._llm_stuck_resets: int = 0
+        # LLM batch queue (one call → several steps) + lexicon planner
+        self._llm_queue: deque = deque()
+        self._llm_queue_level: int = -1
+        self._llm_queue_hash: str = ""
+        self._llm_queue_stuck: int = 0
+        self._llm_batches: int = 0
+        self._llm_batch_steps: int = 0
+        self._lp_perc: Any = None
+        self._lp_plan: Any = None
+        self._lp_level: int = -1
+        self._lp_step_seen: int = -1
+        self._lp_prev_action: str = ""
+        self._lp_prev_click: Optional[tuple] = None
+        self._lp_hash: str = ""
+        self._lp_outcome: str = ""
+        self._lp_recent: list = []
+        self._episode_mind: Any = None
+        if _llm_on() and _llm_view() == "planner" and _lp_load():
+            try:
+                self._lp_perc = _LP_PERCEPTION()
+                self._lp_plan = _LP_PLANNER_CLS(
+                    chunk=_lp_chunk(),
+                    every=max(1, int(os.environ.get("LINGJING_LLM_EVERY", "1") or 1)),
+                    max_chars=int(os.environ.get("SELFLEARN_LLM_MAXCHARS", "12000") or 12000),
+                )
+                print(
+                    f"[{BUILD_TAG}] llm-view=planner chunk={self._lp_plan.chunk} "
+                    f"every={self._lp_plan.every} maxchars={self._lp_plan.max_chars}",
+                    flush=True,
+                )
+            except Exception as _e:  # noqa: BLE001
+                self._lp_perc = self._lp_plan = None
+                print(f"[{BUILD_TAG}] planner init failed -> legacy: {_e}", flush=True)
+        elif _llm_on():
+            print(f"[{BUILD_TAG}] llm-view=legacy (no lexicon)", flush=True)
         # CEAX 止损：同一关连续零进展计步 + 只播一次日志
         self._stag_level: int = -1
         self._stag_count: int = 0
@@ -1781,6 +2018,11 @@ class MyAgent(Agent):
                     f"[{BUILD_TAG}] v14-observe ERROR: {type(exc).__name__}: {exc}",
                     flush=True,
                 )
+        if getattr(self, "_lp_perc", None) is not None and grid is not None:
+            try:
+                self._lp_observe(latest_frame, grid)
+            except Exception:  # noqa: BLE001
+                pass
         try:
             action = self._choose_action_inner(frames, latest_frame)
         except Exception as exc:  # noqa: BLE001 — never kill Phase B thread
@@ -1858,6 +2100,11 @@ class MyAgent(Agent):
                             flush=True,
                         )
             self._llm_took = False
+        if getattr(self, "_lp_perc", None) is not None:
+            try:
+                self._lp_prev_action, self._lp_prev_click = _action_label(action)
+            except Exception:  # noqa: BLE001
+                self._lp_prev_action, self._lp_prev_click = "", None
         try:
             return self._v14_transition.transition(action, grid)
         except Exception as exc:  # noqa: BLE001 — preserve ARC action fallback
@@ -1867,6 +2114,240 @@ class MyAgent(Agent):
                     flush=True,
                 )
             return action
+
+
+    def _lp_observe(self, latest_frame: FrameData, grid: Any) -> None:
+        """Feed frame to lexicon rule learner (best-effort)."""
+        perc = getattr(self, "_lp_perc", None)
+        if perc is None or grid is None:
+            return
+        step = int(getattr(self, "action_counter", 0) or 0)
+        if step == self._lp_step_seen:
+            return
+        self._lp_step_seen = step
+        levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+        if levels != self._lp_level:
+            self._lp_level = levels
+            try:
+                perc.reset_level(levels)
+            except Exception:  # noqa: BLE001
+                pass
+            self._lp_hash = ""
+            self._lp_recent = []
+            self._lp_outcome = ""
+            self._clear_llm_queue(f"level ->{levels}")
+        act = self._lp_prev_action or None
+        click = self._lp_prev_click
+        try:
+            ev = perc.observe(grid, action=act, click=click)
+        except Exception as exc:  # noqa: BLE001
+            if self._errors < 5:
+                print(
+                    f"[{BUILD_TAG}] lp-observe ERROR: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+            return
+        try:
+            h = hash_grid(grid)
+        except Exception:  # noqa: BLE001
+            h = ""
+        state_name = str(getattr(getattr(latest_frame, "state", None), "name", "") or "")
+        if state_name == "GAME_OVER":
+            outcome = "death"
+        elif h and h == self._lp_hash:
+            outcome = "noop"
+        elif act:
+            outcome = "changed" if ev else "noop"
+        else:
+            outcome = ""
+        self._lp_hash = h
+        self._lp_outcome = outcome
+        if act:
+            tag = f" [{outcome}]" if outcome in ("death", "noop") else ""
+            self._lp_recent.append(f"{act}->{len(ev or [])}chg{tag}")
+            del self._lp_recent[:-12]
+
+    def _clear_llm_queue(self, reason: str = "") -> None:
+        had = len(self._llm_queue)
+        self._llm_queue.clear()
+        self._llm_queue_level = -1
+        self._llm_queue_hash = ""
+        self._llm_queue_stuck = 0
+        if had and reason:
+            print(
+                f"[{BUILD_TAG}] llm-batch abort gid="
+                f"{getattr(self, 'game_id', '')} dropped={had} reason={reason}",
+                flush=True,
+            )
+
+    def _pop_llm_queue(
+        self, latest_frame: FrameData, levels: int, grid: Any
+    ) -> Optional[GameAction]:
+        if not self._llm_queue:
+            return None
+        if levels != self._llm_queue_level:
+            self._clear_llm_queue(f"level {self._llm_queue_level}->{levels}")
+            return None
+        if latest_frame.state in (GameState.GAME_OVER, GameState.NOT_PLAYED):
+            self._clear_llm_queue(f"state={latest_frame.state}")
+            return None
+        try:
+            h = hash_grid(grid) if grid is not None else ""
+        except Exception:  # noqa: BLE001
+            h = ""
+        if h and self._llm_queue_hash:
+            if h == self._llm_queue_hash:
+                self._llm_queue_stuck += 1
+                if self._llm_queue_stuck >= 2:
+                    self._clear_llm_queue("no-change x2")
+                    return None
+            else:
+                self._llm_queue_stuck = 0
+        if h:
+            self._llm_queue_hash = h
+        spec = self._llm_queue.popleft()
+        act = _llm_spec_to_action(spec, _valid_names(latest_frame))
+        if act is None:
+            self._clear_llm_queue(f"illegal {str(spec.get('action'))[:16]}")
+            return None
+        self._llm_batch_steps += 1
+        return act
+
+    def _lp_plan_specs(self, lp: Any, grid: Any, valid: list[str], levels: int) -> list:
+        step = int(getattr(self, "action_counter", 0) or 0)
+        try:
+            fp = hash_grid(grid) if grid is not None else ""
+        except Exception:  # noqa: BLE001
+            fp = ""
+        try:
+            acts = lp.decide(
+                self._lp_perc,
+                grid,
+                step,
+                levels,
+                allowed=tuple(valid),
+                recent=self._lp_recent,
+                outcome=self._lp_outcome or None,
+                planner=None,
+                fp=fp,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[{BUILD_TAG}] lp-decide error: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return []
+        if not acts:
+            return []
+        why = str(getattr(lp, "last_why", "") or "")[:60]
+        code = getattr(self._lp_perc, "last_code", None)
+        specs = [s for s in (_lp_action_spec(a, why, code) for a in acts) if s]
+        if specs and (step < 5 or step % 20 == 0):
+            print(
+                f"[{BUILD_TAG}] lp-plan gid={getattr(self, 'game_id', '')} L={levels} "
+                f"step={step} n={len(specs)} why={why!r}",
+                flush=True,
+            )
+        return specs
+
+    def _legacy_plan_specs(
+        self, gid: str, levels: int, valid: list[str], grid: Any, note: str,
+        history: str = "", briefing: str = "",
+    ) -> list:
+        _llm_plan = _load_llm_policy_plan()
+        if _llm_plan is None:
+            return []
+        try:
+            return _llm_plan(
+                game_id=gid,
+                levels=levels,
+                valid_actions=valid,
+                grid=grid,
+                note=note,
+                history=history,
+                briefing=briefing,
+            ) or []
+        except TypeError:
+            try:
+                return _llm_plan(
+                    game_id=gid,
+                    levels=levels,
+                    valid_actions=valid,
+                    grid=grid,
+                    note=note,
+                ) or []
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"[{BUILD_TAG}] llm-batch error: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                return []
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[{BUILD_TAG}] llm-batch error: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return []
+
+    def _try_llm_batch(
+        self,
+        *,
+        levels: int,
+        latest_frame: FrameData,
+        note: str = "",
+        history: str = "",
+        briefing: str = "",
+    ) -> Optional[GameAction]:
+        """Ask for a short burst; return step 1 and queue the rest."""
+        if not _llm_on():
+            return None
+        gid = _norm_game(getattr(self, "game_id", "") or "")
+        valid = _valid_names(latest_frame)
+        if not valid:
+            return None
+        try:
+            grid = extract_grid(latest_frame)
+        except Exception:  # noqa: BLE001
+            grid = None
+        lp = getattr(self, "_lp_plan", None)
+        if lp is not None and getattr(self, "_lp_perc", None) is not None:
+            specs = self._lp_plan_specs(lp, grid, valid, levels)
+        else:
+            specs = self._legacy_plan_specs(
+                gid, levels, valid, grid, note, history=history, briefing=briefing,
+            )
+        if not specs:
+            return _try_llm_action(
+                game_id=gid,
+                levels=levels,
+                latest_frame=latest_frame,
+                note=note,
+                history=history,
+                briefing=briefing,
+            )
+        specs = specs[: _lp_chunk()]
+        first = _llm_spec_to_action(specs[0], valid)
+        if first is None:
+            return None
+        rest = specs[1:]
+        if rest:
+            self._clear_llm_queue()
+            self._llm_queue.extend(rest)
+            self._llm_queue_level = levels
+            try:
+                self._llm_queue_hash = hash_grid(grid) if grid is not None else ""
+            except Exception:  # noqa: BLE001
+                self._llm_queue_hash = ""
+            self._llm_queue_stuck = 0
+            self._llm_batches += 1
+            avg = self._llm_batch_steps / max(self._llm_batches, 1)
+            print(
+                f"[{BUILD_TAG}] llm-batch gid={gid} L={levels} n={len(specs)} "
+                f"queued={len(rest)} batches={self._llm_batches} avg={avg:.1f}",
+                flush=True,
+            )
+        return first
+
 
     def _choose_action_inner(
         self, frames: list[FrameData], latest_frame: FrameData
@@ -1925,6 +2406,15 @@ class MyAgent(Agent):
                 self._engine_reason = ""
                 self._llm_calls = 0
                 self._llm_took = False
+                self._clear_llm_queue("not-played")
+                self._episode_mind = None
+                self._lp_level = -1
+                self._lp_step_seen = -1
+                self._lp_recent = []
+                self._lp_hash = ""
+                self._lp_outcome = ""
+                self._lp_prev_action = ""
+                self._lp_prev_click = None
                 self._stag_level = -1
                 self._stag_count = 0
                 self._stag_logged = False
@@ -2282,7 +2772,7 @@ class MyAgent(Agent):
                         }
                         return action
 
-        # --- 隐藏/未知局主路径：千问整局出步。plan / INLINE 已在上面返回。---
+        # --- 隐藏/未知局主路径：lexicon 视图 + 批动作；plan / INLINE 已在上面返回。---
         if _whole_owns:
             stride, cap = _llm_call_budget()
             calls = int(getattr(self, "_llm_calls", 0) or 0)
@@ -2299,11 +2789,13 @@ class MyAgent(Agent):
                 grid_now = extract_grid(latest_frame)
                 hash_now = hash_grid(grid_now) if grid_now is not None else ""
             except Exception:
+                grid_now = None
                 hash_now = ""
             mind.observe(levels=levels, grid_hash=hash_now)
             if mind.want_reset():
                 stuck_now = mind.same_level_steps
                 mind.mark_reset(levels)
+                self._clear_llm_queue("episode-reset")
                 print(
                     f"[{BUILD_TAG}] llm-whole-reset gid={gid} L={levels} "
                     f"stuck={stuck_now} resets={mind.stuck_resets}",
@@ -2314,11 +2806,38 @@ class MyAgent(Agent):
                 return action
             history, note = mind.briefing(levels=levels)
             dead = set(mind.dead)
+            # Drain a previously planned burst first (one LLM call → many steps).
+            if self._llm_queue:
+                _queued = self._pop_llm_queue(latest_frame, levels, grid_now)
+                if _queued is not None:
+                    sig = _llm_action_sig(_queued)
+                    if sig in dead:
+                        mind.reject(sig)
+                        self._clear_llm_queue(f"dead-queued {sig}")
+                    else:
+                        self._llm_took = True
+                        mind.note_action(sig, levels, int(self.action_counter))
+                        if self.action_counter < 3 or self.action_counter % 25 == 0:
+                            print(
+                                f"[{BUILD_TAG}] llm-queue gid={gid} L={levels} "
+                                f"{sig} left={len(self._llm_queue)} "
+                                f"stuck={mind.same_level_steps}",
+                                flush=True,
+                            )
+                        return _queued
             _llm_act = None
-            if calls < cap and int(self.action_counter) % stride == 0:
+            _lp_ok = True
+            if getattr(self, "_lp_plan", None) is not None:
+                try:
+                    _lp_ok = bool(self._lp_plan.ready(int(self.action_counter)))
+                except Exception:  # noqa: BLE001
+                    _lp_ok = True
+            if calls < cap and _lp_ok and int(self.action_counter) % stride == 0:
                 self._llm_calls = calls + 1
-                _llm_act = _try_llm_action(
-                    game_id=gid,
+                if note:
+                    self._lp_recent.append("mind:" + note[:96])
+                    del self._lp_recent[:-12]
+                _llm_act = self._try_llm_batch(
                     levels=levels,
                     latest_frame=latest_frame,
                     note=note,
@@ -2328,10 +2847,10 @@ class MyAgent(Agent):
                 sig = _llm_action_sig(_llm_act) if _llm_act is not None else ""
                 if _llm_act is not None and sig in dead:
                     mind.reject(sig)
+                    self._clear_llm_queue(f"dead-first {sig}")
                     self._llm_calls = int(self._llm_calls) + 1
                     history, note = mind.briefing(levels=levels)
-                    _llm_act = _try_llm_action(
-                        game_id=gid,
+                    _llm_act = self._try_llm_batch(
                         levels=levels,
                         latest_frame=latest_frame,
                         note=note + f" do_not_repeat={sig}",
@@ -2341,6 +2860,7 @@ class MyAgent(Agent):
                     sig = _llm_action_sig(_llm_act) if _llm_act is not None else ""
                     if sig in dead:
                         _llm_act = None
+                        self._clear_llm_queue(f"dead-retry {sig}")
                 if _llm_act is None:
                     _llm_act = _llm_unused_action(valid, dead)
                     sig = _llm_action_sig(_llm_act) if _llm_act is not None else ""
@@ -2351,6 +2871,7 @@ class MyAgent(Agent):
                         print(
                             f"[{BUILD_TAG}] llm-whole gid={gid} L={levels} "
                             f"{sig} calls={self._llm_calls}/{cap} "
+                            f"view={_llm_view()} queued={len(self._llm_queue)} "
                             f"stuck={mind.same_level_steps} dead={len(dead)}",
                             flush=True,
                         )
@@ -2360,7 +2881,7 @@ class MyAgent(Agent):
                     f"calls={self._llm_calls}/{cap}",
                     flush=True,
                 )
-            else:
+            elif calls >= cap:
                 print(
                     f"[{BUILD_TAG}] llm-whole-cap gid={gid} L={levels} calls={calls}/{cap}",
                     flush=True,

@@ -16,8 +16,10 @@ You don't normally need to call this directly — `make submit` runs it for you.
 from __future__ import annotations
 
 import ast
+import base64
 import json
 import os
+import zlib
 from pathlib import Path
 from textwrap import dedent
 
@@ -51,8 +53,21 @@ EPISODE_SRC = ROOT / "agent" / "llm_episode.py"
 LINGJING_SRC = Path(
     os.environ.get("LINGJING_SRC", str(ROOT.parents[1] / "lingjing_solo"))
 ).expanduser().resolve()
+# Repo-root arc_adaptor/lexicon (Franzen structured view). Starter is
+# integrations/ARC-AGI-3-Kaggle-Starter → parents[1] is 灵境战队AGI课题探索.
+LEXICON_SRC = Path(
+    os.environ.get(
+        "LINGJING_LEXICON_SRC",
+        str(ROOT.parents[1] / "arc_adaptor" / "lexicon"),
+    )
+).expanduser().resolve()
 NOTEBOOK_PATH = ROOT / "notebooks" / "submission.ipynb"
 METADATA_PATH = ROOT / "notebooks" / "kernel-metadata.json"
+# 32k is the Duck/Franzen analyzer tier on RTX Pro 6000 96GB FP8: enough for
+# objects+NATIVE+RULES+PREDICTED without the KV blow-up of 64k under concurrency.
+DEFAULT_VLLM_MAX_LEN = "32768"
+DEFAULT_VLLM_MAX_SEQS = "8"
+DEFAULT_VLLM_MEM = "0.90"
 
 
 def code_cell(source: str) -> dict:
@@ -150,26 +165,54 @@ def _collect_lingjing_files() -> list[tuple[str, str]]:
     return out
 
 
-def _lingjing_write_cell(files: list[tuple[str, str]]) -> dict:
-    """One notebook cell that materializes the lingjing_solo package under /tmp."""
-    parts = [
-        "import os\n",
-        "from pathlib import Path\n",
-        "_LJ_ROOT = Path('/tmp/lingjing_solo')\n",
-        "_LJ_ROOT.mkdir(parents=True, exist_ok=True)\n",
-        "_LJ_FILES = {\n",
-    ]
-    for rel, text in files:
-        parts.append(f"    {rel!r}: {text!r},\n")
-    parts.append("}\n")
-    parts.append(
-        "for _rel, _src in _LJ_FILES.items():\n"
-        "    _p = _LJ_ROOT / _rel\n"
+def _packed_files_cell(
+    files: list[tuple[str, str]],
+    *,
+    root: str,
+    label: str,
+) -> dict:
+    """Write files from a zlib blob so the kernel stays under Kaggle's 1MB cap."""
+    raw = json.dumps(dict(files), ensure_ascii=False).encode("utf-8")
+    blob = base64.b64encode(zlib.compress(raw, 9)).decode("ascii")
+    source = (
+        "import base64, json, zlib\n"
+        "from pathlib import Path\n"
+        f"_ROOT = Path({root!r})\n"
+        "_ROOT.mkdir(parents=True, exist_ok=True)\n"
+        f"_FILES = json.loads(zlib.decompress(base64.b64decode({blob!r})).decode('utf-8'))\n"
+        "for _rel, _src in _FILES.items():\n"
+        "    _p = _ROOT / _rel\n"
         "    _p.parent.mkdir(parents=True, exist_ok=True)\n"
         "    _p.write_text(_src, encoding='utf-8')\n"
-        "print(f'[lingjing_solo] wrote {len(_LJ_FILES)} files -> {_LJ_ROOT}')\n"
+        f"print({label!r}, len(_FILES), _ROOT)\n"
     )
-    return code_cell("".join(parts))
+    return code_cell(source)
+
+
+def _lingjing_write_cell(files: list[tuple[str, str]]) -> dict:
+    """One notebook cell that materializes the lingjing_solo package under /tmp."""
+    return _packed_files_cell(files, root="/tmp/lingjing_solo", label="[lingjing_solo] wrote")
+
+
+def _collect_lexicon_files() -> list[tuple[str, str]]:
+    """Ship arc_adaptor/lexicon into the notebook (structured Franzen view)."""
+    if not LEXICON_SRC.is_dir():
+        raise SystemExit(
+            f"Could not find lexicon at {LEXICON_SRC}. "
+            "Expected repo arc_adaptor/lexicon from feat/llm-structured-view."
+        )
+    out: list[tuple[str, str]] = [
+        ("__init__.py", '"""ARC-AGI-3 adaptor surface (lexicon / structured view)."""\n'),
+    ]
+    for path in sorted(LEXICON_SRC.glob("*.py")):
+        out.append((f"lexicon/{path.name}", path.read_text(encoding="utf-8")))
+    if len(out) < 2:
+        raise SystemExit(f"No lexicon .py files under {LEXICON_SRC}")
+    return out
+
+
+def _lexicon_write_cell(files: list[tuple[str, str]]) -> dict:
+    return _packed_files_cell(files, root="/tmp/arc_adaptor", label="[arc_adaptor] wrote")
 
 
 def build() -> dict:
@@ -181,9 +224,13 @@ def build() -> dict:
     llm_policy_body = LLM_POLICY_SRC.read_text(encoding="utf-8")
     episode_body = EPISODE_SRC.read_text(encoding="utf-8")
     lj_files = _collect_lingjing_files()
+    ax_files = _collect_lexicon_files()
     use_gpu = bool(_ACCELERATORS.get(ACCELERATOR, {}).get("gpu"))
     # GPU builds enable local vLLM by default; CPU stays fail-closed off.
     llm_env_default = "on" if use_gpu else "off"
+    vllm_max_len = os.environ.get("LINGJING_VLLM_MAX_LEN", DEFAULT_VLLM_MAX_LEN)
+    vllm_max_seqs = os.environ.get("LINGJING_VLLM_MAX_SEQS", DEFAULT_VLLM_MAX_SEQS)
+    vllm_mem = os.environ.get("LINGJING_VLLM_MEM", DEFAULT_VLLM_MEM)
 
     install_cell = code_cell(
         "!pip install --no-index --find-links \\\n"
@@ -205,6 +252,7 @@ def build() -> dict:
         "%%writefile /tmp/llm_episode.py\n" + episode_body
     )
     write_lingjing_cell = _lingjing_write_cell(lj_files)
+    write_lexicon_cell = _lexicon_write_cell(ax_files)
 
     vllm_cell_source = dedent(
         f"""\
@@ -218,11 +266,24 @@ def build() -> dict:
         os.environ['LINGJING_LLM'] = '{llm_env_default}'
         os.environ.setdefault('LINGJING_LLM_URL', 'http://127.0.0.1:1234/v1')
         os.environ.setdefault('LINGJING_LLM_MODEL', 'vrfai/Qwen3.6-27B-FP8')
-        os.environ.setdefault('LINGJING_LLM_VISION', 'on')
+        # Planner view is text (objects/NATIVE/RULES). Vision stays off so the
+        # 32k window is spent on the structured board, not a PNG.
+        os.environ['LINGJING_LLM_VISION'] = 'off'
         os.environ.setdefault('LINGJING_LLM_PRECEAX', 'on')
         os.environ['LINGJING_LLM_WHOLE'] = 'on'
+        os.environ['LINGJING_LLM_VIEW'] = 'planner'
+        os.environ['LINGJING_LLM_BATCH'] = '4'
+        os.environ['LINGJING_LLM_EVERY'] = '1'
+        os.environ['LINGJING_LLM_NATIVE'] = '1'
+        os.environ['SELFLEARN_LLM_MAXCHARS'] = '12000'
+        os.environ['SELFLEARN_LLM_THINK'] = '0'
+        os.environ['SELFLEARN_LLM_MAXTOK'] = '512'
         os.environ['LINGJING_LLM_MAX_CALLS'] = '800'
         os.environ['LINGJING_LLM_STRIDE'] = '1'
+        os.environ.setdefault('LINGJING_VLLM_MAX_LEN', '{vllm_max_len}')
+        os.environ.setdefault('LINGJING_VLLM_MAX_SEQS', '{vllm_max_seqs}')
+        os.environ.setdefault('LINGJING_VLLM_MEM', '{vllm_mem}')
+        os.environ['LINGJING_LEXICON_DIR'] = '/tmp/arc_adaptor'
         _require_llm = os.environ['LINGJING_LLM'].lower() in ('1', 'on', 'true', 'yes')
 
         def _find_input(slug_part: str):
@@ -290,21 +351,23 @@ def build() -> dict:
                 '--model', str(_model),
                 '--served-model-name', os.environ['LINGJING_LLM_MODEL'],
                 '--host', '127.0.0.1', '--port', '1234',
-                '--max-model-len', os.environ.get('LINGJING_VLLM_MAX_LEN', '8192'),
+                '--max-model-len', os.environ.get('LINGJING_VLLM_MAX_LEN', '{vllm_max_len}'),
                 '--tensor-parallel-size', '1',
                 '--gpu-memory-utilization',
-                os.environ.get('LINGJING_VLLM_MEM', '0.90'),
+                os.environ.get('LINGJING_VLLM_MEM', '{vllm_mem}'),
                 '--linear-backend', 'cutlass',
                 # Qwen3.6 is a GDN/Mamba hybrid. On the 96GB RTX Pro 6000 the
                 # default max_num_seqs=1024 asks for more Mamba blocks than the
-                # leftover memory can hold (v10 died at 999). The agent sends
-                # one request at a time. Eager skips the CUDA-graph capture
-                # that enforces that limit.
-                '--max-num-seqs', os.environ.get('LINGJING_VLLM_MAX_SEQS', '16'),
+                # leftover memory can hold (v10 died at 999). SmartRouter sends
+                # one request at a time; 8 sequences leaves KV headroom for 32k.
+                # Eager skips the CUDA-graph capture that enforces that limit.
+                '--max-num-seqs', os.environ.get('LINGJING_VLLM_MAX_SEQS', '{vllm_max_seqs}'),
                 '--enforce-eager',
             ]
             subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT)
-            for _i in range(180):
+            # 33GB FP8 weights on Kaggle NFS took longer than 15 minutes
+            # (v14 was killed with VLLM_NOT_READY while prefetch was still running).
+            for _i in range(480):
                 try:
                     urllib.request.urlopen(
                         'http://127.0.0.1:1234/v1/models', timeout=2
@@ -312,6 +375,8 @@ def build() -> dict:
                     _llm_ready = True
                     break
                 except Exception:
+                    if _i % 12 == 0:
+                        print('VLLM_WAIT', _i * 5, 's', flush=True)
                     time.sleep(5)
             print('VLLM_READY', _llm_ready, 'model', _model, 'wheel', _wheel, flush=True)
             if not _llm_ready:
@@ -352,6 +417,8 @@ def build() -> dict:
                 'enable_internet': False,
                 'required_tag': 'llm-whole-qwen',
                 'llm_whole': os.environ['LINGJING_LLM_WHOLE'],
+                'llm_view': os.environ.get('LINGJING_LLM_VIEW', 'planner'),
+                'max_model_len': os.environ.get('LINGJING_VLLM_MAX_LEN', '{vllm_max_len}'),
                 'max_calls': os.environ['LINGJING_LLM_MAX_CALLS'],
             }}
             Path('/kaggle/working/PHASE_B_FINGERPRINT.json').write_text(
@@ -388,6 +455,9 @@ def build() -> dict:
             !rm -rf /kaggle/working/ARC-AGI-3-Agents/lingjing_solo
             !cp -r /tmp/lingjing_solo \\
                 /kaggle/working/ARC-AGI-3-Agents/lingjing_solo
+            !rm -rf /kaggle/working/ARC-AGI-3-Agents/arc_adaptor
+            !cp -r /tmp/arc_adaptor \\
+                /kaggle/working/ARC-AGI-3-Agents/arc_adaptor
 
             # Register MyAgent FIRST (slim __init__) — fix0 order: rewrite before import.
             with open('/kaggle/working/ARC-AGI-3-Agents/agents/__init__.py', 'w') as f:
@@ -407,7 +477,7 @@ def build() -> dict:
         \"\"\")
 
             # Fail loud if wrong agent landed (SmartRouter fingerprint).
-            !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router'), BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
+            !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents/arc_adaptor'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router'), BUILD_TAG; assert 'llm-structured-view' in BUILD_TAG, BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
 
             _llm_flag = os.environ.get('LINGJING_LLM', '{llm_env_default}')
             if _llm_flag.lower() in ('1', 'on', 'true', 'yes'):
@@ -425,7 +495,11 @@ def build() -> dict:
                 ):
                     raise SystemExit('PHASE_B_FINGERPRINT_MISMATCH %s' % _fp)
             _tag = open('/kaggle/working/BUILD_TAG.txt', encoding='utf-8').read()
-            if 'llm-whole-qwen' not in _tag or not _tag.startswith('smart-router'):
+            if (
+                'llm-whole-qwen' not in _tag
+                or 'llm-structured-view' not in _tag
+                or not _tag.startswith('smart-router')
+            ):
                 raise SystemExit('BUILD_TAG_MISMATCH %s' % _tag)
             print('PHASE_B_OK', _tag, 'LLM', _llm_flag, flush=True)
 
@@ -444,9 +518,17 @@ def build() -> dict:
         LINGJING_LLM={{_llm_flag}}
         LINGJING_LLM_URL=http://127.0.0.1:1234/v1
         LINGJING_LLM_MODEL=vrfai/Qwen3.6-27B-FP8
-        LINGJING_LLM_VISION=on
+        LINGJING_LLM_VISION=off
         LINGJING_LLM_PRECEAX=on
         LINGJING_LLM_WHOLE=on
+        LINGJING_LLM_VIEW=planner
+        LINGJING_LLM_BATCH=4
+        LINGJING_LLM_EVERY=1
+        LINGJING_LLM_NATIVE=1
+        SELFLEARN_LLM_MAXCHARS=12000
+        SELFLEARN_LLM_THINK=0
+        SELFLEARN_LLM_MAXTOK=512
+        LINGJING_LEXICON_DIR=/kaggle/working/ARC-AGI-3-Agents/arc_adaptor
         LINGJING_LLM_STALL=80
         LINGJING_LLM_STRIDE=1
         LINGJING_LLM_MAX_CALLS=800
@@ -455,7 +537,7 @@ def build() -> dict:
             # Run it. The gateway records every action and emits submission.parquet.
             !cd /kaggle/working/ARC-AGI-3-Agents && \\
                 MPLBACKEND=agg \\
-                PYTHONPATH=/kaggle/working/ARC-AGI-3-Agents:${{PYTHONPATH}} \\
+                PYTHONPATH=/kaggle/working/ARC-AGI-3-Agents/arc_adaptor:/kaggle/working/ARC-AGI-3-Agents:${{PYTHONPATH}} \\
                 python main.py --agent myagent
             !python -c "print('MAIN_EXIT', 0)"
         """
@@ -515,7 +597,8 @@ def build() -> dict:
                 "# ARC Prize 2026 — SmartRouter + optional local LLM\n\n"
                 "Submission agent = **SmartRouter** (`BUILD_TAG` starts with `smart-router`). "
                 "Plan floors stay on verified plans. Every other game, including hidden "
-                "ids, is played for the whole episode by in-kernel Qwen (`llm-whole-qwen`). "
+                "ids, is played for the whole episode by in-kernel Qwen (`llm-whole-qwen` "
+                "+ `llm-structured-view` batch planner, vLLM context 32768). "
                 "Phase B refuses to start the games unless vLLM probes OK and "
                 "`enable_internet` is false. "
                 "GPU default: RTX 6000 + vllm031-cp313 + qwen3.6-27b-fp8. "
@@ -523,6 +606,7 @@ def build() -> dict:
             ),
             install_cell,
             write_lingjing_cell,
+            write_lexicon_cell,
             write_agent_cell,
             write_llm_policy_cell,
             write_episode_cell,
