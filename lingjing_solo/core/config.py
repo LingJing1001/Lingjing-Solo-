@@ -101,6 +101,17 @@ class SoloConfig:
 
     # ---------- R2 通用投影图（阶段 0：默认关闭，可回滚） ----------
     r2_projection_graph: bool = False
+    # ---------- ARC-AGI-3 stage 6/7 exploration and deployment ----------
+    ui_top_ratio: float = 0.08
+    ui_bottom_ratio: float = 0.08
+    priority_visual_weight: float = 0.5
+    priority_dpl_weight: float = 0.3
+    priority_motion_weight: float = 0.2
+    frontier_loop_window: int = 8
+    r2_deployment_mode: str = "offline"
+    r2_canary_levels: tuple[int, ...] = ()
+    r2_canary_episodes: tuple[str, ...] = ()
+
 
     def __post_init__(self):
         self.allowed_actions = list(DEFAULT_SIMPLE)
