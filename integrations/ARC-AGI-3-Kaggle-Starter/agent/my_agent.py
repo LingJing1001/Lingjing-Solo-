@@ -1462,6 +1462,11 @@ class MyAgent(Agent):
         self._levels_seen = 0
         self._errors = 0
         self._r3_path: list[int] = []
+        # duck：R3 三道链（本地求解器 / shadow / IDDFS）全空手时的最后一道门。
+        # _duck_request 记的是"在哪个关卡上失败"，换关即作废；_duck 懒构造，
+        # 保证没有本地模型时这条线连对象都不存在（对现有分数零影响）。
+        self._duck: Any = None
+        self._duck_request: int = -1
         self._env_ref: Any = getattr(self, "arc_env", None)
         self._v14_transition = V14ArcTransition()
         self._hybrid_click_budget: int = 20
@@ -1688,6 +1693,24 @@ class MyAgent(Agent):
                         f"[{BUILD_TAG}] lp-observe ERROR: {type(exc).__name__}: {exc}",
                         flush=True,
                     )
+        # --- duck：未知局的最后一道门 ---
+        # 只有 R3 三条链全空手（_duck_request >= 0）才走到这里；动作必须原样交给
+        # harness，因此这一支必须在 v14_transition / AOP 改写之前 return。
+        try:
+            _duck_act = self._duck_tick(latest_frame, _gid_early)
+            if _duck_act is not None:
+                if self._lp_perc is not None:
+                    try:
+                        self._lp_prev_action, self._lp_prev_click = _action_label(_duck_act)
+                    except Exception:  # noqa: BLE001
+                        pass
+                return _duck_act
+        except Exception as exc:  # noqa: BLE001 — duck 不得影响主流程
+            if self._errors < 5:
+                print(
+                    f"[{BUILD_TAG}] duck-raised: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
         try:
             action = self._choose_action_inner(frames, latest_frame)
         except Exception as exc:  # noqa: BLE001 — never kill Phase B thread
@@ -1969,6 +1992,61 @@ class MyAgent(Agent):
                 flush=True,
             )
             return []
+
+    # ------------------------------------------------------------------ duck
+
+    def _duck_tick(self, latest_frame: FrameData, gid: str) -> Optional[GameAction]:
+        """未知局交给 duck 时，一步换一个动作；None = 这一步不归它。
+
+        契约写在 `duck_bridge.py` 里，这里只守三条：
+          1. 校准 plan / INLINE 局绝不进 duck（那里已经有解，别拿模型去换）；
+          2. `LINGJING_DUCK` 未开时构造完立刻关掉，`_duck_request` 清空，之后零开销；
+          3. 任何异常都冒泡给调用方那层 try/except，本函数绝不自己吞成"没动作"。
+        """
+        if gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE:
+            return None
+        if self._duck_request < 0:
+            return None
+
+        if self._duck is None:
+            try:
+                from duck_bridge import DuckBridge
+            except Exception as exc:  # noqa: BLE001
+                # 打包进 Kaggle notebook 时不带这条线：静默禁用，别再每步重试。
+                print(
+                    f"[{BUILD_TAG}] duck-off gid={gid} "
+                    f"(duck_bridge unavailable: {type(exc).__name__})",
+                    flush=True,
+                )
+                self._duck_request = -1
+                return None
+            bridge = DuckBridge(gid, log=lambda s: print(f"[{BUILD_TAG}] {s}", flush=True))
+            if not bridge.enabled:
+                # 没有本地模型（auto 探测不到端点）是常态：静默记一次，不再尝试。
+                print(
+                    f"[{BUILD_TAG}] duck-off gid={gid} ({bridge.reason})",
+                    flush=True,
+                )
+                self._duck_request = -1
+                return None
+            self._duck = bridge
+
+        levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+        nxt = self._duck.tick(latest_frame, levels, request=self._duck_request)
+        if nxt is None:
+            if not self._duck.enabled:
+                # duck 跑完/超预算/放弃：本局不再起它，回落原流程。
+                self._duck_request = -1
+            return None
+        name, spec = nxt
+        action = _as_game_action(name)
+        if str(getattr(action, "name", "") or "") == "ACTION6":
+            row, col = spec.get("row"), spec.get("col")
+            if row is None or col is None:
+                return None
+            action.set_data({"x": int(col), "y": int(row)})
+        action.reasoning = {"text": f"{BUILD_TAG}:duck L{levels}"}
+        return action
 
     def _choose_action_inner(
         self, frames: list[FrameData], latest_frame: FrameData
@@ -2492,6 +2570,9 @@ class MyAgent(Agent):
                                 f"path_len={len(found)}", flush=True,
                             )
                         else:
+                            # 三条链都空手：这块板子躲开了我们能写出来的所有搜索。
+                            # 记一个请求，下一次 choose_action 由 duck 接手（若能连上模型）。
+                            self._duck_request = int(levels)
                             print(
                                 f"[{BUILD_TAG}] r3-none gid={gid} L={levels} "
                                 f"(no path within budget)", flush=True,

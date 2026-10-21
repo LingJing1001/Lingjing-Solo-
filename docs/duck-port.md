@@ -47,9 +47,12 @@
   （新增文件完整还原；修改文件只能存"新增行片段"，因为原文件不在 notebook 里）
 - `scripts/duck_play.py` —— 入口，两种后端
 - `scripts/duck_bridge_selftest.py` —— 真引擎验证"动作经 `env.step` 才计分"
+- `scripts/duck_router_selftest.py` —— 真引擎验证"duck 真的从 `my_agent` 手里接过方向盘"
 - `scripts/mock_duck_server.py` —— 离线 OpenAI 兼容端点，验证管线不依赖模型
 - `tests/test_duck.py` —— 15 条，钉住语义
 - `tests/test_duck_memory.py` + `tests/test_duck_driver_memory.py` —— 15 条，钉住记忆与接线
+- `integrations/ARC-AGI-3-Kaggle-Starter/agent/duck_bridge.py` —— 路由侧的缝（开关、预算、门禁、动作转换）
+- `integrations/ARC-AGI-3-Kaggle-Starter/tests/test_duck_bridge.py` —— 14 条，钉住缝的每条判断
 
 ## 三个不可替代的设计决定
 
@@ -90,8 +93,53 @@ provider 都会 400，而且看起来像"模型坏了"。所以 `_compact()` 只
 | `scripts/duck_bridge_selftest.py --game ar25` | PASS，同上 |
 | `duck_play.py --backend openai`（mock 端点，ar25，8 步） | 8 动作，6840 tokens，`marker_pos` 保留 |
 
+2026-10-21 晚，接进路由之后：
+
+| 检查 | 结果 |
+|---|---|
+| `tests/test_duck_bridge.py` | **14/14**（开关语义、门禁、每 tick 一动作、兜底、agent 侧转换） |
+| `scripts/duck_router_selftest.py`（su15，真引擎） | PASS，3 个 duck 动作全经 `env.step`，**计分卡记 3**，脚本用完自动退出 |
+| `play_local.py --game su15 --max-steps 25`（默认 `LINGJING_DUCK` 未设） | 1 关 / 1.72 分，日志里没有 duck 一行 —— 默认路径零改动 |
+
 真实模型：**仍未接**。本机没有在跑的推理服务。但链路（HTTP → tool_calls → 沙箱
-→ `env.step` → 计分卡）已经逐段验证过，缺的只是模型本身。
+→ `env.step` → 计分卡 → `my_agent.choose_action` 提前 return）已经逐段验证过，
+缺的只是模型本身。
+
+## 接进路由：`agent/duck_bridge.py`
+
+`_choose_action_inner` 本来就有三级降级：本地专用求解器 → shadow → IDDFS。
+三条都空手时它现在会写一个 `_duck_request`，下一次 `choose_action` 由 duck 接手。
+
+```
+choose_action
+  ├─ engine_solver（已知局）
+  ├─ lp_observe（lexicon 看帧）
+  ├─ _duck_tick ← 新增：命中就 return，绕开 v14/AOP 改写
+  └─ _choose_action_inner
+        └─ R3：local → shadow → IDDFS → 全空则 _duck_request = levels
+```
+
+三条硬约束：
+
+1. **默认 off。** 44.57 是 duck 缺席时的成绩；默认开等于未经允许改数字，而且
+   本机 8001 上任何 mock 网关都会让它"看起来能用"。`LINGJING_DUCK=auto` 才会
+   按端口探测生效，`on` 强制生效。
+2. **预算卡在 chat 外层**（`GuardedChat`）。duck 的调用跑在 `choose_action` 里，
+   只在 tick 之间看墙钟挡不住一次 120 秒的阻塞；闸门放在每次调用之前，超时
+   raise，duck 的 `_inner` 本来就有 `except Exception`，生成器自己收尾。
+3. **动作必须在 v14/AOP 之前 return。** 那两层会改写动作（AOP 甚至会换成别的
+   合法名），duck 的动作是被计分的原始意图，不能被"优化"。
+
+配置（全部可缺省）：
+
+| 变量 | 默认 | 含义 |
+|---|---|---|
+| `LINGJING_DUCK` | `off` | `off` / `auto` / `on` |
+| `LINGJING_DUCK_PROBE` | `0.6` | auto 模式的 TCP 探测超时（秒） |
+| `LINGJING_DUCK_BUDGET` | `300` | 每局 duck 墙钟预算（秒） |
+| `LINGJING_DUCK_STEPS` / `_TURNS` | `80` / `24` | 动作与回合上限 |
+| `LINGJING_DUCK_PIN` | `level` | 过关记忆何时进 system prompt；短局用 `level` |
+| `LINGJING_DUCK_MEMORY` / `_TRANSFER` | `on` | 过关记忆 / 关卡迁移开关 |
 
 ## 与冠军的真实差距
 
@@ -103,6 +151,7 @@ provider 都会 400，而且看起来像"模型坏了"。所以 `_compact()` 只
 | **模型能力** | 0.6B 写不出可用代码 → 骨架空转 | 待定 |
 | `ToolAgent` 的 yield/resume/retry | 长跑稳定性和掉线恢复 | **已做**（`deferred.py`，见下） |
 | 过关记忆（solved-level memory） | 关卡交界处不重学机制（lalalia9 版 +2.8） | **已做**（`memory.py`） |
+| 接进 `my_agent` 路由 | 未知局 R3 全空后有兜底 | **已做**（`duck_bridge.py`） |
 | 死亡账本 | 同一盘面致死动作的拦截 | 未做（只做了 noop） |
 | segmentation 的旋转/姿态/边界 | 认旋转对称、认贴边物体 | 简化 |
 | 动画帧 | 瞬态像素，只在中间帧出现 | 未做（引擎不暴露） |
