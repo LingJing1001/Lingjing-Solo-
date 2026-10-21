@@ -87,6 +87,15 @@ NOOP_GUARD_ADDENDUM = (
     "again as your very next action and it will execute.\n"
 )
 
+# PORTER: DEATH_LEDGER_ADDENDUM. The no-op guard's cheaper twin: a no-op burns one
+# action, a fatal action burns the attempt. Same escape hatch, for the same reason.
+DEATH_LEDGER_ADDENDUM = (
+    "- An action that ended the run from this EXACT board last time is refused the same way: "
+    "it raises `KnownDeadlyActionError`, nothing runs, no budget is spent, `stop_reason` is "
+    "`known_deadly`. Issue it again if you think the outcome differs -- but if you have no "
+    "reason to think so, that action is the one thing you already know does not work here.\n"
+)
+
 # PORTER: PREFER_TOOL_CALLS_LINE. Their measurement: 2000 tokens of reasoning costs
 # far more wall-clock than running the code that settles the question.
 PREFER_TOOL_CALLS_LINE = (
@@ -149,6 +158,7 @@ def build_system(*, level_transfer: bool = True) -> str:
     parts.append(PERSISTENT_FUNCTIONS_LINE)
     parts.append(PREFER_TOOL_CALLS_LINE)
     parts.append(NOOP_GUARD_ADDENDUM)
+    parts.append(DEATH_LEDGER_ADDENDUM)
     if level_transfer:
         parts.append(
             "- Levels usually build on mechanics learned in earlier levels. Carry forward "

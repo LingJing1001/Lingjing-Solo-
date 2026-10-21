@@ -68,6 +68,16 @@ class TerminalStateActionError(BaseException):
     """Raised when a snippet acts after the attempt or level already ended."""
 
 
+class KnownDeadlyActionError(BaseException):
+    """Raised INSTEAD of re-running an action that ended the run from this board.
+
+    The no-op guard's twin, and the cheaper half of the pair: a no-op wastes one
+    action, a fatal action throws away the whole attempt. Same escape hatch --
+    re-issue it and it runs -- because "that killed me" is still a hypothesis
+    about a stochastic game, not a law.
+    """
+
+
 class RepeatedActionInStateError(BaseException):
     """Raised when one snippet runs the same action from the same board twice.
 
@@ -169,9 +179,11 @@ class Sandbox:
         # guards
         self._noop: dict[str, set[str]] = {}      # interior_hash -> {action_sig}
         self._armed_noop: tuple[str, str] | None = None
+        self._deadly: dict[str, set[str]] = {}    # board -> sigs that ended the run
+        self._armed_deadly: tuple[str, str] | None = None
         self._terminal: str | None = None
         self._executed_in_snippet: set[tuple[str, str]] = set()
-        self.refusals = {"noop": 0, "terminal": 0, "repeated": 0}
+        self.refusals = {"noop": 0, "terminal": 0, "repeated": 0, "deadly": 0}
 
     # ------------------------------------------------------------------ state
 
@@ -186,6 +198,10 @@ class Sandbox:
             if level != self.level:
                 self._noop.clear()
                 self._armed_noop = None
+                # A new level means new death rules; the ledger only describes the
+                # board it was written against.
+                self._deadly.clear()
+                self._armed_deadly = None
             self.level = level
         avail = self.env.available(frame)
         if avail:
@@ -226,6 +242,19 @@ class Sandbox:
                     f"{spec['action']} was already executed from this exact board inside "
                     f"this snippet. If you meant to repeat it, write a new snippet.")
 
+            fatal = self._deadly.get(start, set())
+            if sig in fatal:
+                key = (start, sig)
+                if self._armed_deadly == key:
+                    self._armed_deadly = None    # the model insists: let it run
+                else:
+                    self._armed_deadly = key
+                    self.refusals["deadly"] += 1
+                    raise KnownDeadlyActionError(
+                        f"{spec['action']} ended the run from this exact board last time. "
+                        f"Nothing ran. If you have a specific reason to expect a different "
+                        f"outcome, issue it again.")
+
             known = self._noop.get(start, set())
             if sig in known:
                 key = (start, sig)
@@ -255,7 +284,16 @@ class Sandbox:
             self.history.append({"action": spec["action"], "result": result.flags})
             self.steps += 1
 
-            if changed is False:
+            flag = result.flags
+            for terminal in ("game_over", "run_complete", "level_completed", "done"):
+                if flag.get(terminal):
+                    self._terminal = "run_complete" if terminal == "done" else terminal
+                    break
+
+            if changed is False and self._terminal != "game_over":
+                # A fatal action often changes nothing visible; recording it as a
+                # no-op too would make the refusal say "this does nothing" when the
+                # truth is "this kills you" -- a strictly worse hint.
                 self._noop.setdefault(start, set()).add(sig)
             elif changed is True:
                 # evidence contradicts the recorded no-op: drop it, or the same
@@ -264,11 +302,14 @@ class Sandbox:
             self._executed_in_snippet.add((start, sig))
             here = self._here()
 
-            flag = result.flags
-            for terminal in ("game_over", "run_complete", "level_completed", "done"):
-                if flag.get(terminal):
-                    self._terminal = "run_complete" if terminal == "done" else terminal
-                    break
+            if self._terminal == "game_over":
+                # Remembered against the board the fatal action STARTED from, which
+                # is the board a retry will see again once the level resets.
+                self._deadly.setdefault(start, set()).add(sig)
+            elif sig in self._deadly.get(start, set()):
+                # It ran and we survived: the hypothesis is refuted, so drop it --
+                # same rule as the no-op guard, which un-records on real movement.
+                self._deadly[start].discard(sig)
             if self._terminal:
                 break
 
@@ -312,6 +353,8 @@ class Sandbox:
                 self._exec_guarded(code, g)
         except KnownNoOpActionError as exc:
             result.update(ok=False, stop_reason="known_noop", error=str(exc))
+        except KnownDeadlyActionError as exc:
+            result.update(ok=False, stop_reason="known_deadly", error=str(exc))
         except TerminalStateActionError as exc:
             result.update(ok=False, stop_reason="terminal", error=str(exc))
         except RepeatedActionInStateError as exc:
@@ -442,6 +485,8 @@ class Sandbox:
         self.retained.clear()
         self._noop.clear()
         self._armed_noop = None
+        self._deadly.clear()
+        self._armed_deadly = None
         self._terminal = None
         self.history.clear()
         self.transitions.clear()

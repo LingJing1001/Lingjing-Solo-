@@ -34,7 +34,7 @@
 |---|---|---|---|
 | `prompts.py` | 190 | 冠军 prompt 原文（标 `PORTER` 的都是逐字） | cell 3 `prompts.py` |
 | `views.py` | 300 | `.ascii` / `.shape` / `.segmentation` / `frame_diff` | 重写（冠军原文在未参与 patch 的文件里） |
-| `sandbox.py` | 420 | 一个 `python` 工具；`action()`；三类不可吞的拒绝；保留函数 | 结构照抄，实现重写 |
+| `sandbox.py` | 460 | 一个 `python` 工具；`action()`；四类不可吞的拒绝（noop / 致死 / 重复 / 终局）；保留函数 | 结构照抄，实现重写 |
 | `env.py` | 130 | 本地 `arc_agi` 引擎适配 | 新增（冠军用 docker gateway） |
 | `agent.py` | 290 | 轮次循环、模型自写摘要、关卡迁移 | 重写（`ToolAgent` 类体在原仓库） |
 | `chat.py` | 150 | OpenAI 兼容单次调用 + tool 支持 | 新增 |
@@ -50,6 +50,7 @@
 - `scripts/duck_router_selftest.py` —— 真引擎验证"duck 真的从 `my_agent` 手里接过方向盘"
 - `scripts/mock_duck_server.py` —— 离线 OpenAI 兼容端点，验证管线不依赖模型
 - `tests/test_duck.py` —— 15 条，钉住语义
+- `tests/test_duck_death_ledger.py` —— 6 条，钉住死亡账本（noop 守卫的另一半）
 - `tests/test_duck_memory.py` + `tests/test_duck_driver_memory.py` —— 15 条，钉住记忆与接线
 - `integrations/ARC-AGI-3-Kaggle-Starter/agent/duck_bridge.py` —— 路由侧的缝（开关、预算、门禁、动作转换）
 - `integrations/ARC-AGI-3-Kaggle-Starter/tests/test_duck_bridge.py` —— 14 条，钉住缝的每条判断
@@ -89,6 +90,7 @@ provider 都会 400，而且看起来像"模型坏了"。所以 `_compact()` 只
 | 检查 | 结果 |
 |---|---|
 | `tests/test_duck.py` + `test_duck_memory.py` + `test_duck_driver_memory.py` | **30/30** |
+| `tests/test_duck_death_ledger.py` | **6/6**（致死动作记录、拒绝零成本、坚持放行、存活撤销、换关清空、noop 不误记） |
 | `scripts/duck_bridge_selftest.py --game cn04` | PASS，4 个动作，**计分卡也记 4** |
 | `scripts/duck_bridge_selftest.py --game ar25` | PASS，同上 |
 | `duck_play.py --backend openai`（mock 端点，ar25，8 步） | 8 动作，6840 tokens，`marker_pos` 保留 |
@@ -141,18 +143,96 @@ choose_action
 | `LINGJING_DUCK_PIN` | `level` | 过关记忆何时进 system prompt；短局用 `level` |
 | `LINGJING_DUCK_MEMORY` / `_TRANSFER` | `on` | 过关记忆 / 关卡迁移开关 |
 
-## 与冠军的真实差距
+## 四项的性价比排序
 
-按"影响分数"排序，不是按代码量：
+排序不按代码量，也不按"冠军做了什么"，而按**它直接作用于分数公式里的哪个量**：
+
+```
+分数 = (人类基准 / 本局动作数)²  ，25 局取平均
+        └─ 动作数进分母 ─┘        └ 关卡数进分子 ┘
+```
+
+| 优先级 | 项 | 省下的是什么 | 作用于 | 状态 |
+|---|---|---|---|---|
+| **1** | 过关记忆 | 跨关重学机制的 token 与步数 | 分母（每关步数） | 已做 `memory.py` |
+| **2** | 无效动作守卫（noop + 死亡账本） | 白花的动作预算；致死动作吃掉整次尝试 | 分母（更狠） | 已做 `sandbox.py` |
+| **3** | 优先级调度器 | 死局不再耗尽全局预算 | 分子（救回几局） | **未做**，设计见下 |
+| **4** | 保留函数 | 重复写代码的 token | 都不是，是写作成本 | 已做，**串行期无收益** |
+
+为什么是这个顺序：
+
+- **1 和 2 都改分母，且都只依赖引擎已经告诉我们的东西**（上一关走过的动作、
+  这个盘面按过什么）。零模型能力要求 —— 0.6B 也能吃到，所以排前面。
+- **2 比 1 更便宜**（每一步都在生效，1 一局只生效几次），但 1 的收益按关卡数
+  线性累加，2 的收益取决于模型有多爱瞎按。真实部署里两者同时开，排序只决定
+  先做谁。
+- **3 的收益最大**（冠军 27.89 分的主要来源），但它改的是**跑法**不是模块：
+  串行单局 → 多局轮转，预算分配、超时、日志、复现全要重做。所以它必须排在
+  "不改变跑法就能拿到分"的两项之后。
+- **4 在串行下确实不值钱**：一次调用能写完的函数，下次重写的 token 成本远小于
+  "跨局共享函数库"要付的复杂度。它只在**同时维护 N 个上下文**时才成立 —— 那时
+  省的是 N 倍的重复定义，还能让弱模型少犯"函数写坏了"的错。所以它跟着 3 走，
+  3 不做，4 就没有场景。
+
+### 2 的落地：死亡账本（本轮补上）
+
+`_noop` 保一步，`_deadly` 保一局。规则和 noop 完全对称，实现在 `sandbox.py`：
+
+- key 是**动作起始的盘面**，不是结束的 —— 否则重置回同一盘面永远命中不了；
+- 连续第二次坚持就放行（反证必须做得到，否则和硬编码黑名单没区别）；
+- 这一次活下来了 → 撤销该条（和 noop 在"板子真的动了"时撤记录同一条规则）；
+- 换关清空（新关卡的死法不适用）。
+
+`stop_reason` 是 `known_deadly`，`refusals["deadly"]` 单独计数，
+`tests/test_duck_death_ledger.py` 6 条钉住上面每一条。
+
+### 3 的设计（未做，先写清楚再动手）
+
+关键认识：**`deferred.py` 已经把调度器需要的东西准备好了。** 它把"一局的回合"
+暂停在 `yield` 上，于是多局交替推进不需要多进程、不需要线程 —— 只要多个
+driver 轮流 poll。
+
+```
+lanes: {game_id: (driver, env)}
+loop:
+    gid = pick()                     # 按优先级
+    nxt = lanes[gid].driver.poll()
+    res = lanes[gid].env.step(nxt)   # 计分卡在这里计数
+    lanes[gid].driver.feed(res)
+    update_priority(gid, res)
+```
+
+优先级用**边际产出**，不用绝对分数：
+
+```
+gain(gid) = (近期关卡增量) / max(1, 近期动作数)
+priority  = gain × 未完成关卡数 − 冷却罚分
+```
+
+三条必须写死的规则（否则调度器会让结果不可复现，比不做更糟）：
+
+1. **lane 数设上限**（本地 ≤ 6，内存和 CPU 都撑不住 25 个 env）；
+2. **步数配额按优先级切**，不按墙钟 —— 墙钟会让结果随机器负载漂移；
+3. **每局的随机种子和初始状态要落盘**，否则"这次分数高"无法归因到调度。
+
+工作量：调度器 + 优先级约 200 行，多 env 生命周期约 100 行，日志/复现约 100 行。
+风险集中在"预算切分"上：切得太碎，每局都要重新热身；切得太粗，就等于没调度。
+
+### 4 的定位修正
+
+`retained` 保留在沙箱里（对单局仍有微弱的正收益，且测试已覆盖），但**不投入
+任何额外工作**。等 3 落地、真的并行 N 局时再回来做"跨局共享函数库" ——
+那时它才从"省 token"变成"省 N 倍 token + 降低弱模型的出错面"。
+
+## 与冠军的其余差距
+
+不按分数排序，因为这几项的收益依赖具体局：
 
 | 差距 | 影响 | 状态 |
 |---|---|---|
-| **没有优先级调度器** | 冠军 27.89 分的主要来源；我们仍是单盘全押 | 未做 |
 | **模型能力** | 0.6B 写不出可用代码 → 骨架空转 | 待定 |
-| `ToolAgent` 的 yield/resume/retry | 长跑稳定性和掉线恢复 | **已做**（`deferred.py`，见下） |
-| 过关记忆（solved-level memory） | 关卡交界处不重学机制（lalalia9 版 +2.8） | **已做**（`memory.py`） |
+| `ToolAgent` 的 yield/resume/retry | 长跑稳定性和掉线恢复 | **已做**（`deferred.py`） |
 | 接进 `my_agent` 路由 | 未知局 R3 全空后有兜底 | **已做**（`duck_bridge.py`） |
-| 死亡账本 | 同一盘面致死动作的拦截 | 未做（只做了 noop） |
 | segmentation 的旋转/姿态/边界 | 认旋转对称、认贴边物体 | 简化 |
 | 动画帧 | 瞬态像素，只在中间帧出现 | 未做（引擎不暴露） |
 | 40k/12k 分块压缩 | 长局上下文利用效率 | 未做（整段摘要） |

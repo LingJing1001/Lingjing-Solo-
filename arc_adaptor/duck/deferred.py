@@ -151,6 +151,25 @@ class DeferredSandbox(Sandbox):
                     f"{spec['action']} is known to change nothing from this exact board. "
                     f"Nothing ran. If you have a specific reason, issue it again.")
 
+        # The fatal branch of the same guard: a no-op wastes one action, this
+        # wastes the attempt. Kept here as well as in `Sandbox` because this
+        # class re-implements `_do_action` to hand actions out instead of
+        # spending them -- but the ledger is written in `deliver`, which is
+        # where the real outcome finally arrives.
+        fatal = self._deadly.get(start, set())
+        if sig in fatal:
+            key = (start, sig)
+            if self._armed_deadly == key:
+                self._armed_deadly = None
+            else:
+                from .sandbox import KnownDeadlyActionError
+                self._armed_deadly = key
+                self.refusals["deadly"] += 1
+                raise KnownDeadlyActionError(
+                    f"{spec['action']} ended the run from this exact board last time. "
+                    f"Nothing ran. If you have a specific reason to expect a different "
+                    f"outcome, issue it again.")
+
         pending = ActionPending(name, spec, specs[1:])
         self.env.pending = pending
         raise pending
@@ -175,17 +194,25 @@ class DeferredSandbox(Sandbox):
         self.history.append({"action": entry["action"], "result": step_result.flags})
         self.steps += 1
 
+        for terminal in ("game_over", "run_complete", "level_completed", "done"):
+            if step_result.flags.get(terminal):
+                self._terminal = "run_complete" if terminal == "done" else terminal
+                break
+
         sig = action_signature(spec)
-        if changed is False:
+        if changed is False and self._terminal != "game_over":
+            # A fatal action often leaves the board untouched; filing it as a no-op
+            # would make the refusal say "this does nothing" instead of "this kills
+            # you", which is a strictly worse hint to give the model.
             self._noop.setdefault(start, set()).add(sig)
         elif changed is True:
             self._noop.get(start, set()).discard(sig)
         self._executed_in_snippet.add((start, sig))
 
-        for terminal in ("game_over", "run_complete", "level_completed", "done"):
-            if step_result.flags.get(terminal):
-                self._terminal = "run_complete" if terminal == "done" else terminal
-                break
+        if self._terminal == "game_over":
+            self._deadly.setdefault(start, set()).add(sig)
+        elif sig in self._deadly.get(start, set()):
+            self._deadly[start].discard(sig)
 
         self.last_result = {
             "executed": 1 + len(prior_specs or []),
