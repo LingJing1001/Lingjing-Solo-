@@ -31,6 +31,23 @@ class DPLFeatures:
     time_arrow: float | None = None
     evolution_rate: float | None = None
     available: bool = False
+    validity: tuple[tuple[str, bool], ...] = ()
+    is_fake_time: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "gradient_mag": self.gradient_mag,
+            "divergence": self.divergence,
+            "curvature": self.curvature,
+            "vorticity": self.vorticity,
+            "density": self.density,
+            "euler_char": self.euler_char,
+            "time_arrow": self.time_arrow,
+            "evolution_rate": self.evolution_rate,
+            "available": self.available,
+            "validity": dict(self.validity),
+            "is_fake_time": self.is_fake_time,
+        }
 
 
 @dataclass(frozen=True)
@@ -62,7 +79,7 @@ class GameObject:
             "bbox": list(self.bbox),
             "mask": [list(row) for row in self.mask],
             "rgb_histogram": list(self.rgb_histogram),
-            "dpl": self.dpl.__dict__,
+            "dpl": self.dpl.to_dict(),
             "graph_embedding": list(self.graph_embedding),
             "first_frame": self.first_frame,
             "last_frame": self.last_frame,
@@ -77,7 +94,12 @@ class GameObject:
             bbox=cast(tuple[int, int, int, int], tuple(int(x) for x in value["bbox"])),
             mask=tuple(tuple(bool(x) for x in row) for row in value.get("mask", ())),
             rgb_histogram=tuple(float(x) for x in value.get("rgb_histogram", ())),
-            dpl=DPLFeatures(**dict(value.get("dpl", {}))),
+            dpl=DPLFeatures(
+                **{
+                    **dict(value.get("dpl", {})),
+                    "validity": tuple(sorted((str(k), bool(v)) for k, v in dict(value.get("dpl", {})).get("validity", {}).items())),
+                }
+            ),
             graph_embedding=tuple(float(x) for x in value.get("graph_embedding", ())),
             first_frame=int(value.get("first_frame", 0)),
             last_frame=int(value.get("last_frame", 0)),
