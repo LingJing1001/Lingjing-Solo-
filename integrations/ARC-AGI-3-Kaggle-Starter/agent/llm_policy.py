@@ -169,6 +169,159 @@ def _extract_json(text: str) -> Optional[dict]:
         return None
 
 
+def _extract_json_any(text: str) -> Any:
+    """Like _extract_json but also accepts a top-level array (plan format)."""
+    if not text:
+        return None
+    text = text.strip()
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.I)
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if fence:
+        text = fence.group(1).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    for pat in (r"\{[\s\S]*\}", r"\[[\s\S]*\]"):
+        m = re.search(pat, text)
+        if not m:
+            continue
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def batch_limit() -> int:
+    """How many actions one call may return. 1 = batch protocol off."""
+    try:
+        n = int(os.environ.get("LINGJING_LLM_BATCH", "4") or 4)
+    except (TypeError, ValueError):
+        n = 4
+    return max(1, min(12, n))
+
+
+_ACTION_ALIAS = {
+    "UP": "ACTION1",
+    "DOWN": "ACTION2",
+    "LEFT": "ACTION3",
+    "RIGHT": "ACTION4",
+    "SPACE": "ACTION5",
+    "NOOP": "ACTION5",
+    "MOUSE": "ACTION6",
+    "CLICK": "ACTION6",
+}
+
+
+def _click_xy(spec: str) -> Optional[tuple[int, int]]:
+    """`ACTION6@10,20` / `ACTION6(10,20)` / `click 10 20` → (10, 20)."""
+    m = re.search(r"@\s*(-?\d+)\s*[,;x\s]\s*(-?\d+)", spec, re.I)
+    if not m:
+        m = re.search(r"[\(\[]\s*(-?\d+)\s*[,;\s]\s*(-?\d+)\s*[\)\]]", spec)
+    if not m:
+        return None
+    try:
+        return int(m.group(1)), int(m.group(2))
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_action_spec(item: Any) -> Optional[dict[str, Any]]:
+    """Any model-emitted action form → {'action':name,'x':int,'y':int,'why':str}.
+
+    Accepted: "ACTION6@3,4" | "ACTION1" | {"action":..,"x":..} | {"a":..} |
+    ["ACTION6", 3, 4] | {"click": [3, 4]}. Coordinates are clamped to 0..63.
+    """
+    why = ""
+    raw_name: Any = None
+    x: Any = None
+    y: Any = None
+    if isinstance(item, str):
+        spec = item.strip()
+        why = spec
+        xy = _click_xy(spec)
+        head = re.split(r"[@\(\[]", spec, maxsplit=1)[0].strip()
+        raw_name = head or spec
+        if xy:
+            x, y = xy
+    elif isinstance(item, dict):
+        why = str(item.get("why") or item.get("reason") or item.get("note") or "")
+        raw_name = (
+            item.get("action")
+            or item.get("a")
+            or item.get("name")
+            or item.get("type")
+            or item.get("act")
+        )
+        if raw_name is None and len(item) == 1:
+            raw_name = next(iter(item))
+        pair = item.get("xy") or item.get("pos") or item.get("click")
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            x, y = pair[0], pair[1]
+        else:
+            x = item.get("x", item.get("col"))
+            y = item.get("y", item.get("row"))
+    elif isinstance(item, (list, tuple)) and item:
+        raw_name = item[0]
+        if len(item) >= 3:
+            x, y = item[1], item[2]
+        elif len(item) == 2 and isinstance(item[1], (list, tuple)) and len(item[1]) >= 2:
+            x, y = item[1][0], item[1][1]
+    if raw_name is None:
+        return None
+    name = str(raw_name).strip().upper()
+    if name.isdigit():
+        name = f"ACTION{int(name)}"
+    name = _ACTION_ALIAS.get(name, name)
+    out: dict[str, Any] = {"action": name, "why": why[:120]}
+    if x is not None and y is not None:
+        try:
+            out["x"] = max(0, min(63, int(x)))
+            out["y"] = max(0, min(63, int(y)))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def parse_plan(
+    obj: Any, valid_actions: list[str], limit: int
+) -> list[dict[str, Any]]:
+    """Model JSON → validated action list. Truncates at the first bad step."""
+    if isinstance(obj, list):
+        raw: Any = obj
+    elif isinstance(obj, dict):
+        raw = obj.get("actions")
+        if raw is None:
+            raw = obj.get("plan")
+        if raw is None:
+            raw = obj.get("sequence")
+        if raw is None:
+            raw = [obj]  # legacy single-action schema
+    else:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    legal = {a.upper() for a in valid_actions}
+    out: list[dict[str, Any]] = []
+    for item in raw[: max(1, int(limit))]:
+        spec = normalize_action_spec(item)
+        if not spec:
+            break
+        name = spec["action"]
+        # A plan containing RESET would wipe the level it is trying to solve.
+        if name == "RESET":
+            break
+        if legal and name not in legal:
+            break
+        if name == "ACTION6" and "x" not in spec:
+            break
+        out.append(spec)
+    return out
+
+
 def _message_text(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -389,6 +542,113 @@ def to_game_action(
     return act
 
 
+def choose_json_plan(
+    *,
+    game_id: str,
+    levels: int,
+    valid_actions: list[str],
+    grid: Any,
+    note: str = "",
+    limit: Optional[int] = None,
+) -> list[dict[str, Any]]:
+    """Ask the LLM for a SHORT action burst instead of a single action.
+
+    One call buys up to `limit` steps, which is what makes `(human/used)^2`
+    scoring reachable: fewer round-trips for the same behaviour, and the model
+    can plan a verified micro-sequence ("click A then B") in one shot.
+    """
+    if not valid_actions:
+        return []
+    n = max(1, int(limit if limit is not None else batch_limit()))
+    ascii_board = grid_to_ascii(grid)
+    png_b64 = grid_png_b64(grid) if vision_enabled() else None
+    if n == 1:
+        system = (
+            "You play ARC-AGI-3 interactive games. Reply with ONE JSON object only. "
+            'Schema: {"actions":["ACTION1"],"why":"..."}. '
+            "ACTION6 needs coordinates as ACTION6@x,y with x,y in 0-63. "
+            "Never emit RESET. Be action-efficient."
+        )
+    else:
+        system = (
+            "You play ARC-AGI-3 interactive games. Reply with ONE JSON object only, no prose.\n"
+            'Schema: {"actions":["ACTION1","ACTION3","ACTION6@12,30"],"why":"<one short line>"}\n'
+            f"Give 1-{n} actions, executed IN ORDER starting from the current frame. "
+            "ACTION6 (mouse click) must be written as ACTION6@x,y with integer x,y in 0-63. "
+            "Only the names listed in legal_actions are accepted; never emit RESET. "
+            "STOP the list as soon as the outcome becomes unpredictable - a wrong step "
+            "costs as much score as a missing one, so prefer a short burst you are sure of. "
+            "If the board looks unchanged and you have no verifiable idea, return 1 action only. "
+            "If an image is attached, it is the current grid (x right, y down); "
+            "click coordinates must match that image."
+        )
+    user = (
+        f"game_id={game_id} levels_completed={levels}\n"
+        f"legal_actions={valid_actions}\n"
+        f"engine_note={note or 'none'}\n"
+        f"mind={briefing or 'none'}\n"
+        f"history (oldest first):\n{history or '(start)'}\n"
+        f"grid_ascii (row-major digits):\n{ascii_board}\n"
+        "Return JSON only."
+    )
+    user_content: Any = user
+    if png_b64:
+        user_content = [
+            {"type": "text", "text": user},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{png_b64}"},
+            },
+        ]
+    content = _chat(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ]
+    )
+    if not content:
+        return []
+    obj = _extract_json_any(content)
+    if obj is None:
+        print("[llm_policy] no JSON in plan output", flush=True)
+        return []
+    plan = parse_plan(obj, valid_actions, n)
+    if not plan:
+        print(f"[llm_policy] plan rejected raw={str(obj)[:160]}", flush=True)
+    return plan
+
+
+def propose_plan(
+    *,
+    game_id: str,
+    levels: int,
+    valid_actions: list[str],
+    note: str = "",
+    grid: Any,
+    history: str = "",
+    briefing: str = "",
+    limit: Optional[int] = None,
+) -> list[dict[str, Any]]:
+    """End-to-end batch: LLM JSON → list of normalized action dicts."""
+    if not llm_enabled():
+        return []
+    try:
+        return choose_json_plan(
+            game_id=game_id,
+            levels=levels,
+            valid_actions=valid_actions,
+            grid=grid,
+            note=note,
+            history=history,
+            briefing=briefing,
+            limit=limit,
+        )
+    except Exception as exc:  # noqa: BLE001 — never kill the game thread
+        print(f"[llm_policy] plan error: {type(exc).__name__}: {exc}", flush=True)
+        return []
+
+
+
 def propose_action(
     *,
     game_id: str,
@@ -417,67 +677,3 @@ def propose_action(
     return to_game_action(obj, valid_actions, game_action_cls)
 
 
-def propose_plan(
-    *,
-    game_id: str,
-    levels: int,
-    valid_actions: list[str],
-    grid: Any,
-    note: str = "",
-    history: str = "",
-    briefing: str = "",
-) -> list[dict[str, Any]]:
-    """Legacy batch fallback: return a short list of action specs.
-
-    Prefer the lexicon planner (`LINGJING_LLM_VIEW=planner`). This path keeps the
-    PNG/ASCII policy usable when lexicon is unavailable: one JSON reply may carry
-    `actions[]`; otherwise the single `action` becomes a 1-step plan.
-    """
-    if not llm_enabled():
-        return []
-    obj = choose_json_action(
-        game_id=game_id,
-        levels=levels,
-        valid_actions=valid_actions,
-        grid=grid,
-        note=note,
-        history=history,
-        briefing=briefing,
-    )
-    if not obj:
-        return []
-    out: list[dict[str, Any]] = []
-    why = str(obj.get("why", "") or "")[:80]
-    raw_plan = obj.get("actions")
-    if isinstance(raw_plan, list):
-        for item in raw_plan[:4]:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("action") or "").strip().upper()
-            if not name:
-                continue
-            spec: dict[str, Any] = {"action": name, "why": why}
-            if name == "ACTION6":
-                if "x" not in item or "y" not in item:
-                    continue
-                try:
-                    spec["x"] = int(item["x"])
-                    spec["y"] = int(item["y"])
-                except (TypeError, ValueError):
-                    continue
-            out.append(spec)
-    if out:
-        return out
-    name = str(obj.get("action") or "").strip().upper()
-    if not name:
-        return []
-    spec = {"action": name, "why": why}
-    if name == "ACTION6":
-        if "x" not in obj or "y" not in obj:
-            return []
-        try:
-            spec["x"] = int(obj["x"])
-            spec["y"] = int(obj["y"])
-        except (TypeError, ValueError):
-            return []
-    return [spec]

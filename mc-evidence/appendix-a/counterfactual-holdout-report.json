@@ -1,0 +1,18 @@
+{
+  "baseline_accuracy": 0.21601941747572814,
+  "baseline_checkpoint": "data/aop/stage4_candidate_v3/checkpoint.pt",
+  "baseline_sha256": "d5359ae2704721f953411fb3ef7d4fbdee07bc80e37c3abaa029b03aa39f37e7",
+  "candidate_accuracy": 0.2867111650485437,
+  "candidate_checkpoint": "data/aop/stage4_candidate_v4/checkpoint.pt",
+  "candidate_sha256": "4ff0d3f398318d260dfc8a8eb3dd592a77751bd24afcf78605eb821cdd3162de",
+  "delta": 0.07069174757281553,
+  "groups": 1618,
+  "labels": "mc-evidence/appendix-a/counterfactual-holdout-labels.jsonl",
+  "labels_sha256": "42efef018a13263b6a78fbb57ec5078840e807c77d717ef351c0563c8d15f790",
+  "passed": true,
+  "prediction_file": "mc-evidence/appendix-a/counterfactual-holdout-predictions.jsonl",
+  "replay_verified_rows": 3296,
+  "rows": 3296,
+  "schema": "aop.counterfactual_holdout_ab.v1",
+  "valid_prediction_rows": 3296
+}

@@ -1,0 +1,30 @@
+{
+  "active": true,
+  "approval": {
+    "approval_granted": true,
+    "approved_at": "2026-10-15T02:21:56.847091Z",
+    "artifact_hashes": {
+      "audit_log": "7b332a8450b1bbfd594bb2d47d0f118d338a59c39938254385f7d6d76429610a",
+      "compatibility_report": "25bf6605506bafe6b389f99ca2740a836c9651a5ecb7dd3cbf23f733278bd2c9",
+      "production_approval": "0c96162728715d340e6a75230783a59dc4d1b952056fd4baa525b3e9992d1a79",
+      "production_gate": "f020d27162e62c3c4ec28cfc281fb8a12e470983713a47f51b5c6972fb9fb34b",
+      "rollback_manifest": "10ae325ddb882d38ae228cc94916fe2d5cee09220fd624e6251c9a0caa5f53e2"
+    },
+    "candidate_id": "stage4_candidate_v4",
+    "candidate_sha256": "4ff0d3f398318d260dfc8a8eb3dd592a77751bd24afcf78605eb821cdd3162de",
+    "claim_generation": 1,
+    "claim_id": "7a0da669-7286-46c2-b580-2cda5264b53a",
+    "lease_owner": "research",
+    "report_sha256": "0c96162728715d340e6a75230783a59dc4d1b952056fd4baa525b3e9992d1a79",
+    "schema": "appendix_a.independent_approval.v1",
+    "source": "mission-control-verifier",
+    "task_id": "task-1792021622424-9vpk",
+    "verdict": "passed",
+    "verification_epoch": 1,
+    "verified_at": "2026-10-15T02:21:56.847091Z",
+    "verifier_agent": "research",
+    "verifier_task_id": "task-1792021622424-9vpk"
+  },
+  "authority_status": "production",
+  "candidate_id": "stage4_candidate_v4"
+}

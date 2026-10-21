@@ -1,0 +1,26 @@
+{
+  "active": false,
+  "authority_status": "shadow",
+  "candidate": {
+    "authority_status": "shadow",
+    "candidate_id": "stage4_candidate_v4",
+    "candidate_type": "aop_candidate",
+    "evidence_refs": [
+      "mc-evidence/appendix-a/readiness.json",
+      "mc-evidence/appendix-a/production-gate.json",
+      "mc-evidence/appendix-a/independent-approval.json"
+    ],
+    "holdout_delta": 0.07069174757281553,
+    "holdout_report_ref": "mc-evidence/appendix-a/counterfactual-holdout-report.json",
+    "replay_hashes": [
+      "42efef018a13263b6a78fbb57ec5078840e807c77d717ef351c0563c8d15f790"
+    ],
+    "rollback_snapshot_ref": "mc-evidence/appendix-a/rollback/manifest.json",
+    "safety_report_ref": "mc-evidence/appendix-a/gatebench/metrics.json",
+    "source_environments": [
+      "arc_ar25",
+      "arc_ls20"
+    ]
+  },
+  "candidate_id": "stage4_candidate_v4"
+}

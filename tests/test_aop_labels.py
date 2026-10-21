@@ -33,6 +33,22 @@ def test_label_separates_visual_change_from_progress():
     assert label.reward == 0.0
 
 
+def test_label_preserves_complex_action_payload():
+    item = row(requested_action={
+        "name": "ACTION6",
+        "id": 6,
+        "payload": {"game_id": "ar25-example", "x": 15, "y": 31},
+    })
+    label = row_to_label(item)
+    assert label.requested_action == item["requested_action"]
+
+
+def test_label_rejects_non_object_action_payload():
+    item = row(requested_action={"name": "ACTION6", "id": 6, "payload": "15,31"})
+    with pytest.raises(LabelError, match="payload"):
+        row_to_label(item)
+
+
 def test_level_advance_is_progress():
     item = row()
     item["data"]["levels_completed"] = 1
@@ -60,6 +76,45 @@ def test_visual_delta_is_not_required_for_state_progress():
     label = row_to_label(item)
     assert label.state_delta["visual_changed"] is False
     assert label.state_delta["progressed"] is True
+
+
+def test_nonfinite_observation_is_rejected():
+    item = row()
+    item["data"]["score"] = float("nan")
+    with pytest.raises(LabelError, match="finite"):
+        row_to_label(item)
+
+
+def test_transport_metadata_does_not_make_an_action_effective():
+    item = row()
+    item["observation"] = {
+        "tick": 2,
+        "guid": "before-guid",
+        "action_input": {"id": "ACTION1", "reasoning": "before"},
+        "state": "NOT_FINISHED",
+        "frame": [[0]],
+        "levels_completed": 0,
+        "legal_actions": ["CLICK"],
+    }
+    item["data"] = {
+        **item["observation"],
+        "tick": 3,
+        "guid": "after-guid",
+        "action_input": {"id": "ACTION6", "reasoning": "after"},
+    }
+    label = row_to_label(item)
+    assert label.state_delta["before_hash"] == label.state_delta["after_hash"]
+    assert label.state_delta["state_changed"] is False
+    assert label.state_delta["action_effective"] is False
+
+
+def test_semantic_frame_change_is_action_effective():
+    item = row()
+    item["observation"].pop("state_hash")
+    item["data"].pop("state_hash")
+    label = row_to_label(item)
+    assert label.state_delta["before_hash"] != label.state_delta["after_hash"]
+    assert label.state_delta["action_effective"] is True
 
 
 def test_cli_is_deterministic(tmp_path):

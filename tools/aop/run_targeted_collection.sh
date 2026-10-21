@@ -15,12 +15,14 @@ PREFIXES="${5:-10,20,30}"
 ACTION6_X="${6:-}"
 ACTION6_Y="${7:-}"
 cd "$ROOT"
+RUN_ID="${AOP_RUN_ID:-$(date -u +%Y%m%d-%H%M%S)-$$}"
 ARGS=(
   --out "$OUT"
   --groups-per-game "$GROUPS"
   --focus-actions "$FOCUS"
   --games "$GAMES"
   --prefix-lengths "$PREFIXES"
+  --run-id "$RUN_ID"
 )
 if [[ -n "$ACTION6_X" || -n "$ACTION6_Y" ]]; then
   if [[ -z "$ACTION6_X" || -z "$ACTION6_Y" ]]; then

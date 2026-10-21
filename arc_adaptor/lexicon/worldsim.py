@@ -69,19 +69,38 @@ class Obj:
 
 
 class SymState:
-    """A board as objects only: no pixels, cheap to clone and compare."""
+    """A board as objects only: no pixels, cheap to clone and compare.
 
-    __slots__ = ("objs", "shape", "bg", "lexicon", "sure", "_key", "_state", "_code")
+    `ignore` holds the indices of decorative objects (footers, timers, score bars).
+    They are kept in the state — the transition function still needs to see them —
+    but left out of `key()` and `fingerprint()`. Without that, a footer whose symbol
+    is named after its contents changes every single step, so every real board
+    fingerprints as brand new and novelty-based search stops discriminating.
+    """
 
-    def __init__(self, objs, shape, bg, lexicon=None, sure=True):
+    __slots__ = ("objs", "shape", "bg", "lexicon", "sure", "ignore", "keep_syms",
+                 "_key", "_state", "_code")
+
+    def __init__(self, objs, shape, bg, lexicon=None, sure=True, ignore=frozenset(),
+                 keep_syms=None):
         self.objs = tuple(objs)
         self.shape = (int(shape[0]), int(shape[1]))
         self.bg = int(bg)
         self.lexicon = lexicon
         self.sure = sure
+        self.ignore = frozenset(ignore)
+        # Only symbols that survived several frames are allowed into the identity.
+        self.keep_syms = frozenset(keep_syms) if keep_syms is not None else None
         self._key = None
         self._state = None
         self._code = None
+
+    def _counts(self, i, o) -> bool:
+        if i in self.ignore:
+            return False
+        if self.keep_syms is not None and o.sym not in self.keep_syms:
+            return False
+        return True
 
     # ------------------------------------------------------------------ construction
 
@@ -103,12 +122,21 @@ class SymState:
 
     def key(self):
         if self._key is None:
-            self._key = tuple(sorted(o.key() for o in self.objs))
+            self._key = tuple(sorted(o.key() for i, o in enumerate(self.objs)
+                                     if self._counts(i, o)))
         return self._key
 
     def fingerprint(self):
-        """Fingerprint that ignores exact colours — what `planner` counts as a board."""
-        return tuple(sorted((o.sym, o.at) for o in self.objs if not o.container))
+        """Fingerprint that ignores exact colours — what `planner` counts as a board.
+
+        Must stay identical in shape to `planner._fingerprint(state, [])`:
+        every *non-decorative* object as `(sym, at)`. If the two formats drift
+        apart, the visit counts the planner accumulates never match the states the
+        search generates, every board looks unvisited, and novelty-based ranking
+        degenerates into "shortest path anywhere".
+        """
+        return tuple(sorted((o.sym, o.at) for i, o in enumerate(self.objs)
+                            if self._counts(i, o)))
 
     def to_code(self):
         if self._code is not None:
@@ -149,6 +177,18 @@ class SymState:
                     return True
         return False
 
+    def with_hints(self, ignore=None, keep_syms=None):
+        """Same board, different identity hints (what counts as furniture / noise)."""
+        ignore = self.ignore if ignore is None else frozenset(ignore)
+        keep = self.keep_syms if keep_syms is None else frozenset(keep_syms)
+        if ignore == self.ignore and keep == self.keep_syms:
+            return self
+        return SymState(self.objs, self.shape, self.bg, self.lexicon,
+                        sure=self.sure, ignore=ignore, keep_syms=keep)
+
+    def with_ignore(self, ignore):
+        return self.with_hints(ignore=ignore)
+
     def overlapping(self):
         seen = set()
         for o in self.objs:
@@ -170,30 +210,81 @@ class SymState:
         return f"<SymState {len(self.objs)} objs sure={self.sure}>"
 
 
-# --------------------------------------------------------------------------- transition
+# --------------------------------------------------------------------------- denoise
 
-def successors(ss: SymState, rules, actions) -> list:
-    """[(action, SymState)] — what the learned rules say each action does here.
+def action_noise(ss: SymState, rules, actions) -> tuple:
+    """Split predicted effects into control and decoration.
 
-    The state is returned even when no rule fires (the action is still legal); it is
-    flagged unsure so it can be crossed but not trusted.
+    Real boards carry furniture: a footer whose width tracks the step counter, a
+    timer, a score bar. The learned rules describe them faithfully ("this object
+    resizes when you act"), and because `resize` has no exact geometry every
+    successor turns `sure=False` — one decorative rule is enough to make the whole
+    forward search useless.
+
+    The discriminator is blunt and reliable: **an effect that fires for every
+    action says nothing about which action to take**. Control effects differ by
+    direction; decoration does not.
+
+    Returns `(per_action, noise, decor)` where `per_action[action]` is the filtered
+    prediction list, `noise` is the set of `(obj_idx, effect)` pairs dropped, and
+    `decor` is the set of object indices those drops belong to — objects whose only
+    role is to react to "any action at all".
     """
     st = ss.to_state()
     if st is None:
-        return []
-    out = []
+        return {a: [] for a in actions}, set(), frozenset()
+
+    per = {}
     for a in actions:
         try:
             preds, _click = R.predict(rules, st, a)
         except Exception:
             preds = []
+        per[a] = list(preds)
+
+    counts = collections.Counter()
+    for preds in per.values():
+        for sig in {(i, eff) for _rule, i, eff in preds if i is not None}:
+            counts[sig] += 1
+
+    # Same effect under (nearly) every action -> it is not a response to the choice.
+    thresh = max(2, len(per) - 1)
+    noise = {sig for sig, n in counts.items() if n >= thresh}
+
+    filtered = {}
+    for a, preds in per.items():
+        filtered[a] = [p for p in preds if (p[1], p[2]) not in noise]
+
+    # Decoration = the objects behind geometry-only noise. `appear` is excluded on
+    # purpose: a new object showing up may be the mechanic, not furniture.
+    decor = frozenset(i for i, eff in noise
+                      if eff[0] in ("resize", "reshape", "turn"))
+    return filtered, noise, decor
+
+
+# --------------------------------------------------------------------------- transition
+
+def successors(ss: SymState, rules, actions) -> list:
+    """[(action, SymState)] — what the learned rules say each action does here.
+
+    Decoration-only effects are dropped first (see `action_noise`). The state is
+    returned even when no rule fires (the action is still legal); it is flagged
+    unsure so it can be crossed but not trusted.
+    """
+    per, _noise, decor = action_noise(ss, rules, actions)
+    ignore = ss.ignore | decor
+    out = []
+    for a in actions:
+        preds = per.get(a) or []
         if not preds:
-            out.append((a, SymState(ss.objs, ss.shape, ss.bg, ss.lexicon, sure=False)))
+            out.append((a, SymState(ss.objs, ss.shape, ss.bg, ss.lexicon,
+                                     sure=False, ignore=ignore,
+                                     keep_syms=ss.keep_syms)))
             continue
         nxt = _apply(ss, preds)
         if nxt is None:
             continue
-        out.append((a, nxt))
+        out.append((a, nxt.with_hints(ignore=ignore)))
     return out
 
 
@@ -234,7 +325,8 @@ def _apply(ss: SymState, preds) -> Optional[SymState]:
             o = o.recoloured(recolor[idx])
         new.append(o)
 
-    nxt = SymState(new, ss.shape, ss.bg, ss.lexicon, sure=sure)
+    nxt = SymState(new, ss.shape, ss.bg, ss.lexicon, sure=sure,
+                   ignore=ss.ignore, keep_syms=ss.keep_syms)
     if nxt.out_of_bounds():
         return None
     if nxt.overlapping():
@@ -258,6 +350,7 @@ def search(start: SymState, rules, actions, visits: dict, recent=(), dead_action
     t0 = clock() if clock else time.time()
     recent = set(recent)
     best = None                      # (score_key, first_action, path_len)
+    fallback = None                  # one step onto an unvisited board, model unsure
     seen = {start.key()}
     frontier = [(start, ())]
     explored = 0
@@ -281,12 +374,18 @@ def search(start: SymState, rules, actions, visits: dict, recent=(), dead_action
                     continue
                 nxt_frontier.append((nxt, p))
 
-                # only states the model actually understands may be goals
-                if not nxt.sure:
-                    continue
                 fp = nxt.fingerprint()
                 n = visits.get(fp, 0)
                 tabu = 1 if fp in recent else 0
+
+                # only states the model actually understands may be goals
+                if not nxt.sure:
+                    # Traversable, never trusted. One step onto a fresh board is
+                    # still better than ping-ponging between two known ones, so
+                    # keep it as a last resort — but never chain such states.
+                    if fallback is None and len(p) == 1 and n == 0:
+                        fallback = (a, len(p))
+                    continue
                 # prefer: never visited, not recently stood on, fewer actions
                 rank = (n, tabu, len(p))
                 if best is None or rank < best[0]:
@@ -303,6 +402,9 @@ def search(start: SymState, rules, actions, visits: dict, recent=(), dead_action
             break
 
     if best is None:
+        if fallback is not None:
+            a, n = fallback
+            return a, (("unsure", 0), a, n, a)
         return None, None
     return best[1], best
 

@@ -1,0 +1,20 @@
+{
+  "collector_exit": 0,
+  "created_at": 1791929316.9567895,
+  "duplicates": 0,
+  "groups": 10,
+  "labels_sha256": "60bbee5fae48ff9af4844c1dfeb3fc851c38cc886535ab6f7b8de57e07d5a576",
+  "provenance_binding": "source_commit_bound_by_rebind_canonical_provenance.py",
+  "provenance_complete": true,
+  "rows": 20,
+  "rows_read": 20,
+  "rows_total": 20,
+  "rows_written": 20,
+  "schema_version": "aop-canonical-v2",
+  "shard_id": "20261013-220724-ar25-action6",
+  "source": "remote_counterfactual_v1",
+  "source_commit": "6c859b1b887b6eef3a3bf28846c11ee86e76490b",
+  "source_sha256": "04b07776966650f294a8eebc323f72bb6f014f175e3055608a32172b4eca1f71",
+  "thread": "model",
+  "training_performed": false
+}

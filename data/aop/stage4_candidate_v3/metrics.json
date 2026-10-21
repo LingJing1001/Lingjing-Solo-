@@ -1,0 +1,111 @@
+{
+  "baseline": {
+    "action_effective_accuracy": 0.1204896941781044,
+    "action_masked_accuracy": 0.2951031029224396,
+    "action_raw_accuracy": 0.003221649443730712,
+    "per_action": {
+      "ACTION1": {
+        "masked_accuracy": 0.0,
+        "raw_accuracy": 0.0,
+        "support": 252
+      },
+      "ACTION2": {
+        "masked_accuracy": 0.6729323267936707,
+        "raw_accuracy": 0.0,
+        "support": 266
+      },
+      "ACTION3": {
+        "masked_accuracy": 0.0,
+        "raw_accuracy": 0.0,
+        "support": 243
+      },
+      "ACTION4": {
+        "masked_accuracy": 0.026639344170689583,
+        "raw_accuracy": 0.01024590153247118,
+        "support": 488
+      },
+      "ACTION5": {
+        "masked_accuracy": 0.0,
+        "raw_accuracy": 0.0,
+        "support": 16
+      },
+      "ACTION6": {
+        "masked_accuracy": 0.9268292784690857,
+        "raw_accuracy": 0.0,
+        "support": 287
+      },
+      "ACTION7": {
+        "masked_accuracy": null,
+        "raw_accuracy": null,
+        "support": 0
+      }
+    },
+    "progressed_accuracy": 0.8782216310501099,
+    "rows": 1552,
+    "val_loss": 3.1371467113494873
+  },
+  "checkpoint_sha256": "d5359ae2704721f953411fb3ef7d4fbdee07bc80e37c3abaa029b03aa39f37e7",
+  "dataset_manifest_sha256": "ed9781ca68ddeb233e29cf2c40f7c4ee8ec19dff43bcb683285ce1c7a8cc0f6e",
+  "delta": {
+    "action_effective_accuracy": 0.7789948210120201,
+    "action_masked_accuracy": 0.19072163105010986,
+    "action_raw_accuracy": 0.40206186124123633,
+    "progressed_accuracy": 0.10760313272476196,
+    "val_loss_improvement": 1.7779574394226074
+  },
+  "epochs": 800,
+  "evidence": "real_stage3_packet",
+  "git_commit": "6d13b3d6776012e9ab717a41b0eefd9110e8c578",
+  "holdout_rows": 1552,
+  "holdout_sha256": "c550692a1d0962eda0b29d1a2ea9f2359ce2458dafe36f3aa13147107ecb37d4",
+  "runtime_authority": false,
+  "schema_version": "aop.training.metrics.v1",
+  "seed": 20261013,
+  "train_rows": 1572,
+  "train_sha256": "9c08652f314fa57cb6b84ba92790afd4429e0ad9361d81e6155997183e9fd82c",
+  "trained": {
+    "action_effective_accuracy": 0.8994845151901245,
+    "action_masked_accuracy": 0.48582473397254944,
+    "action_raw_accuracy": 0.40528351068496704,
+    "per_action": {
+      "ACTION1": {
+        "masked_accuracy": 0.5079365372657776,
+        "raw_accuracy": 0.369047611951828,
+        "support": 252
+      },
+      "ACTION2": {
+        "masked_accuracy": 0.21804511547088623,
+        "raw_accuracy": 0.14661654829978943,
+        "support": 266
+      },
+      "ACTION3": {
+        "masked_accuracy": 0.403292179107666,
+        "raw_accuracy": 0.3580246865749359,
+        "support": 243
+      },
+      "ACTION4": {
+        "masked_accuracy": 0.4590163826942444,
+        "raw_accuracy": 0.45696720480918884,
+        "support": 488
+      },
+      "ACTION5": {
+        "masked_accuracy": 0.25,
+        "raw_accuracy": 0.25,
+        "support": 16
+      },
+      "ACTION6": {
+        "masked_accuracy": 0.8432055711746216,
+        "raw_accuracy": 0.6376306414604187,
+        "support": 287
+      },
+      "ACTION7": {
+        "masked_accuracy": null,
+        "raw_accuracy": null,
+        "support": 0
+      }
+    },
+    "progressed_accuracy": 0.9858247637748718,
+    "rows": 1552,
+    "val_loss": 1.3591892719268799
+  }
+}

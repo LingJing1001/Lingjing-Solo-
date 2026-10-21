@@ -57,18 +57,52 @@ def make_action(action_id, frame=None, action6_xy=None):
     return action
 
 
+def action_record(action):
+    """Return the action identity and locally serialized SDK payload."""
+    payload = action.action_data.model_dump(mode='json')
+    if not isinstance(payload, dict):
+        raise ValueError('action payload must serialize to an object')
+    return {
+        'name': action.name,
+        'id': int(action.value),
+        'payload': payload,
+    }
+
+
+def recorded_action_record(record, expected_action_id):
+    """Use the server recording as the authoritative executed payload."""
+    action_input = record.get('action_input') or {}
+    action_id = recording_action_id(action_input)
+    payload = action_input.get('data')
+    if action_id != expected_action_id or not isinstance(payload, dict):
+        raise ValueError(f'recorded action mismatch for ACTION{expected_action_id}')
+    return {
+        'name': f'ACTION{action_id}',
+        'id': action_id,
+        'payload': dict(payload),
+    }
+
+
 def step_action(env, action, reasoning=None):
     """Send both the enum and its serialized payload through the SDK boundary."""
     return env.step(action, data=action.action_data.model_dump(), reasoning=reasoning)
 
 
-def recording_transition(out, card, candidate):
+def recording_transition(out, card, candidate, group_id):
     files = sorted((out / 'remote_recordings' / str(card)).glob('*.jsonl'), key=lambda p: p.stat().st_mtime, reverse=True)
     if len(files) != 1:
         return None
     records = [json.loads(line)['data'] for line in files[0].read_text().splitlines() if line.strip()]
-    for index, data in enumerate(records):
-        if recording_action_id(data.get('action_input')) == candidate and index > 0:
+    for index in range(len(records) - 1, 0, -1):
+        data = records[index]
+        action_input = data.get('action_input') or {}
+        reasoning = action_input.get('reasoning') or {}
+        if (
+            recording_action_id(action_input) == candidate
+            and reasoning.get('probe') == 'counterfactual candidate'
+            and reasoning.get('group') == group_id
+            and reasoning.get('candidate') == candidate
+        ):
             return records[index - 1], data
     return None
 
@@ -78,7 +112,7 @@ def obs_from_record(data, tick):
             'available_actions': legal, 'legal_actions': legal, 'tick': tick,
             'frame_id': data.get('guid'), 'frame': data}
 
-def choose_prefix(arc, game, seed, length):
+def choose_prefix(arc, game, seed, length, action6_xy=None):
     card = arc.open_scorecard(tags=['aop','counterfactual-scout',game,f'prefix{length}'])
     try:
         env = arc.make(game, scorecard_id=card, save_recording=False)
@@ -89,10 +123,14 @@ def choose_prefix(arc, game, seed, length):
         for tick in range(length):
             if frame is None: return None
             legal=list(frame.available_actions or [])
-            candidates=[x for x in legal if x not in (0,6)] or legal
+            candidates=[x for x in legal if x not in (0,6)]
+            if not candidates and action6_xy is not None:
+                candidates=[x for x in legal if x != 0]
             if not candidates: return None
             aid=rng.choice(candidates); actions.append(aid)
-            frame=step_action(env, make_action(aid), {'probe':'counterfactual scout','tick':tick})
+            frame=step_action(env, make_action(aid, frame, action6_xy), {'probe':'counterfactual scout','tick':tick})
+            if frame is None or frame.state != 'NOT_FINISHED':
+                return None
         if frame is None: return None
         return {'actions':actions,'before':obs(frame,length),'hash':stable_hash(dump(frame))}
     finally:
@@ -108,26 +146,35 @@ def branch(arc, game, prefix, candidate, group_id, branch_no, out, action6_xy=No
         frame=env.reset()
         for tick,aid in enumerate(prefix['actions']):
             if frame is None or aid not in list(frame.available_actions or []): return None
-            frame=step_action(env, make_action(aid), {'probe':'counterfactual replay','group':group_id,'tick':tick})
+            frame=step_action(env, make_action(aid, frame, action6_xy), {'probe':'counterfactual replay','group':group_id,'tick':tick})
+            if frame is None or (tick + 1 < len(prefix['actions']) and frame.state != 'NOT_FINISHED'):
+                return None
         if frame is None: return None
         before=obs(frame,len(prefix['actions']))
         replay_hash=stable_hash(dump(frame))
         if replay_hash != prefix['hash']: return None
         legal=list(frame.available_actions or [])
         if candidate not in legal: return None
-        after_frame=step_action(env, make_action(candidate, frame, action6_xy), {'probe':'counterfactual candidate','group':group_id,'candidate':candidate})
+        candidate_action=make_action(candidate, frame, action6_xy)
+        after_frame=step_action(env, candidate_action, {'probe':'counterfactual candidate','group':group_id,'candidate':candidate})
         if after_frame is None:
             return None
         after=obs(after_frame,len(prefix['actions'])+1)
-        transition=recording_transition(out, card, candidate)
-        if transition is not None:
-            before=obs_from_record(transition[0],len(prefix['actions']))
-            after=obs_from_record(transition[1],len(prefix['actions'])+1)
-        before_hash=stable_hash(before); after_hash=stable_hash(after)
+        transition=recording_transition(out, card, candidate, group_id)
+        if transition is None:
+            return None
+        before=obs_from_record(transition[0],len(prefix['actions']))
+        after=obs_from_record(transition[1],len(prefix['actions'])+1)
+        requested_action=recorded_action_record(transition[1], candidate)
+        # The replay frame is the authoritative same-state boundary. Recorder
+        # rows include branch-local transport metadata, so hashing the wrapper
+        # would make equal counterfactual states appear different.
+        before_hash=replay_hash
+        after_hash=stable_hash((after.get('frame') or {}))
         row={
           'episode_id':f'{game}_{group_id}_candidate{candidate}_b{branch_no}',
           'step_id':len(prefix['actions']),
-          'requested_action':{'name':f'ACTION{candidate}','id':candidate,'payload':{}},
+          'requested_action':requested_action,
           'observation_before':before,'observation_after':after,
           'state_delta':{
             'before_hash':before_hash,'after_hash':after_hash,
@@ -144,6 +191,7 @@ def branch(arc, game, prefix, candidate, group_id, branch_no, out, action6_xy=No
           'level_completed':after.get('levels_completed',0),
           'legal_actions':before['legal_actions'],
           'temporal':{'tick_before':len(prefix['actions']),'tick_after':len(prefix['actions'])+1,'dt':1},
+          'counterfactual_id':f'{group_id}_a{candidate}',
           'counterfactual_group_id':group_id,'candidate_action_id':candidate,
           'prefix_action_ids':prefix['actions'],'replay_state_hash':replay_hash,
           'replay_verified':True,'source':'remote_counterfactual_v1',
@@ -154,7 +202,7 @@ def branch(arc, game, prefix, candidate, group_id, branch_no, out, action6_xy=No
         except Exception: pass
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--out',type=Path,required=True); ap.add_argument('--groups-per-game',type=int,default=3); ap.add_argument('--focus-actions',default='',help='comma-separated ACTION IDs; retain prefixes where one is legal'); ap.add_argument('--games',default=','.join(GAMES),help='comma-separated game IDs'); ap.add_argument('--prefix-lengths',default='50,75,100,125',help='comma-separated scout prefix lengths'); ap.add_argument('--action6-x',type=int); ap.add_argument('--action6-y',type=int)
+    ap=argparse.ArgumentParser(); ap.add_argument('--out',type=Path,required=True); ap.add_argument('--groups-per-game',type=int,default=3); ap.add_argument('--focus-actions',default='',help='comma-separated ACTION IDs; retain prefixes where one is legal'); ap.add_argument('--games',default=','.join(GAMES),help='comma-separated game IDs'); ap.add_argument('--prefix-lengths',default='50,75,100,125',help='comma-separated scout prefix lengths'); ap.add_argument('--action6-x',type=int); ap.add_argument('--action6-y',type=int); ap.add_argument('--seed-base',type=int,default=20261010); ap.add_argument('--run-id',default='manual')
     args=ap.parse_args(); args.out.mkdir(parents=True,exist_ok=True)
     api_key=os.environ.get('ARC_API_KEY')
     if not api_key:
@@ -176,18 +224,24 @@ def main():
         raise SystemExit(f'unknown games: {unknown}')
     for gi,game in enumerate(games):
       for n in range(args.groups_per_game):
-        length=prefixes[n % len(prefixes)]; gid=f'{game}_g{n}_p{length}'
+        length=prefixes[n % len(prefixes)]; gid=f'{game}_{args.run_id}_g{n}_p{length}'
         try:
-          prefix=choose_prefix(arc,game,20261010+gi*100+n,length)
+          prefix=choose_prefix(arc,game,args.seed_base+gi*100+n,length,action6_xy)
           if not prefix: continue
           if focus and not focus.intersection(prefix['before']['legal_actions']): continue
           legal_candidates=[x for x in prefix['before']['legal_actions'] if x not in (0,)]
           if focus:
             focused=[x for x in legal_candidates if x in focus]
             comparator=[x for x in legal_candidates if x not in focus]
+            # ACTION6 requires coordinates. Never let an invalid comparator
+            # discard an otherwise valid focused group.
+            if action6_xy is None:
+              comparator=[x for x in comparator if x != 6]
             candidates=focused + comparator[:1]
           else:
-            candidates=legal_candidates
+            candidates=[x for x in legal_candidates if x != 6 or action6_xy is not None]
+          if len(candidates) < 2:
+            continue
           branch_rows=[]
           for b,candidate in enumerate(candidates):
             try:

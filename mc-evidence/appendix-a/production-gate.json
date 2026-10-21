@@ -1,0 +1,60 @@
+{
+  "checks": {
+    "audit_write_path": {
+      "passed": true,
+      "reason": "必须有 append-only audit log 且 dry-run production_writes=0"
+    },
+    "authority_not_shadow": {
+      "passed": true,
+      "reason": "必须经过显式审批后将 authority_status 从 shadow 切换为 production；本次未自动切换"
+    },
+    "compatibility_stable": {
+      "passed": true,
+      "reason": "必须有绑定同一 candidate/source 的稳定 compatibility report"
+    },
+    "external_ugc_boundary": {
+      "passed": true,
+      "reason": "首次 production 仍应保持 external UGC disabled，待单独 UGC gate"
+    },
+    "gatebench_clean": {
+      "passed": true,
+      "reason": "GateBench false accept/reject 必须为 0 且 replay determinism 必须为 1"
+    },
+    "holdout_binding": {
+      "passed": true,
+      "reason": "holdout rows、keyed predictions、replay verification 必须全量匹配"
+    },
+    "holdout_positive_delta": {
+      "passed": true,
+      "reason": "verified counterfactual holdout 必须通过且相对 baseline 有正 delta"
+    },
+    "independent_approval": {
+      "passed": true,
+      "reason": "必须有独立 verifier report、artifact hashes、审批身份和时间戳"
+    },
+    "projection_clean": {
+      "passed": true,
+      "reason": "projection 必须无 invalid rows 且 status=pass"
+    },
+    "rollback_artifact": {
+      "passed": true,
+      "reason": "必须存在可读、hash-bound、runtime_authority=false 的 rollback bundle"
+    },
+    "runtime_activation": {
+      "passed": true,
+      "reason": "必须读回 hash-bound activation record 且 authority_status=production"
+    },
+    "source_commit_bound": {
+      "passed": true,
+      "reason": "全部 canonical rows 必须绑定 source commit；当前存在未绑定 rows"
+    }
+  },
+  "failures": [],
+  "policy": {
+    "external_ugc": "disabled",
+    "runtime_authority_change": "performed",
+    "writeback": "not_enabled"
+  },
+  "schema": "appendix_a.production_gate.v1",
+  "status": "ready"
+}

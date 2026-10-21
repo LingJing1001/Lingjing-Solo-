@@ -93,4 +93,34 @@ python3 tools/aop/train.py labels.jsonl \
 4. `visual_changed`、`action_effective`、`progressed` 三者可独立重算；
 5. recording 重复转换产生字节一致的 labels。
 
-未经这些闸门，不训练、不把视觉变化当成成功、不将模型输出直接送入执行器。
+## 6. 2026-10-13 完成门槛复核
+
+- [x] **阶段 1：标签契约** — `tests/test_aop_labels.py`、`tests/test_recording_gate.py` 定向测试通过（21 passed）；新增非有限 observation 拒绝测试，`NaN/Infinity` fail-closed。
+- [x] **阶段 2：recording → labels 转换器** — 使用 collector 产出的真实 AR25 raw recording 验证：`normalize_arc_recording.py` 输出 77 行 / 1 episode / 1 RESET / 76 actions，`build_labels.py` 输出 76 labels。
+- [x] **阶段 3：真实 ARC/CEAX recording 采集与数据集冻结** — 从 `data/aop/episodes/*/recording.jsonl` 的 10 个真实 remote recording 重新执行 normalize/gate/labels，并合并 3 个 manifest/hash 校验通过的 remote counterfactual shard；产出 `data/aop/stage3_packet/`。冻结结果为 3,124 rows / 46 episode IDs / 18 counterfactual groups / 5 profiles / 6 actions；train 1,572、holdout 1,552，按 episode/group 零重叠。holdout 覆盖全部 5 profiles、全部 6 actions，以及 effective/no-op/progress/terminal-failure。稳定输入快照上两次独立构建的 artifact SHA 完全一致。
+- [x] **阶段 4：真实训练与独立评估** — 首轮 `data/aop/stage4_candidate/` 暴露 trainer 与 runtime 的动作评分口径不一致：trainer 单行 argmax 会奖励输入 candidate 回显，而 runtime 会逐合法候选编码并比较对角 logit。修复 commit `8ba4749` 将训练、内置评估和 controller/evaluator 统一为逐候选评分；`data/aop/stage4_candidate_v2/` 在未改动的 frozen holdout 上由独立 evaluator 复核，masked accuracy `0.272552→0.383376`。随后以同一 frozen packet、同 seed 延长至 800 epochs，产出 `data/aop/stage4_candidate_v3/`；独立 evaluator 复核 raw `0.405284`、masked `0.485825`（754/1,552），ACTION2 `0.218045`，ACTION4 `0.459016`，ACTION5 `0.250000`。两次 v3 训练的 18 个 tensors 和全部 metrics 完全一致；`runtime_authority=false`。
+- [x] **阶段 4 纠偏：runtime-aligned candidate scoring** — 已完成并推送 `8ba4749`、`6d13b3d`；已验证训练指标与独立 evaluator 的 raw/masked 正确计数一致，未把 candidate echo 当作能力证据。
+- [ ] **阶段 4 后续：低覆盖动作质量** — v4 在不修改 frozen holdout 的前提下加入 train-only 的 profile×action 平滑先验，独立 evaluator masked accuracy `0.485825→0.550258`（854/1,552），ACTION2 `0.263158`、ACTION4 `0.608607`、ACTION5 `0.375000`；ACTION5 仅 `16` 条 holdout support，ACTION7 为 `0` 条 support，仍需补充经 gate 的非 IOP 证据或继续改进。未达到部署门槛前不得进入阶段 5。
+- [ ] **2026-10-13 ACTION7 补采候选** — 三个 ar25 ACTION7 shard 通过 counterfactual QA，共 `20` groups / `40` rows；候选 packet `data/aop/stage3_packet_action7_candidate/` freeze `complete`，按 group 切分 train `1,576`、holdout `1,552`。ACTION7 holdout support `4`，ACTION7 accuracy `0.750000`，但整体 masked accuracy `0.531572` 低于 v4 `0.550258`，因此该候选 rejected/shadow-only，继续补采后再训练。
+- [x] **2026-10-14 model-thread → sandbox canonical ingest** — 新增 `tools/aop/canonical_ingest.py`：要求 `provenance_complete=true`、校验 source SHA、生成 `aop-canonical-v1`、按 `counterfactual_group_id` 做幂等去重，并输出 freeze-compatible `manifest.json`；`continuous_runner.py` 改为只写 raw/canonical shard，停止直接以 cumulative labels 自动训练，状态改为 `candidate_requires_freeze`。无 provenance 的旧 continuous labels 不会被自动接纳。
+- [ ] **model-thread 数据迁移** — 现有 `data/aop/continuous/labels.jsonl` 中的历史 rows 仍需逐条追溯 raw recording/provenance 后才能进入 candidate packet；找不到 provenance 的 rows 保持 quarantine，不得用于 sandbox 训练或验证。
+- [ ] **阶段 5：线上接入** — 未接入 runtime；确定性/legal-action 路径仍是唯一 authority。
+
+### 阶段 3 的调整
+
+1. collector 输出必须先经过 raw → normalized → recording gate → labels，不能把 raw ARC JSONL 直接交给 `validate_recording.py`。
+2. 每个 profile 至少保留一份通过 gate 的 recording；阶段 3 完成前还要覆盖 action/no-op/失败/推进四类样本，并保留 `episode_id`、legal actions、settled after-state 和 provenance。
+3. 在进入真实训练前，按 episode 做 train/holdout 切分；holdout 非空且不得与训练 episode 重叠。
+4. 采集 runner 的 raw replay、失败日志和临时 state 仍属于本地证据，不自动纳入 Git；Git 只纳入可复建 Stage 3 packet 所需的成功 shard manifest/labels、冻结工具、测试和 packet artifact。
+
+## 7. 跨 thread canonical ingest 标准（2026-10-14）
+
+model thread 与 sandbox thread 共享 `aop-canonical-v1`，但不直接拼接两个 `labels.jsonl`。统一入口为：
+
+```text
+raw shard → manifest/provenance → canonical ingest → QA → episode/group split → freeze candidate → shadow train/evaluate
+```
+
+硬门槛定义在 `src/aop/standards/acceptance_criteria.md`：source/labels SHA、`collector_exit=0`、行数一致、counterfactual group 至少两个 candidate、replay verification、episode/group 无泄漏 split 均为必需条件。任一条件失败即 quarantine/fail-closed。
+
+`data/aop/continuous/labels.jsonl` 仍是 model thread 的累计缓存，不是 sandbox packet。缺少 raw provenance 的历史 rows 不做无依据回填；只有更新后的 collector 生成并通过 canonical ingest 的新 shard 才能进入 candidate freeze。canonical ingest 不触发训练，`runtime_authority` 继续关闭。

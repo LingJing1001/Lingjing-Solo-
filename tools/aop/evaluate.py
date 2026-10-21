@@ -18,6 +18,7 @@ from lingjing_solo.neural.action_mask import choose_masked_action
 from lingjing_solo.neural.aop_encoder import encode_label
 from lingjing_solo.neural.aop_model import load_checkpoint
 from tools.aop.train import read_labels
+from lingjing_solo.neural.aop_encoder import profile_key
 
 
 def _sha256(path: Path) -> str:
@@ -39,6 +40,8 @@ def evaluate(checkpoint: str | Path, labels_path: str | Path) -> dict[str, Any]:
     checkpoint_path = Path(checkpoint)
     labels_file = Path(labels_path)
     model, config = load_checkpoint(checkpoint_path)
+    profile_log_priors = config.get("profile_log_priors") or {}
+    prior_alpha = float(config.get("profile_prior_alpha", 0.0))
     names = list(config.get("action_names", []))
     action_to_id = {name: i for i, name in enumerate(names)}
     labels = read_labels(labels_file)
@@ -68,6 +71,9 @@ def evaluate(checkpoint: str | Path, labels_path: str | Path) -> dict[str, Any]:
                 candidate_rows.append(encode_label(candidate_row, action_id=action_to_id[candidate], action_count=len(names)))
             logits = model(torch.stack(candidate_rows))["action"]
             candidate_scores = logits[torch.arange(len(names)), torch.arange(len(names))]
+            if profile_log_priors and prior_alpha:
+                prior = profile_log_priors.get(profile_key(row), [0.0] * len(names))
+                candidate_scores = candidate_scores + prior_alpha * torch.tensor(prior, dtype=candidate_scores.dtype)
             raw = names[int(candidate_scores.argmax().item())]
             counts["rows"] += 1
             counts["raw_correct"] += int(raw == actual)

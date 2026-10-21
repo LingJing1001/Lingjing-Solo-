@@ -1,0 +1,29 @@
+{
+  "schema": "aop.evaluation.v1",
+  "checkpoint": "data/aop/stage4_candidate_v3/checkpoint.pt",
+  "checkpoint_sha256": "d5359ae2704721f953411fb3ef7d4fbdee07bc80e37c3abaa029b03aa39f37e7",
+  "labels": "data/aop/stage3_packet/holdout.jsonl",
+  "labels_sha256": "c550692a1d0962eda0b29d1a2ea9f2359ce2458dafe36f3aa13147107ecb37d4",
+  "git_commit": "6d13b3d6776012e9ab717a41b0eefd9110e8c578",
+  "model_version": "aop.model.v2",
+  "rows": 1552,
+  "masked_rows": 1552,
+  "unknown_legal_rows": 0,
+  "raw_action_accuracy": 0.4052835051546392,
+  "masked_action_accuracy": 0.48582474226804123,
+  "masked_legal_prediction_rate": 1.0,
+  "counts": {
+    "actual_ACTION1": 252,
+    "actual_ACTION2": 266,
+    "actual_ACTION3": 243,
+    "actual_ACTION4": 488,
+    "actual_ACTION5": 16,
+    "actual_ACTION6": 287,
+    "predicted_ACTION1": 328,
+    "predicted_ACTION2": 89,
+    "predicted_ACTION3": 168,
+    "predicted_ACTION4": 557,
+    "predicted_ACTION5": 23,
+    "predicted_ACTION6": 387
+  }
+}
