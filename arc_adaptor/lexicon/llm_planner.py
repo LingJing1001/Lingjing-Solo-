@@ -72,6 +72,10 @@ SYSTEM = (
     "corridors, which the object list alone does not show. (If it is absent, MAP is the same "
     "board sampled every other cell.)\n"
     "- ACTION6 is a click and needs a cell: write it as ACTION6@row,col.\n"
+    "- INFERRED is what helper layers concluded: a guessed goal mask, which keys move "
+    "what, the distance still to cover, and how much of the board has been walked. It is "
+    "derived, not observed -- it is often wrong, and on a board where it disagrees with "
+    "NATIVE or CHANGES, believe those instead. Use it as a head start, not as orders.\n"
     "- RULES are `when <action> [if/unless <condition>] then <change>`, with right/wrong counts. "
     "A rule with many rights is real; 0/0 means it is still a guess; wrong counts mean exception.\n"
     "- PREDICTED says what each available action would do under those rules. `nothing` is a "
@@ -246,8 +250,14 @@ def _load_dotenv() -> None:
                 if not k:
                     continue
                 cur = os.environ.get(k, "")
-                placeholder = (len(cur) < 8 or cur.lower().startswith("replace_with")
-                               or cur.lower() in {"sk-xxxx", "sk-xxx", "your_api_key"})
+                # A placeholder check by length only makes sense for credentials:
+                # every switch is short, so `SELFLEARN_LLM=1` on the command line was
+                # being read as a placeholder and silently replaced by the .env value.
+                # The shell always wins for everything that is not a secret.
+                secret = any(t in k.upper() for t in ("KEY", "TOKEN", "SECRET"))
+                placeholder = secret and (
+                    len(cur) < 8 or cur.lower().startswith("replace_with")
+                    or cur.lower() in {"sk-xxxx", "sk-xxx", "your_api_key"})
                 if k not in os.environ or placeholder:
                     os.environ[k] = v
         except Exception:  # noqa: BLE001
@@ -283,7 +293,8 @@ class LLMPlanner:
 
     def build_context(self, perc, grid, step: int, level: Any = None,
                       allowed: Optional[tuple] = None, recent: Optional[list] = None,
-                      outcome: Optional[str] = None, planner=None) -> tuple[str, str]:
+                      outcome: Optional[str] = None, planner=None,
+                      inferred: Optional[list] = None) -> tuple[str, str]:
         """(system, user). Everything the model sees is derived from the frame alone."""
         allowed = tuple(allowed or ())
         acts = " ".join(allowed) or "(unknown)"
@@ -322,6 +333,12 @@ class LLMPlanner:
         elif mm:
             lines.append("MAP (every 2nd cell, colour 0-9a-f):")
             lines.extend(mm)
+
+        # Hypotheses sit between the raw board and the learned rules: the model has
+        # just read what is there, and this says what the helper layers concluded
+        # about it. Read-only on purpose -- see lexicon/view.py.
+        if inferred:
+            lines.extend(inferred)
 
         try:
             rules = perc.rules_text()
@@ -418,6 +435,20 @@ class LLMPlanner:
             body["chat_template_kwargs"] = {"enable_thinking": True}
             body["top_p"] = 0.95
             body.pop("stop", None)  # stop strings fire inside the reasoning trace
+        else:
+            # Qwen3's chat template thinks BY DEFAULT.  Sending no kwargs is not
+            # "no thinking": the model opens with <think> and burns the whole
+            # max_tokens budget there, so `content` comes back empty and every
+            # call looks like a parse failure.  Turn it off explicitly.
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+        text = self._post(cfg, body)
+        if not text and "chat_template_kwargs" in body and not think:
+            # Some endpoints reject the field outright (HTTP 400); retry plain.
+            body.pop("chat_template_kwargs")
+            text = self._post(cfg, body)
+        return text
+
+    def _post(self, cfg: dict, body: dict) -> str:
         req = urllib.request.Request(
             cfg["url"], data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json",
@@ -478,7 +509,7 @@ class LLMPlanner:
     def decide(self, perc, grid, step: int, level: Any = None,
                allowed: Optional[tuple] = None, recent: Optional[list] = None,
                outcome: Optional[str] = None, planner=None,
-               fp: Any = None) -> Optional[list[str]]:
+               fp: Any = None, inferred: Optional[list] = None) -> Optional[list[str]]:
         """Next action queue, or None (caller falls back to the rule planner)."""
         if not self.ready(step):
             return None
@@ -488,7 +519,8 @@ class LLMPlanner:
             self._last_step = step
             return list(self._cache[key])
 
-        system, user = self.build_context(perc, grid, step, level, allowed, recent, outcome, planner)
+        system, user = self.build_context(perc, grid, step, level, allowed, recent,
+                                          outcome, planner, inferred=inferred)
         self.calls += 1
         self._last_step = step
         try:

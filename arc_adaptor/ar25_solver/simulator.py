@@ -47,7 +47,7 @@ class AR25Simulator:
     可用于搜索算法或手动模拟游戏过程。
     """
 
-    def __init__(self, level_data):
+    def __init__(self, level_data, sel_idx=0, switch_order=None):
         self.board_size = level_data.get("board_size", BOARD_SIZE)
         self.budget = level_data["budget"]
         self.steps_used = 0
@@ -66,14 +66,19 @@ class AR25Simulator:
             if not is_axis:
                 self.sprites.append(s)
 
-        self.switch_list = []
-        for i, ax in enumerate(self.axes):
-            if IMMOVABLE_TAG not in ax.get("tags", []):
-                self.switch_list.append(("axis", i))
-        for i in range(len(self.sprites)):
-            self.switch_list.append(("sprite", i))
+        if switch_order is not None:
+            # 与引擎 ayyvxqrhnzw 切换循环顺序严格对齐（可能含轴实体的重复出现）
+            self.switch_list = list(switch_order)
+        else:
+            self.switch_list = []
+            for i, ax in enumerate(self.axes):
+                if IMMOVABLE_TAG not in ax.get("tags", []):
+                    self.switch_list.append(("axis", i))
+            for i in range(len(self.sprites)):
+                self.switch_list.append(("sprite", i))
 
-        self.sel_idx = 0
+        n = len(self.switch_list)
+        self.sel_idx = sel_idx % n if n else 0
 
     @property
     def selected_type(self):
