@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import traceback
 from collections import deque
 from pathlib import Path
@@ -1370,6 +1371,9 @@ class MyAgent(Agent):
     """CEAX primary + inline ls20/ar25 floor. Crash-proof choose_action."""
 
     MAX_ACTIONS: int = 800
+    # 每局墙钟上限（秒）。0 = 不限。实例可用 time_deadline 传绝对截止
+    # 时间（runner 用），或用环境变量 ARC_GAME_TIME_LIMIT_MIN 设分钟数。
+    TIME_LIMIT_SEC: float = 0.0
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -1508,6 +1512,17 @@ class MyAgent(Agent):
         self._stag_level: int = -1
         self._stag_count: int = 0
         self._stag_logged: bool = False
+        # 每局墙钟上限：runner 设绝对截止 time_deadline；否则看环境变量
+        # ARC_GAME_TIME_LIMIT_MIN（分钟，0/缺省 = 不限）。
+        self.time_deadline: Optional[float] = None
+        self._deadline_hit: bool = False
+        self._deadline_logged: bool = False
+        try:
+            self.TIME_LIMIT_SEC = (
+                float(os.environ.get("ARC_GAME_TIME_LIMIT_MIN", "0") or 0) * 60.0
+            )
+        except (TypeError, ValueError):
+            self.TIME_LIMIT_SEC = 0.0
         gid = _norm_game(getattr(self, "game_id", ""))
         # 清零模式下 route_gid 置空 → 所有校准计划分支失效，落到 CEAX_UNKNOWN。
         _route_gid = gid if SCRIPTS_ENABLED else "__none__"
@@ -1586,7 +1601,33 @@ class MyAgent(Agent):
     def is_done(self, frames: list[FrameData], latest_frame: FrameData) -> bool:
         if latest_frame.state is GameState.WIN:
             return True
-        return self.action_counter >= self.MAX_ACTIONS
+        if self.action_counter >= self.MAX_ACTIONS:
+            return True
+        deadline = self._time_deadline()
+        if deadline is not None and time.time() >= deadline:
+            if not self._deadline_logged:
+                self._deadline_logged = True
+                self._deadline_hit = True
+                print(
+                    f"[{BUILD_TAG}] TIME-LIMIT hit game={self.game_id} "
+                    f"after {self.action_counter} actions / "
+                    f"{time.time() - (getattr(self, 'timer', time.time())):.0f}s",
+                    flush=True,
+                )
+            return True
+        return False
+
+    def _time_deadline(self) -> Optional[float]:
+        """墙钟截止时刻；None = 本局不限时。"""
+        d = getattr(self, "time_deadline", None)
+        if d:
+            return float(d)
+        sec = float(getattr(self, "TIME_LIMIT_SEC", 0) or 0)
+        if sec > 0:
+            t0 = getattr(self, "timer", None)
+            if t0:
+                return float(t0) + sec
+        return None
 
     def choose_action(
         self, frames: list[FrameData], latest_frame: FrameData
@@ -2403,7 +2444,29 @@ class MyAgent(Agent):
                             _has_sa = False
 
                         _tl = _r3_time_limit(20.0)
-                        if _has_sa and gid in _sa._SHADOW_MODULES:
+                        # 本地专用求解器（不依赖 C:/newtask-pi，机制来自直读游戏源码）：
+                        #   g50t: 快档位置 BFS(引擎预言函数) + 回放聚焦 + 俯冲
+                        #   ka59: 回放加权队列 + 俯冲（含 0022 方块点击候选）
+                        # 失败一律兜底回 shadow / IDDFS，绝不影响主流程。
+                        if gid in ("g50t", "ka59") and found is None:
+                            try:
+                                import os as _os5, sys as _sys5
+                                _adir = _os5.path.dirname(_os5.path.abspath(__file__))
+                                if _adir not in _sys5.path:
+                                    _sys5.path.insert(0, _adir)
+                                _lmod = __import__("g50t_solver" if gid == "g50t" else "ka59_solver")
+                                _lstl = _r3_time_limit(90.0)
+                                print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (local_solver t={_lstl}s)", flush=True)
+                                _sp = _lmod.solve(env_ref._game, t_limit=_lstl)
+                                if _sp:
+                                    found = [
+                                        (6, int(a["x"]), int(a["y"])) if isinstance(a, dict) else int(a)
+                                        for a in _sp
+                                    ]
+                                    print(f"[{BUILD_TAG}] local_solver path_len={len(found)}", flush=True)
+                            except Exception as _lse:
+                                print(f"[{BUILD_TAG}] local_solver {gid} failed: {type(_lse).__name__}: {_lse}", flush=True)
+                        if _has_sa and found is None and gid in _sa._SHADOW_MODULES:
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
                             path = _sa.solve(gid, env_ref._game, t_limit=_tl)
                             if path:

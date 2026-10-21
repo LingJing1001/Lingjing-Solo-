@@ -12,17 +12,20 @@
 - 移动的合法性可被引擎自己的预言函数直接判定: 容器.rhvduhvfwn(sprite, x, y)
   = 落点与地板遮罩 afbbgvkpip 有重叠 且 不与可见危险区 uwxkstolmf 重叠 (g50t.py:2644-2658)。
 
-求解分两级:
+求解分两级 (搜索基建在 solver_common, 教训清单见其模块头):
 1) 快速通道: 纯位置 BFS (预言函数判墙/危险, 零重放) -> 找最短路径 -> 真实重放验证;
-2) 验证不过 (有机关联动等副作用) 则退回通用回放式 BFS: 每节点 level_reset+重放路径+试一步,
-   状态键 = 容器对象图摘要 (剔除移动历史等纯簿记字段, 否则去重失效 — 首轮实测根因)。
+2) 验证不过 (有机关联动等副作用) 则退回回放式搜索: 队列(浅关快解) -> 俯冲(深关兜底)。
 """
 import hashlib
 import sys
 import time
 from collections import deque
 
-from arcengine import ActionInput, GameAction, GameState
+from arcengine import ActionInput, GameAction
+
+from solver_common import (dive as _dive, replay_bfs as _replay_bfs,
+                           restore_start as _restore_start,
+                           make_won, is_dead, sprite_sig as _sprite_sig)
 
 try:
     import numpy
@@ -49,13 +52,6 @@ def _budget(g):
         return max(10, 2 * (int(t.x) + int(t.width)) + 2)
     except Exception:
         return 130
-
-
-def _sprite_sig(s):
-    import numpy as np
-    px = np.ascontiguousarray(s.pixels)
-    return (int(s.x), int(s.y), int(s.rotation or 0), int(bool(s.is_visible)),
-            hashlib.sha1(px.tobytes()).hexdigest()[:12])
 
 
 def _keytag(k):
@@ -137,77 +133,6 @@ def _h(g):
             + abs(int(c.dzxunlkwxt.y) - (int(c.whftgckbcu.y) + 1))) // pitch
 
 
-def _restore_start(g, idx0):
-    """把引擎恢复到搜索开始那一关的起点。
-
-    不能用 level_reset(): 它重置的是 _current_level_index, 而搜索中的胜利着已经把它推进到
-    下一关 (实测: 调用方重放首个动作时直接打印"关卡2", 路径根本没走过)。
-    """
-    g._levels = [lv.clone() for lv in g._clean_levels]
-    g._next_level = False
-    g._score = idx0
-    g.set_level(idx0)
-    g._state = GameState.NOT_FINISHED
-
-
-def solve(game, t_limit=120.0, max_nodes=200000):
-    """求 game 当前关: 返回按键序列 (int 1-4); 失败/超时 None; 已胜 [].
-
-    结束时游戏总是 level_reset 回当前关起点, 调用方按路径重放即可。
-    """
-    g = game
-    t0 = time.time()
-    idx0 = int(g._current_level_index)
-    if int(g._score) > idx0:
-        return []
-
-    AID = {a: getattr(GameAction, "ACTION%d" % a) for a in (1, 2, 3, 4, 5)}
-
-    def act(a):
-        return g.perform_action(ActionInput(id=AID[a], data={}, reasoning=None), raw=True)
-
-    def won(r):
-        return (r.levels_completed > idx0 or r.state == GameState.WIN
-                or int(g._current_level_index) > idx0)
-
-    def dead(r):
-        return r.state == GameState.GAME_OVER
-
-    try:
-        path = _bfs_oracle(g, act)
-        if path is not None:
-            g.level_reset()
-            r = None
-            ok = True
-            for a in path:
-                r = act(a)
-                if won(r):
-                    return list(path)
-                if dead(r):
-                    ok = False
-                    break
-            else:
-                ok = False  # 走完路径未胜 -> 预言模型漏了副作用
-            if not ok:
-                print("[g50t_solver] 快速通道验证失败, 退回回放搜索 (路径长 %d)" % len(path))
-        now = time.time()
-        # 顺序依据实测: 队列搜索 14s 就能解 L1(17 步), 而修好完整性的俯冲在 L1 上
-        # 会一路贪心潜到深度 90+ 空转 60s 无解 —— 浅关交给队列, 俯冲只打深关兜底。
-        # 截止点一律用绝对时间戳: 曾把"剩余秒数"当绝对时间传给俯冲, 420s 的关卡限制
-        # 实际只跑到 252s 就收工 (run5 实测)。
-        path = _bfs_replay(g, act, won, dead, t0, now + (t0 + t_limit - now) * 0.4, max_nodes)
-        if path is not None:
-            return path
-        if t0 + t_limit - time.time() < 5:
-            return None
-        return _dive_exact_key(g, act, won, dead, lambda: _h(g), _budget(g), t0, t0 + t_limit)
-    finally:
-        try:
-            _restore_start(g, idx0)
-        except Exception:
-            pass
-
-
 def _bfs_oracle(g, act):
     """纯位置 BFS: 用引擎预言函数判移动合法性, 不执行任何动作; 返回 int 动作序列或 None."""
     g.level_reset()
@@ -238,66 +163,62 @@ def _bfs_oracle(g, act):
     return None
 
 
-def _bfs_replay(g, act, won, dead, t0, t_end, max_nodes):
-    """回放式聚焦搜索: 每节点 reset+重放路径+试 5 动作, f=步数+2*曼哈顿(块,目标).
+def solve(game, t_limit=120.0, max_nodes=200000):
+    """求 game 当前关: 返回按键序列 (int 1-4); 失败/超时 None; 已胜 [].
 
-    (L2 基线 175 > FIFO BFS 在 300s 内能穷尽的深度; 用目标距离加权优先队列直达深区,
-    去重后仍是真最短优先级别的完全搜索——只放弃"步数最优", 保留"可达即找到")
+    结束时游戏总是 restore_start 回当前关起点, 调用方按路径重放即可。
     """
-    import heapq
-    seen = {_state_key(g)}
-    ctr = 0
+    g = game
+    t0 = time.time()
+    idx0 = int(g._current_level_index)
+    if int(g._score) > idx0:
+        return []
 
-    def h():
-        return _h(g)
+    won = make_won(g, idx0)
+    dead = is_dead
+    AID = {a: getattr(GameAction, "ACTION%d" % a) for a in (1, 2, 3, 4, 5)}
 
-    budget = _budget(g)
-    q = [(2 * h(), 0, (), None)]  # (f, tie, path, 缓存的节点h)
+    def act(a):
+        return g.perform_action(ActionInput(id=AID[int(a)], data={}, reasoning=None), raw=True)
 
-    def reach(path):
-        g.level_reset()
-        r = None
-        for i, a in enumerate(path):
-            r = act(a)
-            if won(r):
-                return ("won", i)
-            if dead(r):
-                return ("dead", r)
-        return ("ok", r)
-
-    nodes = 0
-    while q:
-        if time.time() > t_end or nodes > max_nodes:
-            print("[g50t_solver] 聚焦搜索超时/超限: nodes=%d seen=%d q=%d" % (nodes, len(seen), len(q)))
+    try:
+        path = _bfs_oracle(g, act)
+        if path is not None:
+            g.level_reset()
+            r = None
+            ok = True
+            for a in path:
+                r = act(a)
+                if won(r):
+                    return list(path)
+                if dead(r):
+                    ok = False
+                    break
+            else:
+                ok = False  # 走完路径未胜 -> 预言模型漏了副作用
+            if not ok:
+                print("[g50t_solver] 快速通道验证失败, 退回回放搜索 (路径长 %d)" % len(path))
+        now = time.time()
+        # 顺序依据实测: 队列搜索 14s 就能解 L1(17 步), 而修好完整性的俯冲在 L1 上
+        # 会一路贪心潜到深度 90+ 空转 60s 无解 —— 浅关交给队列, 俯冲只打深关兜底。
+        # 截止点一律用绝对时间戳 (教训 2, 见 solver_common 模块头)。
+        path = _replay_bfs(
+            g, act, won, dead, lambda: _h(g), _budget(g), t0,
+            now + (t0 + t_limit - now) * 0.4, max_nodes,
+            lambda _g: (1, 2, 3, 4, 5), _state_key, tag="g50t_solver")
+        if path is not None:
+            return path
+        if t0 + t_limit - time.time() < 5:
             return None
-        _f, _d, path, _hz = heapq.heappop(q)
-        if len(path) >= budget - 1:
-            continue
-        for a in (1, 2, 3, 4, 5):  # A5=幽灵录像, 是过关必需机制
-            st, info = reach(path)
-            if st == "won":
-                return list(path[:info]) + [path[info]]
-            if st == "dead":
-                break
-            r = act(a)
-            if won(r):
-                return list(path) + [a]
-            if dead(r):
-                continue
-            k = _state_key(g)
-            if k in seen:
-                continue
-            seen.add(k)
-            npath = path + (a,)
-            hn = h()
-            ctr += 1
-            heapq.heappush(q, (len(npath) + 2 * hn, ctr, npath, hn))
-            nodes += 1
-    print("[g50t_solver] 聚焦搜索穷尽: nodes=%d seen=%d" % (nodes, len(seen)))
-    return None
+        return _dive_exact_key(g, act, won, dead, t0, t0 + t_limit)
+    finally:
+        try:
+            _restore_start(g, idx0)
+        except Exception:
+            pass
 
 
-def _dive_exact_key(g, act, won, dead, h, budget, t0, t_end, w=2.0, stat=None):
+def _dive_exact_key(g, act, won, dead, t0, t_end):
     """俯冲专用: 把状态键切到"录像带入键"的精档再下潜。
 
     实测 (_tape.log, 同一 250s): 快档俯冲在 L2 只铺到深度 41 就因假合并判穷尽,
@@ -307,102 +228,7 @@ def _dive_exact_key(g, act, won, dead, h, budget, t0, t_end, w=2.0, stat=None):
     old = _SKIP
     _SKIP = _EXACT_SKIP_ATTRS
     try:
-        return _dive(g, act, won, dead, h, budget, t0, t_end, w, stat)
+        return _dive(g, act, won, dead, lambda: _h(g), _budget(g), t0, t_end,
+                     lambda _g: (1, 2, 3, 4, 5), _state_key, tag="g50t_solver")
     finally:
         _SKIP = old
-
-
-def _dive(g, act, won, dead, h, budget, t0, t_end, w=2.0, stat=None):
-    """俯冲搜索 (深度优先 + 兄弟挂起栈): 每候选只评估一次, 未下潜的兄弟回头再潜.
-
-    队列版聚焦搜索的问题: 弹出一个节点要为每个候选各重放一次整条路径 (O(分支*深度)),
-    于是 300s 只够铺到深度 ~30, 而 L2 基线 175 步。俯冲沿一条链推进, 只在死胡同回退一层,
-    能真正走到 budget 深度。
-    早期"每层只承诺最优候选"的写法不完整: 其余候选的状态既已进 seen 又被标记 tried,
-    回退时该层直接判穷尽, 兄弟子树被永久丢弃 (实测连 L1 都在 21 节点"穷尽根节点",
-    那 17 步解是队列兜底找到的)。现在 frames[d] 挂起本层全部新节点, 按 f 排序逐个下潜。
-    """
-    def reach(path):
-        g.level_reset()
-        for a in path:
-            r = act(a)
-            if won(r):
-                return "won"
-            if dead(r):
-                return "dead"
-        return "ok"
-
-    path = ()
-    eng = [None]
-    frames = [[]]        # frames[d] = 深度 d 已评估、尚未下潜的子节点 [(f, action), ...]
-    seen = set()
-    nodes = 0
-
-    def at(p):
-        if eng[0] != p:
-            st = reach(p)
-            eng[0] = p
-            return st
-        return "ok"
-
-    def unwind():
-        """回退到最近一层还有挂起兄弟的节点; 一路退空返回 None (搜索穷尽).
-
-        frames[len(path)] 是"当前节点"自己的挂起列表, 退到它时要保留, 只作废更深层的帧。
-        """
-        nonlocal path
-        while True:
-            if frames[len(path)]:
-                del frames[len(path) + 1:]
-                return path
-            if not path:
-                del frames[1:]
-                return None
-            path = path[:-1]
-
-    while True:
-        if time.time() > t_end:
-            print("[g50t_solver] 俯冲超时: %.0fs 深度=%d 节点=%d seen=%d"
-                  % (time.time() - t0, len(path), nodes, len(seen)))
-            return None
-        d = len(path)
-        if d >= budget - 1 or at(path) != "ok":
-            if unwind() is None:
-                print("[g50t_solver] 俯冲穷尽: 节点=%d" % nodes)
-                return None
-            continue
-        if stat is not None:
-            stat["max_depth"] = max(stat.get("max_depth", 0), d)
-        if not frames[d]:
-            for a in (1, 2, 3, 4, 5):
-                if at(path) != "ok":
-                    break
-                r = act(a)
-                eng[0] = path + (a,)
-                if won(r):
-                    print("[g50t_solver] 俯冲命中: 深度=%d 节点=%d" % (d + 1, nodes))
-                    return list(path) + [a]
-                if dead(r):
-                    if stat is not None:
-                        stat["dead"] = stat.get("dead", 0) + 1
-                    continue
-                k = _state_key(g)
-                if k in seen:
-                    if stat is not None:
-                        stat["seen_hit"] = stat.get("seen_hit", 0) + 1
-                    continue
-                seen.add(k)
-                nodes += 1
-                frames[d].append((d + 1 + w * h(), a))
-        if not frames[d]:
-            if stat is not None:
-                stat["exhausted"] = stat.get("exhausted", 0) + 1
-            if unwind() is None:
-                print("[g50t_solver] 俯冲穷尽: 节点=%d" % nodes)
-                return None
-            continue
-        frames[d].sort()
-        _f, a = frames[d].pop(0)
-        path = path + (a,)
-        while len(frames) < len(path) + 1:
-            frames.append([])
