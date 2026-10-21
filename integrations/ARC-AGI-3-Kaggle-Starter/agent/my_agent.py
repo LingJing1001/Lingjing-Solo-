@@ -2003,10 +2003,20 @@ class MyAgent(Agent):
           2. `LINGJING_DUCK` 未开时构造完立刻关掉，`_duck_request` 清空，之后零开销；
           3. 任何异常都冒泡给调用方那层 try/except，本函数绝不自己吞成"没动作"。
         """
-        if gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE:
+        # 测试用开关：LINGJING_DUCK_FORCE_GIDS="ar25,cd82" 让特定 INLINE 局
+        # 也走 duck。逗号分隔；空或未设 = 默认行为（INLINE 局绝不进 duck）。
+        # 这条线只在用户主动开 env 时才生效，零默认影响。
+        _force_gids = frozenset(
+            g.strip() for g in os.environ.get("LINGJING_DUCK_FORCE_GIDS", "").split(",")
+            if g.strip()
+        ) if gid in ROUTE_INLINE or gid in _PLAN_PROTECTED_GAMES else frozenset()
+        if (gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE) and gid not in _force_gids:
             return None
-        if self._duck_request < 0:
+        # forced 模式：直接以当前 levels 为 request，让 duck 立即起。
+        if self._duck_request < 0 and gid not in _force_gids:
             return None
+        if self._duck_request < 0:  # forced 模式初始化
+            self._duck_request = int(getattr(latest_frame, "levels_completed", 0) or 0)
 
         if self._duck is None:
             try:
