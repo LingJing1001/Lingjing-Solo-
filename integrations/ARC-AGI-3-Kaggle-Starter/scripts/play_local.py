@@ -9,7 +9,7 @@ Every game writes `runs/<game_id>.json` the moment it finishes (atomically,
 even when the agent raises), so a crash or Ctrl-C never loses results.
 
 Usage:
-    # one game, serial
+    # one game, serial (default cap: 30 wall-clock minutes per game)
     .venv/bin/python scripts/play_local.py --game ls20 --max-steps 200
 
     # four games, four at a time
@@ -18,6 +18,9 @@ Usage:
 
     # whole corpus, 6 concurrent (8 logical cores => leave headroom)
     .venv/bin/python scripts/play_local.py --max-steps 400 --parallel 6
+
+    # disable the per-game wall-clock cap entirely
+    .venv/bin/python scripts/play_local.py --game g50t --max-minutes 0
 
     .venv/bin/python scripts/play_local.py --list
 """
@@ -177,6 +180,10 @@ def main() -> None:
                         "Comma-separated list also accepted, e.g. ls20,vc33.")
     p.add_argument("--max-steps", type=int, default=400,
                    help="Per-game cap on actions (overrides MyAgent.MAX_ACTIONS).")
+    p.add_argument("--max-minutes", type=float, default=30.0,
+                   help="Per-game wall-clock cap in minutes (default 30; "
+                        "0 disables). Checked between actions, so a single "
+                        "hung action can still overrun.")
     p.add_argument("--parallel", type=int, default=1,
                    help="How many games to run at once (threads). Default 1 = "
                         "serial, i.e. the old behaviour. 8 logical cores -> 4-6 "
@@ -256,8 +263,11 @@ def main() -> None:
     if not agent_path.is_absolute():
         agent_path = (ROOT / agent_path).resolve()
     MyAgentCls = load_agent_class(agent_path)
-    if hasattr(MyAgentCls, "MAX_ACTIONS"):
-        MyAgentCls.MAX_ACTIONS = min(MyAgentCls.MAX_ACTIONS, args.max_steps)
+    # --max-steps 是"这一局允许的动作预算"，官方口径是 5x 人类步数，可能远超
+    # agent 自带的安全上限（my_agent 800 / self_learner 12000）。原来的 min()
+    # 只能往下压、不能往上放，导致 --max-steps 3500 实际仍跑 800 步就停。
+    if hasattr(MyAgentCls, "MAX_ACTIONS") and args.max_steps > 0:
+        MyAgentCls.MAX_ACTIONS = args.max_steps
     agent_sha = hashlib.md5(agent_path.read_bytes()).hexdigest()[:12]
 
     # The repo agent gates every calibration plan behind LINGJING_SCRIPTS,
@@ -280,7 +290,8 @@ def main() -> None:
     baselines = _load_baselines()
     cpu_n = os.cpu_count() or 1
     print(f"Agent file: {agent_path}  (md5 {agent_sha}, "
-          f"MAX_ACTIONS={getattr(MyAgentCls, 'MAX_ACTIONS', '?')})")
+          f"MAX_ACTIONS={getattr(MyAgentCls, 'MAX_ACTIONS', '?')}, "
+          f"{args.max_minutes:.0f}min/game)")
     print(f"Games: {len(game_ids)}  |  parallel: {parallel} / {cpu_n} cores  "
           f"|  results: {out_dir}\n")
 
@@ -300,6 +311,8 @@ def main() -> None:
                           if agent_path.is_relative_to(ROOT) else agent_path),
             "agent_md5": agent_sha,
             "max_steps": int(getattr(MyAgentCls, "MAX_ACTIONS", args.max_steps)),
+            "time_limit_sec": round(args.max_minutes * 60.0, 1),
+            "timed_out": False,
             "state": "ERROR",
             "levels_completed": 0,
             "actions": 0,
@@ -338,16 +351,21 @@ def main() -> None:
                     arc_env=env,
                     tags=["local-dev"],
                 )
+                # 每局墙钟上限：绝对截止时刻，is_done 每次循环检查。
+                if args.max_minutes and args.max_minutes > 0:
+                    agent.time_deadline = started + args.max_minutes * 60.0
                 agent.main()
                 final = agent.frames[-1]
                 row["state"] = _state_name(final.state)
                 row["levels_completed"] = int(final.levels_completed or 0)
                 row["actions"] = int(getattr(agent, "action_counter", 0))
+                row["timed_out"] = bool(getattr(agent, "_deadline_hit", False))
         except BaseException as exc:  # noqa: BLE001 - keep whatever the game did
             row["error"] = f"{type(exc).__name__}: {exc}"
             row["traceback"] = traceback.format_exc()[-4000:]
             if agent is not None:
                 row["actions"] = int(getattr(agent, "action_counter", 0))
+                row["timed_out"] = bool(getattr(agent, "_deadline_hit", False))
                 try:
                     row["levels_completed"] = int(agent.frames[-1].levels_completed or 0)
                     row["state"] = _state_name(agent.frames[-1].state)
@@ -364,6 +382,8 @@ def main() -> None:
                 done = progress["done"]
             with print_lock:
                 tag = f"  !! {row['error']}" if row["error"] else ""
+                if row["timed_out"]:
+                    tag += "  [TIME-LIMIT]"
                 print(f"[{done}/{total}] {game_id:8} L={row['levels_completed']} "
                       f"act={row['actions']:4} {row['elapsed_sec']:7.1f}s "
                       f"{row['state']}{tag}", flush=True)
@@ -441,6 +461,8 @@ def main() -> None:
         "agent": str(agent_path),
         "agent_md5": agent_sha,
         "max_steps": getattr(MyAgentCls, "MAX_ACTIONS", args.max_steps),
+        "max_minutes": args.max_minutes,
+        "games_timed_out": [r["game_id"] for r in ranked if r["timed_out"]],
         "scripts_enabled": scripts_enabled,
         "parallel": parallel,
         "cores": cpu_n,
