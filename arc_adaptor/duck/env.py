@@ -43,6 +43,34 @@ class StepResult:
         self.level = level
 
 
+def wrap_raw(raw, *, previous_level: int, explicit: str | None = None) -> StepResult:
+    """`FrameDataRaw` -> `StepResult`.
+
+    Exists as a free function because the resumable bridge (`deferred.py`) is fed
+    by the *harness*, which still holds the raw engine object. The engine reports
+    `levels_completed` and a `GameState`; everything the sandbox reasons about
+    (`level_completed`, `game_over`, `run_complete`) has to be derived from those
+    two, exactly as `ArcEnv._wrap` has always done.
+    """
+    grid = ArcEnv.grid_of(raw)
+    level = int(getattr(raw, "levels_completed", 0) or 0)
+    state = getattr(raw, "state", None)
+    state_name = getattr(state, "name", str(state))
+
+    flags: dict = {}
+    if state_name == "GAME_OVER":
+        flags["game_over"] = True
+    if state_name == "WIN":
+        flags["run_complete"] = True
+    if level > previous_level:
+        flags["level_completed"] = True
+        flags["from_level"] = previous_level
+    if explicit == "RESET":
+        flags["reset"] = True
+
+    return StepResult(raw, grid, flags, state_name, level)
+
+
 class ArcEnv:
     """One game, stepped synchronously."""
 
@@ -107,27 +135,10 @@ class ArcEnv:
         return self._wrap(raw, previous_level=self.level, explicit=engine_name)
 
     def _wrap(self, raw, *, previous_level: int, explicit: str | None) -> StepResult:
-        from arcengine import GameState
-
-        grid = self.grid_of(raw)
-        level = int(getattr(raw, "levels_completed", 0) or 0)
-        state = getattr(raw, "state", None)
-        state_name = getattr(state, "name", str(state))
-
-        flags: dict = {}
-        if state_name == "GAME_OVER":
-            flags["game_over"] = True
-        if state_name == "WIN":
-            flags["run_complete"] = True
-        if level > previous_level:
-            flags["level_completed"] = True
-            flags["from_level"] = previous_level
-        if explicit == "RESET":
-            flags["reset"] = True
-
+        result = wrap_raw(raw, previous_level=previous_level, explicit=explicit)
         self.frame = raw
-        self.level = level
-        return StepResult(raw, grid, flags, state_name, level)
+        self.level = result.level
+        return result
 
     # ------------------------------------------------------------------ misc
 

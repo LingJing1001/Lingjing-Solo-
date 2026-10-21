@@ -23,12 +23,14 @@ import time
 
 from . import prompts
 from .chat import PYTHON_TOOL
+from .memory import SolvedLevelMemory
 from .sandbox import Sandbox
 
 
 class DuckAgent:
     def __init__(self, env, chat, *, max_steps: int = 200, max_turns: int = 60,
                  summary_tokens: int = 60_000, level_transfer: bool = True,
+                 level_memory: bool = True, pin_policy: str = "drain",
                  verbose: bool = True, max_inner: int = 6):
         self.env = env
         self.chat = chat
@@ -38,15 +40,22 @@ class DuckAgent:
         self.level_transfer = level_transfer
         self.verbose = verbose
         self.max_inner = max_inner
+        if pin_policy not in {"drain", "level"}:
+            raise ValueError("pin_policy must be 'drain' (cache-safe) or 'level'")
+        self.pin_policy = pin_policy
 
         self.sandbox = Sandbox(env)
-        self.system = prompts.build_system(level_transfer=level_transfer)
+        self.memory = SolvedLevelMemory(enabled=level_memory)
+        self._system_base = prompts.build_system(level_transfer=level_transfer)
+        self.system = self._system_base
         self.messages: list[dict] = [{"role": "system", "content": self.system}]
         self.turns = 0
         self.summaries = 0
         self.level = 0
         self.best_level = 0
         self.started = time.time()
+        self._last_reasoning = ""
+        self._compacted = False
 
     # ------------------------------------------------------------------ helpers
 
@@ -62,6 +71,41 @@ class DuckAgent:
             valid=self.sandbox.valid_actions,
             level=self.level, step=self.sandbox.steps,
             need_action=need_action)
+
+    def _note_reply(self, reply: dict) -> None:
+        """Keep the tail of this turn's text, and harvest a `Rule for level N:` line."""
+        parts = []
+        for key in ("content", "reasoning_content", "reasoning"):
+            value = reply.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(value)
+        if not parts:
+            return
+        text = "\n".join(parts)
+        self._last_reasoning = text[-self.memory.reasoning_chars:]
+        rule = self.memory.capture(text)
+        if rule:
+            self._say(f"[duck] rule recorded for level {self.memory.levels[-1].level}: "
+                      f"{rule[:80]}")
+            self._refresh_system()
+
+    def _refresh_system(self) -> None:
+        """Pin the block, if this is a moment where re-reading costs nothing."""
+        if self.pin_policy == "drain" and not self._compacted:
+            return
+        if not self.memory.changed():
+            return
+        self.system = self.memory.rewrite(self._system_base)
+        if self.messages and self.messages[0].get("role") == "system":
+            self.messages[0]["content"] = self.system
+
+    def _winning_actions(self) -> list[str]:
+        """Actions of the last attempt on this level (a RESET starts a new attempt)."""
+        acts = [h.get("action", "") for h in self.sandbox.history]
+        for i in range(len(acts) - 1, -1, -1):
+            if acts[i] == "RESET":
+                return acts[i + 1:]
+        return acts
 
     def _append_tool_result(self, call_id: str, result: dict) -> None:
         self.messages.append({
@@ -90,15 +134,23 @@ class DuckAgent:
         except Exception as exc:  # noqa: BLE001 - compaction is best effort
             self._say(f"[duck] summary failed ({type(exc).__name__}: {exc}); "
                       f"dropping the oldest turns instead")
+            self._compacted = True
+            self._refresh_system()
             self._drop_oldest()
             return
         text = (reply.get("content") or "").strip()
         if not text:
+            self._compacted = True
+            self._refresh_system()
             self._drop_oldest()
             return
         self.summaries += 1
         self._say(f"[duck] compacted after {self.chat.tokens()} tokens "
                   f"(summary {len(text)} chars)")
+        # The conversation is being rebuilt anyway: the one moment where rewriting
+        # the system prompt costs no cache hit.
+        self._compacted = True
+        self._refresh_system()
         self.messages = [
             {"role": "system", "content": self.system},
             {"role": "user", "content":
@@ -129,7 +181,11 @@ class DuckAgent:
 
         while self.sandbox.steps < self.max_steps and self.turns < self.max_turns:
             self.turns += 1
-            self.messages.append({"role": "user", "content": self._opener()})
+            opener = self._opener()
+            ask = self.memory.begin_turn()
+            if ask:
+                opener += "\n\n" + ask
+            self.messages.append({"role": "user", "content": opener})
             acted = self._inner()
             if not acted:
                 self._say("[duck] no action executed this turn; stopping "
@@ -152,6 +208,7 @@ class DuckAgent:
                 self._say(f"[duck] chat failed: {type(exc).__name__}: {exc}")
                 return False
 
+            self._note_reply(reply)
             calls = reply.get("tool_calls") or []
             assistant = {"role": "assistant", "content": reply.get("content") or ""}
             if calls:
@@ -209,6 +266,10 @@ class DuckAgent:
         """New level, death, or a win: the board we would plan against is gone."""
         if self.sandbox.level != self.level:
             if self.sandbox.level > self.level:
+                if self.memory.enabled:
+                    self.memory.record(self.level, self._winning_actions(),
+                                       self._last_reasoning)
+                    self._refresh_system()
                 self.best_level = self.sandbox.level
                 self._say(f"[duck] LEVEL UP -> {self.sandbox.level} "
                           f"(steps={self.sandbox.steps})")
@@ -255,6 +316,7 @@ class DuckAgent:
             "tokens": getattr(self.chat, "tokens", lambda: 0)(),
             "refusals": dict(self.sandbox.refusals),
             "retained": sorted(self.sandbox.retained),
+            "solved_levels": self.memory.stats(),
             "seconds": round(time.time() - self.started, 1),
             "stopped": why,
         }
