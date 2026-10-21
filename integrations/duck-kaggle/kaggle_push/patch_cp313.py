@@ -116,6 +116,8 @@ for _cmd in _cmds:
     _cmd = _cmd.replace("MULTIMODAL_UPSCALE', '4'", "MULTIMODAL_UPSCALE', '10'")
     _cmd = _cmd.replace('MULTIMODAL_UPSCALE", "4"', 'MULTIMODAL_UPSCALE", "10"')
     _cmd = _cmd.replace("MULTIMODAL_UPSCALE = '4'", "MULTIMODAL_UPSCALE = '10'")
+    # Upstream writes the setup_env dict with a colon: 'MULTIMODAL_UPSCALE': '4'.
+    _cmd = _cmd.replace("MULTIMODAL_UPSCALE': '4'", "MULTIMODAL_UPSCALE': '10'")
     if _find_old not in _cmd:
         raise RuntimeError("find-links pattern missing in setup command")
     _cmd = _cmd.replace(_find_old, _find_new)
@@ -171,13 +173,25 @@ for _cmd in _cmds:
         "wait_for_vllm_server()",
         "wait_for_vllm_server(timeout_seconds=2400)",
     )
-    # Prefer Triton GDN when the flag exists (vLLM recent); ignore if unsupported.
+    # Prefer Triton GDN, but only if this vLLM build actually accepts the flag:
+    # an unrecognized argument aborts the api_server before it binds the port,
+    # which would waste the whole run. Probe --help once (~15s) and fall back to
+    # the SmartRouter-proven config (no flag) when unsupported.
+    # NOTE: the replaced print() line keeps its own 4-space indent, so continuation
+    # lines below must start at 8 spaces (12 inside the nested if).
     if "'--gdn-prefill-backend'" not in _cmd:
         _cmd = _cmd.replace(
             "print('Starting vLLM OpenAI server:', ' '.join(cmd), flush=True)",
             (
                 "if '--gdn-prefill-backend' not in cmd:" + _nl
-                + "        cmd.extend(['--gdn-prefill-backend', 'triton'])" + _nl
+                + "        _hp = subprocess.run([sys.executable, '-m'," + _nl
+                + "            'vllm.entrypoints.openai.api_server', '--help']," + _nl
+                + "            capture_output=True, text=True, env=vllm_env())" + _nl
+                + "        if '--gdn-prefill-backend' in (_hp.stdout or '') + (_hp.stderr or ''):" + _nl
+                + "            cmd.extend(['--gdn-prefill-backend', 'triton'])" + _nl
+                + "            print('LINGJING_GDN_TRITON_OK', flush=True)" + _nl
+                + "        else:" + _nl
+                + "            print('LINGJING_GDN_TRITON_UNSUPPORTED', flush=True)" + _nl
                 + "    print('Starting vLLM OpenAI server:', ' '.join(cmd), flush=True)"
             ),
             1,
@@ -189,6 +203,13 @@ for _cmd in _cmds:
     _cmd = _cmd.replace(
         "'VLLM_USE_FLASHINFER_SAMPLER': '1'",
         "'VLLM_USE_FLASHINFER_SAMPLER': '0'",
+    )
+    # Upstream never sets the sampler env at all; inject it into vllm_env() and the
+    # persisted setup_env so the SM12x FlashInfer top-p/top-k fallback stays silent
+    # (Duck 10-13 log: "FlashInfer top-p/top-k sampling unavailable ... falling back").
+    _cmd = _cmd.replace(
+        "'VLLM_NO_USAGE_STATS': '1',",
+        "'VLLM_NO_USAGE_STATS': '1'," + _nl + "            'VLLM_USE_FLASHINFER_SAMPLER': '0',",
     )
     # Thinking traces dominate decode time on a single GPU. Cap output too.
     _cmd = _cmd.replace(

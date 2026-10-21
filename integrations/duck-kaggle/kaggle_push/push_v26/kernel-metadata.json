@@ -1,0 +1,24 @@
+{
+  "id": "liaojiaxuan/lingjing-duck-harness-v26",
+  "title": "lingjing-duck-harness-v26",
+  "code_file": "lingjing-duck-harness-v26.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "machine_shape": "NvidiaRtxPro6000",
+  "keywords": [],
+  "dataset_sources": [
+    "jeroencottaar/taaf-kaggle-source-share",
+    "bilgisarmal/vllm031-cp313-wheelhouse",
+    "driessmit1/qwen3-8-27b-fp8-hf-017b9c7a",
+    "liaojiaxuan/lingjing-duck-franzen-overlay"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [
+    "arc-prize-2026-arc-agi-3"
+  ],
+  "model_sources": []
+}
