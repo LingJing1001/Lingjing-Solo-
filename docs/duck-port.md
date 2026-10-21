@@ -45,13 +45,15 @@
 
 - `scripts/extract_champion.py` —— 把 notebook 里的 patch 拆成 `vendor/champion/`
   （新增文件完整还原；修改文件只能存"新增行片段"，因为原文件不在 notebook 里）
-- `scripts/duck_play.py` —— 入口，两种后端
+- `scripts/duck_play.py` —— 单局入口，两种后端
+- `scripts/duck_multi.py` —— 多局入口，预算交给调度器分配
 - `scripts/duck_bridge_selftest.py` —— 真引擎验证"动作经 `env.step` 才计分"
 - `scripts/duck_router_selftest.py` —— 真引擎验证"duck 真的从 `my_agent` 手里接过方向盘"
 - `scripts/mock_duck_server.py` —— 离线 OpenAI 兼容端点，验证管线不依赖模型
 - `tests/test_duck.py` —— 15 条，钉住语义
 - `tests/test_duck_death_ledger.py` —— 6 条，钉住死亡账本（noop 守卫的另一半）
 - `tests/test_duck_memory.py` + `tests/test_duck_driver_memory.py` —— 15 条，钉住记忆与接线
+- `tests/test_duck_scheduler.py` —— 13 条，钉住预算分配与可复现性
 - `integrations/ARC-AGI-3-Kaggle-Starter/agent/duck_bridge.py` —— 路由侧的缝（开关、预算、门禁、动作转换）
 - `integrations/ARC-AGI-3-Kaggle-Starter/tests/test_duck_bridge.py` —— 14 条，钉住缝的每条判断
 
@@ -102,6 +104,14 @@ provider 都会 400，而且看起来像"模型坏了"。所以 `_compact()` 只
 | `tests/test_duck_bridge.py` | **14/14**（开关语义、门禁、每 tick 一动作、兜底、agent 侧转换） |
 | `scripts/duck_router_selftest.py`（su15，真引擎） | PASS，3 个 duck 动作全经 `env.step`，**计分卡记 3**，脚本用完自动退出 |
 | `play_local.py --game su15 --max-steps 25`（默认 `LINGJING_DUCK` 未设） | 1 关 / 1.72 分，日志里没有 duck 一行 —— 默认路径零改动 |
+
+2026-10-21 深夜，调度器落地之后：
+
+| 检查 | 结果 |
+|---|---|
+| `tests/test_duck_scheduler.py` | **13/13**（探索均分、产出局多拿、预算不超、时钟不影响决策、崩溃隔离、赢/死/耗尽三种结束、钩子返回原始帧、trace 落盘） |
+| `scripts/duck_multi.py --games ar25,cn04,su15 --steps 30`（真引擎，script 后端） | 30 步用尽，1 次重分配，trace 落盘；`ar25`/`cn04` 各 15 步，`su15` 0 步 |
+| 同上的 `su15` 为何 0 步 | 该局 `valid_actions=[MOUSE, UNDO]`，固定脚本里的方向动作全部非法 → 第 1 回合后正常退出。是脚本后端不适配点击局，不是接线问题 |
 
 真实模型：**仍未接**。本机没有在跑的推理服务。但链路（HTTP → tool_calls → 沙箱
 → `env.step` → 计分卡 → `my_agent.choose_action` 提前 return）已经逐段验证过，
@@ -156,7 +166,7 @@ choose_action
 |---|---|---|---|---|
 | **1** | 过关记忆 | 跨关重学机制的 token 与步数 | 分母（每关步数） | 已做 `memory.py` |
 | **2** | 无效动作守卫（noop + 死亡账本） | 白花的动作预算；致死动作吃掉整次尝试 | 分母（更狠） | 已做 `sandbox.py` |
-| **3** | 优先级调度器 | 死局不再耗尽全局预算 | 分子（救回几局） | **未做**，设计见下 |
+| **3** | 优先级调度器 | 死局不再耗尽全局预算 | 分子（救回几局） | 已做 `scheduler.py` |
 | **4** | 保留函数 | 重复写代码的 token | 都不是，是写作成本 | 已做，**串行期无收益** |
 
 为什么是这个顺序：
@@ -186,37 +196,54 @@ choose_action
 `stop_reason` 是 `known_deadly`，`refusals["deadly"]` 单独计数，
 `tests/test_duck_death_ledger.py` 6 条钉住上面每一条。
 
-### 3 的设计（未做，先写清楚再动手）
+### 3 的落地：优先级调度器（本轮补上）
 
-关键认识：**`deferred.py` 已经把调度器需要的东西准备好了。** 它把"一局的回合"
-暂停在 `yield` 上，于是多局交替推进不需要多进程、不需要线程 —— 只要多个
-driver 轮流 poll。
-
-```
-lanes: {game_id: (driver, env)}
-loop:
-    gid = pick()                     # 按优先级
-    nxt = lanes[gid].driver.poll()
-    res = lanes[gid].env.step(nxt)   # 计分卡在这里计数
-    lanes[gid].driver.feed(res)
-    update_priority(gid, res)
-```
-
-优先级用**边际产出**，不用绝对分数：
+关键认识成立：**`deferred.py` 把"一局的回合"暂停在 `yield` 上，所以多局交替不需要
+多进程、不需要线程** —— 只要多个 driver 轮流 poll。实际实现里连"调度循环"都只有
+十几行：
 
 ```
-gain(gid) = (近期关卡增量) / max(1, 近期动作数)
-priority  = gain × 未完成关卡数 − 冷却罚分
+lane = pick()                     # 边际产出最高
+nxt  = lane.driver.poll()
+res  = lane.env.step(nxt)         # 计分卡在这里计数，不变
+lane.driver.feed(res)
 ```
 
-三条必须写死的规则（否则调度器会让结果不可复现，比不做更糟）：
+优先级用**平滑后的边际产出**，不是累计分数：
 
-1. **lane 数设上限**（本地 ≤ 6，内存和 CPU 都撑不住 25 个 env）；
-2. **步数配额按优先级切**，不按墙钟 —— 墙钟会让结果随机器负载漂移；
-3. **每局的随机种子和初始状态要落盘**，否则"这次分数高"无法归因到调度。
+```
+rate = (过关数 + 0.5) / (已花步数 + 1)
+```
 
-工作量：调度器 + 优先级约 200 行，多 env 生命周期约 100 行，日志/复现约 100 行。
-风险集中在"预算切分"上：切得太碎，每局都要重新热身；切得太粗，就等于没调度。
+0.5 和 1 不是调参，是为了让 `0/0` 有定义，且新局天然排在"花了几十步还没过关"的局
+前面 —— 于是自然形成"先每局各看一眼，然后谁还有产出谁继续"。用累计过关数排序的
+话，先跑起来的局会带着先手优势永远领先。
+
+#### 三条可复现约束的落实
+
+| 约束 | 落实方式 |
+|---|---|
+| 步数配额不按墙钟 | `seconds` 只进报告，从不参与决策；有测试把时钟推快十年，trace 必须逐条相同 |
+| 不许有随机 | 排序键是 `(-priority, index)`，同分时下标小的先跑 |
+| 决策可落盘 | 每次动作都进 `trace`（lane / 动作 / 关卡 / flags），`--trace` 写 json |
+
+环境状态本身不可序列化，所以"复现"的准确含义是：**同一批 game_id + 同一份 trace
+= 同一个动作序列**。这也是为什么 trace 记的是动作，而不是"当时的优先级"。
+
+#### 动手时撞出来的两个问题
+
+**1. 首轮把预算均分干净，`_rebalance` 永远不会触发。**
+最初按 `total_steps / n` 分配首轮配额，结果所有 lane 的配额加起来正好等于总预算，
+第二轮分配一次都跑不到 —— 调度器退化成 round-robin，"按边际产出再分配"成了空话。
+现在首轮只分一半，另一半留作竞争池：产出高的局才有机会多拿。
+
+**2. 一局死了以后，duck 还在看那具"尸体"的棋盘。**
+`DuckDriver` 在 `game_over` 之后会 `clear_terminal()` 继续跑，但它手里的
+`sandbox.current` 还是死掉那一刻的盘面，而引擎已经换了新局。模型会对着一个不存在
+的局面推理到本局结束。修法是给 driver 加一个 `reset_hook`：由持有引擎的调度器负责
+重开，并把**新棋盘**还给它。顺带踩到一个层级坑 —— 钩子必须返回引擎原始帧
+（`FrameDataRaw`，它的 `.frame` 才是图层列表），返回 `StepResult` 会让 `grid_of`
+去索引包装对象本身，报 `'FrameDataRaw' object is not subscriptable`。
 
 ### 4 的定位修正
 

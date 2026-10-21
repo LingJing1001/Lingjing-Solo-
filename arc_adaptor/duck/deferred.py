@@ -282,6 +282,10 @@ class DuckDriver:
         self.last_pending: ActionPending | None = None
         self.last_start_hash = ""
         self._pending_feed = None
+        # Set by a harness that owns more than one game (scheduler.py). Called when
+        # an attempt ends, it must return the frame of the *new* attempt; without
+        # it the sandbox keeps describing the board the run died on.
+        self.reset_hook = None
         self._gen = self._loop()
 
     # ------------------------------------------------------------------ plumbing
@@ -524,6 +528,21 @@ class DuckDriver:
                 if reason in {"game_over", "level_completed"}:
                     # the harness will have reset the level; hand the board back
                     self.sandbox.clear_terminal()
+                    if self.reset_hook is not None:
+                        # The engine has already restarted the attempt, so the board
+                        # this generator is about to describe in its next opener is
+                        # the one that no longer exists. Ask the harness for the new
+                        # one instead of guessing: a stale board here makes the model
+                        # reason about a dead position for the rest of the run.
+                        try:
+                            fresh = self.reset_hook()
+                        except Exception as exc:  # noqa: BLE001
+                            self._say(f"[duck-drv] reset_hook failed: {type(exc).__name__}: {exc}")
+                            fresh = None
+                        if fresh is not None:
+                            fresh_level = int(getattr(fresh, "level", self.level))
+                            self.sandbox.adopt(fresh, level=fresh_level)
+                            self._prev_levels_completed = fresh_level
                     self.messages.append({
                         "role": "user",
                         "content": (f"The previous attempt ended ({reason}). What you "
