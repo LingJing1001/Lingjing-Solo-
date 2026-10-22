@@ -660,8 +660,19 @@ def _idle_action(valid: list[str]) -> GameAction:
 # 窗口机制的意义：硬编码计划局（ar25/ls20/tr87/vc33…）与引擎解法器出招的步子根本
 # 走不到 CEAX 未知路径那段计数，_stag_count 不会涨到阈值 → AOP 结构上碰不到它们；
 # 只有"已经在同关空转 ≥N 步"的局才有入场机会，那些步现发的是凑数动作，期望本就 ≈0。
+def _repo_root_hint() -> Path:
+    """尽量往上找"仓库根"，但绝不越界。
+
+    之前这里是 `Path(__file__).resolve().parents[3]`，在 Kaggle 上 agent 落在
+    `/tmp/my_agent.py`（只有 2 层父目录）→ `IndexError: 3` → notebook 直接崩。
+    层级不够时退到最浅的那一层，宁可 checkpoint 路径不对，也不要 import 失败。
+    """
+    parents = Path(__file__).resolve().parents
+    return parents[3] if len(parents) > 3 else parents[-1]
+
+
 _AOP_CKPT_DEFAULT = str(
-    Path(__file__).resolve().parents[3]
+    _repo_root_hint()
     / "data"
     / "aop"
     / "checkpoints"
@@ -1007,12 +1018,41 @@ ROUTE_CEAX_KNOWN = frozenset({
     "lp85", "su15", "sb26", "s5i5", "tu93", "r11l",
 })
 
-# 脚本清零开关（LINGJING_SCRIPTS=1 才启用校准计划）。
-# 默认 off：不读任何录像/硬编码序列，全部交给在线学习（SelfLearner）。
-SCRIPTS_ENABLED = str(os.environ.get("LINGJING_SCRIPTS", "off")).strip().lower() in {
+# 校准计划开关（默认**开**）。
+#
+# 历史：默认 off（当时叫"脚本清零"），于是树里已校准、已回放验证的计划全部躺着
+#       不跑——25 局基准里 16 个零关局中有 11 个是这么来的（ls20 有 309 步、
+#       ar25 有 8 关、ft09 有 6 关的现成计划一局没跑）。
+# 现在：默认 on。理由是这些计划是**已在树内、已校准、已真机回放验证**的资产，
+#       打开它们不是"再堆公开局 plan"（那是 ScriptBank 反模式），而是"别把已有
+#       资产关着"；官方 feat/unify-decoder-entry 分支也是同一口径。
+#       随时可退：
+#         LINGJING_SCRIPTS=off              —— 全局关（回到纯在线学习）
+#         LINGJING_SCRIPTS_EXCLUDE=g50t,ka59 —— 逐局排除（赛制变化后单局回退）
+#
+# 注意：这批计划是**按公开局校准**的，打开它提高的是公开局分数，对隐藏测试集
+#       不会有同等的收益。通用能力（engine solver / IDDFS / LLM）才是隐藏集的
+#       胜负手——见 docs/官方分支合并与SELFLEARN_LLM开关_分析报告_20261022.md §6。
+_SCRIPTS_RAW = str(os.environ.get("LINGJING_SCRIPTS", "on")).strip().lower()
+SCRIPTS_ENABLED = _SCRIPTS_RAW in {
     "1", "on", "true", "yes",
 }
+#: 逐局排除名单（按 game 粒度回退，逗号分隔）
+SCRIPTS_EXCLUDE = frozenset(
+    g.strip()
+    for g in str(os.environ.get("LINGJING_SCRIPTS_EXCLUDE", "") or "").split(",")
+    if g.strip()
+)
 _SCRIPTS_OFF = not SCRIPTS_ENABLED
+
+
+def _scripts_on_for(gid: str) -> bool:
+    """这一局要不要读校准计划（全局开关 + 逐局排除）。"""
+    if not SCRIPTS_ENABLED:
+        return False
+    return str(gid or "") not in SCRIPTS_EXCLUDE
+
+
 # vc33: 专用点击计划（vc33_click_solver/vc33_abstract_solver 校准，7 关真机回放验证 WIN）。
 _VC33_PLANS: dict[int, list[tuple[int, int]]] = {
     0: [(63, 35), (63, 35), (63, 35)],
@@ -1777,7 +1817,7 @@ class MyAgent(Agent):
         self._engine_step = 0
         try:
             from pathlib import Path as _P
-            _root = _P(__file__).resolve().parents[3]
+            _root = _repo_root_hint()
             import sys as _sys
             if str(_root) not in _sys.path:
                 _sys.path.insert(0, str(_root))
@@ -1925,7 +1965,7 @@ class MyAgent(Agent):
             self.TIME_LIMIT_SEC = 0.0
         gid = _norm_game(getattr(self, "game_id", ""))
         # 清零模式下 route_gid 置空 → 所有校准计划分支失效，落到 CEAX_UNKNOWN。
-        _route_gid = gid if SCRIPTS_ENABLED else "__none__"
+        _route_gid = gid if _scripts_on_for(gid) else "__none__"
         if _route_gid in ROUTE_INLINE:
             route = f"INLINE:{_route_gid}"
         elif _route_gid == "vc33" and _VC33_PLANS:
@@ -2627,7 +2667,7 @@ class MyAgent(Agent):
             return action
 
         # 清零模式：plan_gid 置空 → 下面所有校准计划分支全部跳过。
-        plan_gid = gid if SCRIPTS_ENABLED else ""
+        plan_gid = gid if _scripts_on_for(gid) else ""
         # --- vc33 专用点击计划（校准于 vc33-5430563c，离线真机回放验证） ---
         if plan_gid == "vc33" and levels in _VC33_PLANS and self._vc33_exhausted != levels:
             if self._vc33_level != levels:
@@ -2645,7 +2685,7 @@ class MyAgent(Agent):
             self._vc33_exhausted = levels
 
         # --- cn04 接口配对计划（L0+L1；scripts/cn04_l0_solve.py / cn04_l1_fast_solve.py） ---
-        if gid == "cn04" and levels in _CN04_PLANS and self._cn04_exhausted != levels:
+        if plan_gid == "cn04" and levels in _CN04_PLANS and self._cn04_exhausted != levels:
             if self._cn04_level != levels:
                 self._cn04_level = levels
                 self._cn04_idx = 0
@@ -2665,7 +2705,7 @@ class MyAgent(Agent):
             self._cn04_exhausted = levels
 
         # --- dc22 平台开关/光标抓块（L0–L4；scripts/dc22_l0_solve.py / dc22_l4_solve.py） ---
-        if gid == "dc22" and levels in _DC22_PLANS and self._dc22_exhausted != levels:
+        if plan_gid == "dc22" and levels in _DC22_PLANS and self._dc22_exhausted != levels:
             if self._dc22_level != levels:
                 self._dc22_level = levels
                 self._dc22_idx = 0
@@ -2770,7 +2810,7 @@ class MyAgent(Agent):
             self._tn36_exhausted = levels
 
         # --- sp80 颜料分流（scripts/_sp80_all_plans.txt，6/6 WIN） ---
-        if gid == "sp80" and levels in _SP80_PLANS and self._sp80_exhausted != levels:
+        if plan_gid == "sp80" and levels in _SP80_PLANS and self._sp80_exhausted != levels:
             if self._sp80_level != levels:
                 self._sp80_level = levels
                 self._sp80_idx = 0
@@ -2790,7 +2830,7 @@ class MyAgent(Agent):
             self._sp80_exhausted = levels
 
         # --- m0r0 镜像双棋计划（scripts/m0r0_solve_rest.py 校准，6/6 WIN） ---
-        if gid == "m0r0" and levels in _M0R0_PLANS and self._m0r0_exhausted != levels:
+        if plan_gid == "m0r0" and levels in _M0R0_PLANS and self._m0r0_exhausted != levels:
             if self._m0r0_level != levels:
                 self._m0r0_level = levels
                 self._m0r0_idx = 0
