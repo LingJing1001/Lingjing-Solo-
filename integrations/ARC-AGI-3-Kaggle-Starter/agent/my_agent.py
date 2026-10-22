@@ -56,6 +56,12 @@ def _bootstrap_paths() -> None:
                     sys.path.insert(0, s)
         except OSError:
             continue
+    # 让同目录的 duck_bridge.py 可被 `from duck_bridge import DuckBridge` 找到。
+    # 本地是 agent/；Kaggle 上这个文件不随行，第 2023 行的 try/except 会兜底
+    # 成静默禁用 —— 这里只管把目录放进 path，不替它决定要不要用。
+    here = str(_FILE.parent)
+    if here not in seen:
+        sys.path.insert(0, here)
 
 
 _bootstrap_paths()
