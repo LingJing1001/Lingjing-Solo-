@@ -25,6 +25,7 @@ import argparse
 import json
 import sys
 import time
+from pathlib import Path
 
 COMPETITION = "arc-prize-2026-arc-agi-3"
 FILE_NAME = "submission.parquet"
@@ -34,6 +35,31 @@ def _status_str(st) -> str:
     """kernels_status() returns a dict whose 'status' may be a str or an enum."""
     s = st.get("status") if isinstance(st, dict) else getattr(st, "status", st)
     return str(getattr(s, "name", s) or s)
+
+
+def _detect_version(kernel: str) -> int:
+    """Find the version last pushed for this kernel slug.
+
+    The push script writes notebooks/_push_submit_<arm>/_last_version.txt next
+    to a kernel-metadata.json that carries the slug. Matching on the slug keeps
+    this correct even when both arms are pushed, and means a scheduled submit
+    never fires with a stale hard-coded version number.
+    """
+    root = Path(__file__).resolve().parents[1] / "notebooks"
+    for meta_path in sorted(root.glob("_push*/kernel-metadata.json")):
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if meta.get("id") != kernel:
+            continue
+        ver_file = meta_path.parent / "_last_version.txt"
+        if ver_file.is_file():
+            try:
+                return int(ver_file.read_text(encoding="utf-8").strip())
+            except Exception:
+                pass
+    return 0
 
 
 def limits(api):
@@ -58,6 +84,10 @@ def main() -> int:
 
     api = KaggleApi()
     api.authenticate()
+
+    if not args.version:
+        args.version = _detect_version(args.kernel)
+        print(f"auto-detected version for {args.kernel}: {args.version}", flush=True)
 
     if args.wait_seconds > 0:
         deadline = time.time() + args.wait_seconds
