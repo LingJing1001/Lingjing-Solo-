@@ -1,5 +1,6 @@
 from .encoder import PerceptionEncoder
 from .ar25_encoder import Ar25Encoder
+from .input_contract import InputContractError, R2PerceptionError, validate_input
 from .observation import (
     ActionRecord,
     HypothesisContext,
@@ -7,13 +8,89 @@ from .observation import (
     normalize_observation,
     observation_from_mapping,
 )
+from .projection_graph import (
+    DeltaResult,
+    build_projection_graph,
+    compute_delta,
+    extract_candidate_nodes,
+    hash_graph,
+    propose_edges,
+    refine_graph,
+    track_objects,
+)
+from .dpl_adapter import GateReport, apply_geometry_gates, compute_dpl_features, projected_state_to_features
+from .deployment import DeploymentPolicy, OfflineReplayRunner, ReplayFrame, ReplayLogger, ReplayRecord, ShadowComparison, compare_shadow
+from .exploration import (
+    ActionCandidate,
+    FrontierManager,
+    GameMask,
+    Priority,
+    PriorityWeights,
+    boundary_recheck,
+    detect_ui_mask,
+    prioritize_actions,
+    select_action,
+)
+from .world_model import ProjectionWorldModel, object_changes, query_objects
+from .projection_graph_types import (
+    DPLFeatures,
+    FieldSnapshot,
+    GameObject,
+    GraphEdge,
+    GraphNode,
+    GraphSnapshot,
+)
 
 __all__ = [
+    "ActionCandidate",
     "ActionRecord",
     "Ar25Encoder",
+    "DeploymentPolicy",
+    "OfflineReplayRunner",
+    "Priority",
+    "PriorityWeights",
+    "ReplayFrame",
+    "ReplayLogger",
+    "ReplayRecord",
+    "ShadowComparison",
+    "apply_geometry_gates",
+    "FrontierManager",
+    "GameMask",
+    "DeltaResult",
+    "DPLFeatures",
+    "FieldSnapshot",
+    "GateReport",
+    "GameObject",
+    "GraphEdge",
+    "GraphNode",
+    "GraphSnapshot",
     "HypothesisContext",
+    "InputContractError",
     "NormalizedObservation",
+    "OfflineReplayRunner",
     "PerceptionEncoder",
+    "Priority",
+    "PriorityWeights",
+    "ProjectionWorldModel",
+    "R2PerceptionError",
+    "apply_geometry_gates",
+    "boundary_recheck",
+    "build_projection_graph",
+    "compute_delta",
+    "compute_dpl_features",
+    "compare_shadow",
+    "detect_ui_mask",
+    "extract_candidate_nodes",
+    "hash_graph",
     "normalize_observation",
+    "object_changes",
     "observation_from_mapping",
+    "projected_state_to_features",
+    "prioritize_actions",
+    "propose_edges",
+    "query_objects",
+    "refine_graph",
+    "select_action",
+    "track_objects",
+    "validate_input",
 ]

@@ -34,6 +34,39 @@ _log = logging.getLogger('route_gate')
 _log.setLevel(logging.WARNING)
 
 
+def _validate_route(route: dict, route_path: Path) -> None:
+    required = {'game_id', 'target_levels', 'actions', 'meta'}
+    missing = required - route.keys()
+    assert not missing, f'{route_path.stem}: missing route fields {sorted(missing)}'
+    assert isinstance(route['game_id'], str) and '-' in route['game_id'], (
+        f'{route_path.stem}: game_id must include the environment hash'
+    )
+    assert isinstance(route['target_levels'], int) and route['target_levels'] >= 1, (
+        f'{route_path.stem}: target_levels must be a positive integer'
+    )
+    assert isinstance(route['actions'], list) and route['actions'], (
+        f'{route_path.stem}: actions must be a non-empty list'
+    )
+    assert isinstance(route['meta'], dict) and route['meta'].get('verification'), (
+        f'{route_path.stem}: meta.verification is required'
+    )
+    valid_actions = {name for name in dir(GameAction) if name.startswith('ACTION')}
+    for index, spec in enumerate(route['actions']):
+        assert isinstance(spec, dict) and isinstance(spec.get('a'), str), (
+            f'{route_path.stem}: action {index} is malformed'
+        )
+        assert spec['a'] in valid_actions, (
+            f'{route_path.stem}: action {index} uses unknown action {spec["a"]}'
+        )
+        if spec['a'] == 'ACTION6':
+            assert isinstance(spec.get('x'), int) and isinstance(spec.get('y'), int), (
+                f'{route_path.stem}: ACTION6 action {index} requires integer x/y payload'
+            )
+            assert 0 <= spec['x'] < 64 and 0 <= spec['y'] < 64, (
+                f'{route_path.stem}: ACTION6 action {index} payload out of 64x64 bounds'
+            )
+
+
 def _replay(arc, route):
     env = arc.make(route['game_id'], seed=0, save_recording=False)
     frame = env.reset()
@@ -51,6 +84,7 @@ def _replay(arc, route):
 @pytest.mark.parametrize('route_path', ROUTE_FILES, ids=[p.stem for p in ROUTE_FILES])
 def test_route_replay(route_path):
     route = json.loads(route_path.read_text(encoding='utf-8'))
+    _validate_route(route, route_path)
     arc = Arcade(environments_dir=str(ROOT / 'environment_files'),
                  logger=_log, operation_mode=OperationMode.OFFLINE)
     outcomes = [_replay(arc, route) for _ in range(N_REPLAYS)]

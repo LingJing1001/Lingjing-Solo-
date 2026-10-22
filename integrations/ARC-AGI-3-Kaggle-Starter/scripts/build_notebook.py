@@ -32,6 +32,12 @@ from textwrap import dedent
 # ─────────────────────────────────────────────────────────────────────────────
 ACCELERATOR = "cpu"
 
+
+def _strip_comment_only_lines(source: str) -> str:
+    """Reduce notebook payload without changing executable Python statements."""
+    lines = [line for line in source.splitlines() if not line.lstrip().startswith("#")]
+    return "\n".join(lines) + ("\n" if source.endswith("\n") else "")
+
 # Internal mapping; don't edit unless Kaggle adds new options.
 _ACCELERATORS = {
     "cpu":     {"name": "none",            "gpu": False},
@@ -138,6 +144,7 @@ def _collect_lingjing_files() -> list[tuple[str, str]]:
         path = module_paths[module]
         rel = path.relative_to(LINGJING_SRC).as_posix()
         source = package_shims.get(rel, path.read_text(encoding="utf-8-sig"))
+        source = _strip_comment_only_lines(source)
         out.append((rel, source))
     if not any(r.endswith(".py") for r, _ in out):
         raise SystemExit(f"No .py files found under {LINGJING_SRC}")
@@ -169,13 +176,16 @@ def _lingjing_write_cell(files: list[tuple[str, str]]) -> dict:
 def build() -> dict:
     if not AGENT_SRC.exists():
         raise SystemExit(f"Could not find {AGENT_SRC}")
-    agent_body = AGENT_SRC.read_text(encoding="utf-8")
+    agent_body = _strip_comment_only_lines(AGENT_SRC.read_text(encoding="utf-8"))
     lj_files = _collect_lingjing_files()
 
     install_cell = code_cell(
-        "!pip install --no-index --find-links \\\n"
-        "    /kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels \\\n"
-        "    arc-agi python-dotenv numpy"
+        "import subprocess, sys\n"
+        "subprocess.run([\n"
+        "    sys.executable, '-m', 'pip', 'install', '--no-index',\n"
+        "    '--find-links', '/kaggle/input/arc-prize-2026-arc-agi-3/arc_agi_3_wheels',\n"
+        "    'arc-agi', 'python-dotenv', 'numpy'\n"
+        "], check=True)"
     )
 
     # We write the agent to /tmp/ (not /kaggle/working/) so it does NOT appear
@@ -197,7 +207,7 @@ def build() -> dict:
                   --retry-max-time 600 http://gateway:8001/api/games
 
             # Copy the framework into a writable location.
-            !cp -r /kaggle/input/competitions/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents \\
+            !cp -r /kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents \\
                    /kaggle/working/ARC-AGI-3-Agents
 
             # Drop our agent + lingjing_solo package into the framework tree.
@@ -319,7 +329,10 @@ def build() -> dict:
 
 def main() -> None:
     NOTEBOOK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    NOTEBOOK_PATH.write_text(json.dumps(build(), indent=1), encoding="utf-8")
+    NOTEBOOK_PATH.write_text(
+        json.dumps(build(), ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
     print(f"[build_notebook] Wrote {NOTEBOOK_PATH.relative_to(ROOT)}  "
           f"(accelerator: {ACCELERATOR})")
 
