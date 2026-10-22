@@ -268,6 +268,21 @@ def build() -> dict:
     # SELFLEARN_LLM=0 forces the pure-algorithm route: no model server at all.
     llm_env_default = ("on" if use_gpu else "off") if SELFLEARN_LLM == "1" else "off"
     selflearn = SELFLEARN_LLM
+    # Per-game action cap handed to the agent inside the competition rerun.
+    # The competition Swarm opens 25~110 games at once, one thread each, so a
+    # game that burns the whole cap without solving a level holds the CPU
+    # hostage and starves every other game. Measured locally on the 25 public
+    # games (competition-mode gateway, all 25 concurrent):
+    #   MAX_ACTIONS=800 -> 408.20 total / 38 levels / 3 games won
+    #   (sequential baseline, same agent -> 1510 total / 108 levels / 13 won)
+    # Override with LINGJING_MAX_ACTIONS once the sweep is finished.
+    max_actions = str(os.environ.get("LINGJING_MAX_ACTIONS", "800")).strip() or "800"
+    # Per-game wall-clock cap in minutes (0 = unlimited). The agent reads
+    # ARC_GAME_TIME_LIMIT_MIN. A stuck game then releases its CPU slot early
+    # instead of running the full action budget.
+    game_time_limit_min = str(
+        os.environ.get("LINGJING_GAME_TIME_LIMIT_MIN", "0")
+    ).strip() or "0"
     vllm_max_len = os.environ.get("LINGJING_VLLM_MAX_LEN", DEFAULT_VLLM_MAX_LEN)
     vllm_max_seqs = os.environ.get("LINGJING_VLLM_MAX_SEQS", DEFAULT_VLLM_MAX_SEQS)
     vllm_mem = os.environ.get("LINGJING_VLLM_MEM", DEFAULT_VLLM_MEM)
@@ -625,6 +640,8 @@ def build() -> dict:
         LINGJING_SCRIPT_DEBUG=0
         SELFLEARN_LLM={selflearn}
         LINGJING_LLM={{_llm_flag}}
+        ARC_MAX_ACTIONS={max_actions}
+        ARC_GAME_TIME_LIMIT_MIN={game_time_limit_min}
         LINGJING_LLM_URL=http://127.0.0.1:1234/v1
         LINGJING_LLM_MODEL=vrfai/Qwen3.6-27B-FP8
         LINGJING_LLM_VISION=off

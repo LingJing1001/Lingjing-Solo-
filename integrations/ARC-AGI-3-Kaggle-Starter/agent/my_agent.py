@@ -1794,7 +1794,22 @@ def _wa30_validate_plan(g, seq: list[int], level_idx: int) -> bool:
 class MyAgent(Agent):
     """CEAX primary + inline ls20/ar25 floor. Crash-proof choose_action."""
 
-    MAX_ACTIONS: int = 800
+    # 每局动作上限。
+    #
+    # 为什么要有环境变量入口（ARC_MAX_ACTIONS）：
+    # 竞赛 rerun 里 Swarm 会同时开 25~110 局，每局一个 agent 实例、一根线程。
+    # 机器核数远少于局数，于是「打满 800 步仍 0 关」的局会把 CPU 和 9 小时
+    # 预算全烧死，其余局跟着变慢 —— 本地实测：同一个 agent、同一个网关，
+    # 顺序跑 25 局得 1510 分 / 108 关 / 13 局 WIN；25 局并发只得 408.20 分 /
+    # 38 关 / 3 局 WIN。**并发把 13 局 WIN 砍成 3 局。**
+    #
+    # 步数上限直接决定「单局能占住多少 CPU」。本地已验证的 400 步口径就是
+    # 顺序基准 60.402 所用的值（scripts/benchmark_all_games.py 400）。
+    # 保持默认 800 不变，只在需要对比时用 ARC_MAX_ACTIONS 覆盖。
+    try:
+        MAX_ACTIONS: int = max(1, int(os.environ.get("ARC_MAX_ACTIONS", "800") or 800))
+    except (TypeError, ValueError):
+        MAX_ACTIONS: int = 800
     # 每局墙钟上限（秒）。0 = 不限。实例可用 time_deadline 传绝对截止
     # 时间（runner 用），或用环境变量 ARC_GAME_TIME_LIMIT_MIN 设分钟数。
     TIME_LIMIT_SEC: float = 0.0
