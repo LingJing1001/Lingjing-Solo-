@@ -311,6 +311,27 @@ class LLMPlanner:
         self._cache: dict[tuple, list[str]] = {}
         self._seq = 0
         self._mock = [a for a in (os.environ.get("SELFLEARN_LLM_MOCK", "").split(",")) if a.strip()]
+        self._guard_logged = False
+
+    # ------------------------------------------------------------------ guard
+
+    def _guard_off(self, where: str) -> bool:
+        """最后一道闸：``SELFLEARN_LLM=0`` 时拒绝一切模型交互。
+
+        ``decide()`` 已经有守卫，但那是"调用方自觉"。这里钉在**出网的那一层**：
+        任何绕过 ``decide()`` 直接调 ``_post()`` / ``_call_file()`` 的路径，
+        在 ``SELFLEARN_LLM=0`` 下也一定不会碰网络、不会写邮箱。
+
+        背景：离线跑测里出现过 ``[learn] llm unreachable (TimeoutError)``——
+        那说明有调用方在 ``SELFLEARN_LLM=0`` 下仍然触发了 HTTP，每次白等
+        45 秒超时，还会把"原策略臂"的墙钟预算吃光。这个守卫把这条路彻底堵死。
+        """
+        if selflearn_llm_enabled():
+            return False
+        if not self._guard_logged:
+            self._guard_logged = True
+            print(f"[learn] llm blocked by SELFLEARN_LLM=0 at {where}", flush=True)
+        return True
 
     # ------------------------------------------------------------------ context
 
@@ -472,6 +493,8 @@ class LLMPlanner:
         return text
 
     def _post(self, cfg: dict, body: dict) -> str:
+        if self._guard_off("_post"):
+            return ""
         req = urllib.request.Request(
             cfg["url"], data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json",
@@ -499,6 +522,8 @@ class LLMPlanner:
 
     def _call_file(self, system: str, user: str) -> str:
         """Mailbox protocol: we write the request, someone (human / outer model) writes .out."""
+        if self._guard_off("_call_file"):
+            return ""
         self.io_dir.mkdir(parents=True, exist_ok=True)
         self._seq += 1
         stem = self.io_dir / f"turn_{self._seq:04d}"

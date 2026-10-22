@@ -436,7 +436,7 @@ def _lp_chunk() -> int:
 
 
 def _lp_load() -> bool:
-    """Import the lexicon package once. False = 没有这套文件，调用方走旧链路。"""
+    """Import lexicon once. False → caller uses PNG/ASCII legacy path."""
     global _LP_READY, _LP_PERCEPTION, _LP_PLANNER_CLS, _LP_DISPLAY_XY
     if _LP_READY:
         return _LP_PLANNER_CLS is not None
@@ -445,15 +445,12 @@ def _lp_load() -> bool:
 
     try:
         importlib.import_module("lexicon")
-    except Exception:  # noqa: BLE001 — 先按候选目录补 sys.path
+    except Exception:  # noqa: BLE001
         cands: list[Path] = []
         env = str(os.environ.get("LINGJING_LEXICON_DIR", "") or "").strip()
         if env:
             cands.append(Path(env).expanduser())
-        # 三种摆放都可能：repo/arc_adaptor/lexicon、Starter 同级的 integrations、
-        # Kaggle 的 /tmp/lingjing_solo/arc_adaptor/lexicon。逐个父目录探一遍，
-        # 再扫 sys.path（框架已经按 LINGJING_SRC 把仓库根放进来过）。
-        for base in (_FILE.parent, *_FILE.parents[:5], Path.cwd()):
+        for base in (_FILE.parent, *_FILE.parents[:6], Path.cwd()):
             if base not in cands:
                 cands.append(base)
         for entry in list(sys.path):
@@ -476,7 +473,7 @@ def _lp_load() -> bool:
                     continue
                 parent = str(sub.parent)
                 if parent not in sys.path:
-                    sys.path.append(parent)
+                    sys.path.insert(0, parent)
                 found = True
                 break
             if found:
@@ -2387,7 +2384,13 @@ class MyAgent(Agent):
         return specs
 
     def _try_llm_batch(
-        self, *, levels: int, latest_frame: FrameData, note: str = ""
+        self,
+        *,
+        levels: int,
+        latest_frame: FrameData,
+        note: str = "",
+        history: str = "",
+        briefing: str = "",
     ) -> Optional[GameAction]:
         """Ask for a short burst; return step 1 and queue the rest."""
         if not _llm_on():
@@ -2400,14 +2403,22 @@ class MyAgent(Agent):
             grid = extract_grid(latest_frame)
         except Exception:  # noqa: BLE001
             grid = None
-
         lp = getattr(self, "_lp_plan", None)
-        if lp is not None:
+        if lp is not None and getattr(self, "_lp_perc", None) is not None:
             specs = self._lp_plan_specs(lp, grid, valid, levels)
         else:
-            specs = self._legacy_plan_specs(gid, levels, valid, grid, note)
+            specs = self._legacy_plan_specs(
+                gid, levels, valid, grid, note, history=history, briefing=briefing,
+            )
         if not specs:
-            return None
+            return _try_llm_action(
+                game_id=gid,
+                levels=levels,
+                latest_frame=latest_frame,
+                note=note,
+                history=history,
+                briefing=briefing,
+            )
         specs = specs[: _lp_chunk()]
         first = _llm_spec_to_action(specs[0], valid)
         if first is None:
@@ -2432,10 +2443,10 @@ class MyAgent(Agent):
         return first
 
     def _legacy_plan_specs(
-        self, gid: str, levels: int, valid: list[str], grid: Any, note: str
+        self, gid: str, levels: int, valid: list[str], grid: Any, note: str,
+        history: str = "", briefing: str = "",
     ) -> list:
-        """Old path: PNG + ASCII, one call per action (kept as a fallback)."""
-        _llm_plan = _load_llm_policy()
+        _llm_plan = _load_llm_policy_plan()
         if _llm_plan is None:
             return []
         try:
@@ -2445,7 +2456,24 @@ class MyAgent(Agent):
                 valid_actions=valid,
                 grid=grid,
                 note=note,
+                history=history,
+                briefing=briefing,
             ) or []
+        except TypeError:
+            try:
+                return _llm_plan(
+                    game_id=gid,
+                    levels=levels,
+                    valid_actions=valid,
+                    grid=grid,
+                    note=note,
+                ) or []
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"[{BUILD_TAG}] llm-batch error: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                return []
         except Exception as exc:  # noqa: BLE001
             print(
                 f"[{BUILD_TAG}] llm-batch error: {type(exc).__name__}: {exc}",

@@ -302,16 +302,22 @@ def main() -> None:
     p.add_argument("--out", default=None, help="输出 JSON 路径")
     p.add_argument("--label", default=None, help="看板显示的 agent 名称")
     p.add_argument("--mode", choices=("offline", "normal"), default="offline", help="运行模式，默认严格离线")
+    p.add_argument("--games", default=None,
+                   help="只跑这些局（逗号分隔，如 g50t,s5i5）；缺省跑全部 25 局")
     args = p.parse_args()
     out = Path(args.out) if args.out else OUT_JSON
     if not out.is_absolute():
         out = ROOT / out
+    game_filter = None
+    if args.games:
+        game_filter = {g.strip() for g in args.games.split(",") if g.strip()}
     report = run_all(
         max_steps=args.max_steps,
         agent_path=args.agent,
         out_json=out,
         agent_label=args.label,
         mode=args.mode,
+        game_filter=game_filter,
     )
     if report.get("aggregate_score_official") is None:
         report["aggregate_score_official"] = report["aggregate_score"]

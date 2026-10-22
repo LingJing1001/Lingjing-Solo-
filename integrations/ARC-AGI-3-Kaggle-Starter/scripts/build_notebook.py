@@ -39,6 +39,16 @@ SELFLEARN_LLM = str(os.environ.get("LINGJING_SELFLEARN_LLM", "1")).strip()
 if SELFLEARN_LLM not in ("0", "1"):
     raise SystemExit("LINGJING_SELFLEARN_LLM must be '0' or '1'")
 
+# LINGJING_BENCH=1 adds an offline self-benchmark cell: it plays the
+# competition's public environment files (25 games) inside the kernel, so a
+# plain "Save & Run All" measures the agent instead of doing nothing.
+# Off by default -- the submission notebook stays lean.
+BENCH = str(os.environ.get("LINGJING_BENCH", "0")).strip() == "1"
+# Action cap for the offline self-benchmark (per game). 400 matches
+# scripts/benchmark_all_games.py locally; a Kaggle LLM run cannot afford 400
+# steps on all 25 games, so the A/B builds use a smaller cap for BOTH arms.
+BENCH_MAX_STEPS = int(os.environ.get("LINGJING_BENCH_MAX_STEPS", "400") or 400)
+
 
 def _strip_comment_only_lines(source: str) -> str:
     """Reduce notebook payload without changing executable Python statements."""
@@ -585,6 +595,188 @@ def build() -> dict:
     )
     run_cell = code_cell(run_cell_source)
 
+    # ---------------------------------------------------------------------
+    # Offline self-benchmark (A/B builds only).
+    #
+    # The competition rerun path needs the Kaggle gateway, which only exists
+    # during a real submission -- so a normal kernel run measures nothing.
+    # This cell instead plays the competition's *public* environment files
+    # offline, which is the same 25-game set scripts/benchmark_all_games.py
+    # uses locally, and writes the scorecard next to the logs.
+    # ---------------------------------------------------------------------
+    bench_cell = code_cell(
+        dedent(
+            """
+            # ── Offline self-benchmark over the public games ────────────────
+            import importlib.util
+            import json
+            import os
+            import shutil
+            import sys
+            import time
+            from pathlib import Path
+
+            _WORK = Path("/kaggle/working")
+            _FW = _WORK / "ARC-AGI-3-Agents"
+            if not _FW.is_dir():
+                shutil.copytree(
+                    "/kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents", _FW
+                )
+            # The slim registry below does `from .templates.my_agent import MyAgent`,
+            # so the agent has to actually EXIST inside the framework tree. The
+            # notebook only wrote it to /tmp/my_agent.py, so the first version of
+            # this cell died with
+            #   ModuleNotFoundError: No module named 'agents.templates.my_agent'
+            # Drop it (and its two siblings) into agents/templates/ first --
+            # exactly what the submission cell does with `cp`.
+            _TPL = _FW / "agents" / "templates"
+            _TPL.mkdir(parents=True, exist_ok=True)
+            for _src, _dst in (("/tmp/my_agent.py", "my_agent.py"),
+                               ("/tmp/llm_policy.py", "llm_policy.py"),
+                               ("/tmp/llm_episode.py", "llm_episode.py")):
+                _s = Path(_src)
+                if _s.is_file():
+                    shutil.copy2(_s, _TPL / _dst)
+            # The stock agents/__init__.py imports every template, including the
+            # langgraph ones -- and the Kaggle image's langgraph has no
+            # `langgraph.store.sqlite`, so `import agents` explodes. Rewrite it to
+            # the slim registry the submission cell uses (same fix, same reason).
+            with open(_FW / "agents" / "__init__.py", "w") as _f:
+                _f.write('''from typing import Type
+            from dotenv import load_dotenv
+            from .agent import Agent, Playback
+            from .swarm import Swarm
+            from .templates.random_agent import Random
+            from .templates.my_agent import MyAgent
+
+            load_dotenv()
+
+            AVAILABLE_AGENTS: dict[str, Type[Agent]] = {
+                'random': Random,
+                'myagent': MyAgent,
+            }
+            ''')
+            # The agent imports `agents.agent`, `lingjing_solo`, `arc_adaptor`
+            # and `llm_episode`; cells 2-6 already wrote the last three to /tmp.
+            for _p in (str(_FW), "/tmp", "/tmp/arc_adaptor"):
+                if _p not in sys.path:
+                    sys.path.insert(0, _p)
+            os.environ.setdefault("LINGJING_SRC", "/tmp")
+            os.environ.setdefault("LINGJING_LEXICON_DIR", "/tmp/arc_adaptor")
+            os.environ.setdefault("MPLBACKEND", "Agg")
+
+            import arc_agi
+
+            # Where the competition's public environment files live. The layout
+            # under /kaggle/input differs between the competition bundle and the
+            # `competitions/` mirror, so probe instead of guessing -- guessing
+            # gave us "BENCH_GAMES 0 []" (an empty benchmark that looks like a
+            # zero-score agent) on the first push.
+            _ENV_CANDS = [
+                Path("/kaggle/input/arc-prize-2026-arc-agi-3/environment_files"),
+                Path("/kaggle/input/competitions/arc-prize-2026-arc-agi-3/environment_files"),
+                Path("/kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents/environment_files"),
+                Path("/kaggle/input/competitions/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents/environment_files"),
+                Path("/kaggle/input/arc-prize-2026-arc-agi-3"),
+            ]
+            _ENV_DIR = ""
+            for _c in _ENV_CANDS:
+                try:
+                    if _c.is_dir() and any(p.is_dir() for p in _c.iterdir()):
+                        _ENV_DIR = str(_c)
+                        break
+                except OSError:
+                    continue
+            print("BENCH_ENV_DIR", _ENV_DIR or "<none>",
+                  "existing=", [str(c) for c in _ENV_CANDS if c.is_dir()],
+                  flush=True)
+            _arc = arc_agi.Arcade(
+                operation_mode=arc_agi.OperationMode.OFFLINE, environments_dir=_ENV_DIR
+            )
+            _ids = [e.game_id.split("-")[0] for e in _arc.get_environments()]
+            print("BENCH_GAMES", len(_ids), _ids, flush=True)
+
+            _spec = importlib.util.spec_from_file_location("bench_agent", "/tmp/my_agent.py")
+            _mod = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
+            _MyAgent = _mod.MyAgent
+            _MyAgent.MAX_ACTIONS = min(_MyAgent.MAX_ACTIONS, __BENCH_MAX_STEPS__)
+            print("BENCH_AGENT", _mod.BUILD_TAG, "max_actions", _MyAgent.MAX_ACTIONS, flush=True)
+
+            def _pick_run(scorecard, game_id):
+                if not scorecard or not scorecard.environments:
+                    return None
+                for _env in scorecard.environments:
+                    if (_env.id or "").split("-")[0] != game_id:
+                        continue
+                    if not _env.runs:
+                        return None
+                    return max(_env.runs, key=lambda r: r.score or 0).model_dump()
+                return None
+
+            _rows = []
+            for _i, _gid in enumerate(_ids, 1):
+                _t0 = time.time()
+                _row = {
+                    "game_id": _gid, "levels_completed": 0, "actions": 0,
+                    "score": 0.0, "state": "ERROR", "error": None,
+                }
+                try:
+                    _env = _arc.make(_gid, seed=0)
+                    if _env is None:
+                        _row["state"] = "SKIP"
+                        _row["error"] = "env_create_failed"
+                    else:
+                        _agent = _MyAgent(
+                            card_id="bench", game_id=_gid, agent_name=f"bench.{_gid}",
+                            ROOT_URL="http://localhost", record=False,
+                            arc_env=_env, tags=["benchmark"],
+                        )
+                        _agent.main()
+                        _final = _agent.frames[-1]
+                        _row["levels_completed"] = int(_final.levels_completed or 0)
+                        _row["actions"] = int(_agent.action_counter)
+                        _row["state"] = getattr(_final.state, "name", str(_final.state))
+                        _run = _pick_run(_arc.get_scorecard(), _gid)
+                        if _run:
+                            _row["score"] = float(_run.get("score") or 0)
+                            _row["level_scores"] = _run.get("level_scores") or []
+                except Exception as _exc:
+                    _row["error"] = f"{type(_exc).__name__}: {_exc}"
+                _row["elapsed_sec"] = round(time.time() - _t0, 2)
+                _rows.append(_row)
+                print(
+                    f"[BENCH {_i}/{len(_ids)}] {_gid:8} L={_row['levels_completed']} "
+                    f"score={_row['score']:.2f} act={_row['actions']} {_row['state']}",
+                    flush=True,
+                )
+
+            _sc = _arc.get_scorecard()
+            _summary = {
+                "selflearn_llm": os.environ.get("SELFLEARN_LLM", "0"),
+                "build_tag": _mod.BUILD_TAG,
+                "aggregate_score_official": float(_sc.score) if _sc is not None else None,
+                "total_levels_completed": sum(r["levels_completed"] for r in _rows),
+                "total_actions": sum(r["actions"] for r in _rows),
+                "zero_games": [r["game_id"] for r in _rows if r["levels_completed"] == 0],
+                "games": _rows,
+            }
+            _out = Path("/kaggle/working/BENCH_SELFLEARN___SELFLEARN__.json")
+            _out.write_text(json.dumps(_summary, ensure_ascii=False, indent=2), encoding="utf-8")
+            print("BENCH_SUMMARY", json.dumps({
+                "selflearn_llm": _summary["selflearn_llm"],
+                "aggregate_score_official": _summary["aggregate_score_official"],
+                "total_levels_completed": _summary["total_levels_completed"],
+                "total_actions": _summary["total_actions"],
+                "zero_games": _summary["zero_games"],
+            }, ensure_ascii=False), flush=True)
+            print("BENCH_WROTE", _out, flush=True)
+            """
+        ).replace("__SELFLEARN__", selflearn).replace(
+            "__BENCH_MAX_STEPS__", str(BENCH_MAX_STEPS)
+        )
+    )
+
     dummy_submission_cell = code_cell(
         dedent(
             """\
@@ -610,6 +802,30 @@ def build() -> dict:
         )
     accel = _ACCELERATORS[ACCELERATOR]
 
+    cells = [
+        markdown_cell(
+            "# ARC Prize 2026 — SmartRouter + optional local LLM\n\n"
+            "Submission agent = **SmartRouter** (`BUILD_TAG` starts with `smart-router`). "
+            "Plan floors stay on verified plans. Every other game, including hidden "
+            "ids, is played for the whole episode by in-kernel Qwen (`llm-whole-qwen` "
+            "+ `llm-structured-view` batch planner, vLLM context 32768). "
+            "Phase B refuses to start the games unless vLLM probes OK and "
+            "`enable_internet` is false. "
+            "GPU default: RTX 6000 + vllm031-cp313 + qwen3.6-27b-fp8. "
+            "CPU fallback: `LINGJING_KAGGLE_ACCEL=cpu` → LLM off."
+        ),
+        install_cell,
+        write_lingjing_cell,
+        write_lexicon_cell,
+        write_agent_cell,
+        write_llm_policy_cell,
+        write_episode_cell,
+        vllm_cell,
+        run_cell,
+    ]
+    if BENCH:
+        cells.append(bench_cell)
+    cells.append(dummy_submission_cell)
     notebook = {
         "metadata": {
             "kernelspec": {
@@ -633,28 +849,7 @@ def build() -> dict:
         },
         "nbformat_minor": 4,
         "nbformat": 4,
-        "cells": [
-            markdown_cell(
-                "# ARC Prize 2026 — SmartRouter + optional local LLM\n\n"
-                "Submission agent = **SmartRouter** (`BUILD_TAG` starts with `smart-router`). "
-                "Plan floors stay on verified plans. Every other game, including hidden "
-                "ids, is played for the whole episode by in-kernel Qwen (`llm-whole-qwen` "
-                "+ `llm-structured-view` batch planner, vLLM context 32768). "
-                "Phase B refuses to start the games unless vLLM probes OK and "
-                "`enable_internet` is false. "
-                "GPU default: RTX 6000 + vllm031-cp313 + qwen3.6-27b-fp8. "
-                "CPU fallback: `LINGJING_KAGGLE_ACCEL=cpu` → LLM off."
-            ),
-            install_cell,
-            write_lingjing_cell,
-            write_lexicon_cell,
-            write_agent_cell,
-            write_llm_policy_cell,
-            write_episode_cell,
-            vllm_cell,
-            run_cell,
-            dummy_submission_cell,
-        ],
+        "cells": cells,
     }
     return notebook
 
