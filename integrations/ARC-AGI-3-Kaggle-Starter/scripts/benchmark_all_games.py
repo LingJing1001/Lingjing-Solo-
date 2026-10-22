@@ -4,9 +4,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import platform
 import shutil
+import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -32,6 +35,41 @@ from arc_agi import OperationMode
 
 OUT_JSON = ROOT / "ui" / "static" / "games_benchmark.json"
 TEAM_OUT_JSON = ROOT / "ui" / "static" / "games_benchmark_team.json"
+SEED = 0
+
+
+def _git_value(repo: Path, *args: str) -> str:
+    """Return a reproducibility value without making git a runtime dependency."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def _run_manifest(label: str, mode: str, max_steps: int) -> dict[str, Any]:
+    runtime = ROOT.parent / "ARC-AGI-3"
+    return {
+        "schema_version": "lingjing-evidence-v1",
+        "run_id": f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}",
+        "tier": "C",
+        "game_id": "all",
+        "agent_build": label,
+        "project_branch": _git_value(CANONICAL_ROOT, "branch", "--show-current"),
+        "lingjing_commit": _git_value(CANONICAL_ROOT, "rev-parse", "HEAD"),
+        "arc_runtime_commit": _git_value(runtime, "rev-parse", "HEAD"),
+        "starter_commit": _git_value(ROOT, "rev-parse", "HEAD"),
+        "mode": mode,
+        "seed": SEED,
+        "max_steps": max_steps,
+        "status": "RUNNING",
+        "artifacts": [],
+        "limitations": [],
+    }
 
 
 def _load_meta() -> dict[str, dict[str, Any]]:
@@ -90,12 +128,17 @@ def run_all(
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
     out_json: Optional[Path] = None,
     agent_label: Optional[str] = None,
+    mode: str = "offline",
 ) -> dict[str, Any]:
+    if mode not in {"offline", "normal"}:
+        raise ValueError(f"unsupported benchmark mode: {mode}")
     meta = _load_meta()
-    try:
-        arc = arc_agi.Arcade(operation_mode=OperationMode.NORMAL)
-    except Exception:
-        arc = arc_agi.Arcade(operation_mode=OperationMode.OFFLINE)
+    operation_mode = OperationMode.OFFLINE if mode == "offline" else OperationMode.NORMAL
+    arcade_kwargs: dict[str, Any] = {"operation_mode": operation_mode}
+    if mode == "offline":
+        arcade_kwargs["environments_dir"] = str(ROOT / "environment_files")
+    arc = arc_agi.Arcade(**arcade_kwargs)
+    actual_mode = mode
     all_envs = arc.get_environments()
     game_ids = [e.game_id.split("-")[0] for e in all_envs]
     if game_filter:
@@ -106,6 +149,13 @@ def run_all(
         agent_file = (ROOT / agent_file).resolve()
     label = agent_label or str(agent_file.relative_to(ROOT) if agent_file.is_relative_to(ROOT) else agent_file)
     out_path = Path(out_json) if out_json else OUT_JSON
+    manifest = _run_manifest(label, actual_mode, max_steps)
+    manifest.update({
+        "python_version": platform.python_version(),
+        "environment_root": str(ROOT / "environment_files"),
+        "environment_count": len(game_ids),
+        "game_ids": sorted(game_ids),
+    })
 
     MyAgent = _load_agent(agent_file)
     if hasattr(MyAgent, "MAX_ACTIONS"):
@@ -132,7 +182,7 @@ def run_all(
             "error": None,
         }
         try:
-            env = arc.make(game_id)
+            env = arc.make(game_id, seed=SEED)
             if env is None:
                 row["error"] = "env_create_failed"
                 row["state"] = "SKIP"
@@ -166,7 +216,8 @@ def run_all(
         games_out.append(row)
 
         partial = _build_report(
-            games_out, meta, max_steps, time.time() - t0, running=True, agent=label
+            games_out, meta, max_steps, time.time() - t0, running=True, agent=label,
+            manifest=manifest,
         )
         if on_progress:
             on_progress(partial)
@@ -182,12 +233,14 @@ def run_all(
         )
 
     report = _build_report(
-        games_out, meta, max_steps, time.time() - t0, running=False, agent=label
+        games_out, meta, max_steps, time.time() - t0, running=False, agent=label,
+        manifest=manifest,
     )
     sc = arc.get_scorecard()
     if sc is not None:
         report["aggregate_score_official"] = float(sc.score or 0)
         report["aggregate_score"] = report["aggregate_score_official"]
+    report["manifest"]["artifacts"] = [str(out_path)]
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
 
@@ -199,6 +252,7 @@ def _build_report(
     elapsed: float,
     running: bool,
     agent: str = "agent/my_agent.py",
+    manifest: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     done = [g for g in games if g.get("state") != "SKIP"]
     agg = sum(g.get("game_score", 0) for g in done) / max(len(done), 1)
@@ -212,7 +266,7 @@ def _build_report(
         key=lambda g: (-g.get("total_levels", 0), g.get("game_id", "")),
     )
 
-    return {
+    result = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "agent": agent,
         "max_steps": max_steps,
@@ -229,6 +283,15 @@ def _build_report(
         "games": ranked,
         "score_formula": "单局分=各关 (基准步数/实际步数)²×100 加权平均；总分=所有游戏分数的平均值",
     }
+    if manifest is not None:
+        manifest = dict(manifest)
+        manifest["status"] = "RUNNING" if running else (
+            "PASS" if not any(
+                str(g.get("state", "")).startswith(("ERROR", "SKIP")) for g in games
+            ) else "FAIL"
+        )
+        result["manifest"] = manifest
+    return result
 
 
 def main() -> None:
@@ -238,6 +301,7 @@ def main() -> None:
     p.add_argument("--agent", default="agent/my_agent.py")
     p.add_argument("--out", default=None, help="输出 JSON 路径")
     p.add_argument("--label", default=None, help="看板显示的 agent 名称")
+    p.add_argument("--mode", choices=("offline", "normal"), default="offline", help="运行模式，默认严格离线")
     args = p.parse_args()
     out = Path(args.out) if args.out else OUT_JSON
     if not out.is_absolute():
@@ -247,6 +311,7 @@ def main() -> None:
         agent_path=args.agent,
         out_json=out,
         agent_label=args.label,
+        mode=args.mode,
     )
     if report.get("aggregate_score_official") is None:
         report["aggregate_score_official"] = report["aggregate_score"]
