@@ -34,6 +34,7 @@ state/
 data/aop/raw/
 data/aop/normalized.recording.jsonl
 data/aop/labels.jsonl
+data/aop/stability_report.json
 # Continuous AOP runtime state, logs, and rolling labels stay on the host.
 data/aop/continuous/
 data/aop/labels/merged_58eps_targeted_20261011.jsonl
