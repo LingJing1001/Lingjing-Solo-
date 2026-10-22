@@ -34,6 +34,7 @@ duck 的一次 LLM 调用是同步阻塞的，跑在 `choose_action` 里。如�
 """
 from __future__ import annotations
 
+import atexit
 import os
 import socket
 import sys
@@ -169,6 +170,11 @@ class DuckBridge:
         self._deadline = 0.0
         self._budget = _env_float("LINGJING_DUCK_BUDGET", 300.0)
 
+        # 跨局持久化目录（默认 runs/cross_game，相对 ARC-AGI-3 starter）。
+        # LINGJING_DUCK_CROSS_DIR=""（空字符串）则禁用——纯 in-memory，行为退化
+        # 为 today 的"局内反思 only"。这是让用户能一键回滚的安全阀。
+        self._cross_dir = _env_str("LINGJING_DUCK_CROSS_DIR", "")
+
         if self.mode in {"off", "0", "no", "false"}:
             self.reason = "LINGJING_DUCK=off"
             return
@@ -217,6 +223,9 @@ class DuckBridge:
                 max_turns=max(1, _env_int("LINGJING_DUCK_TURNS", 24)),
                 level_transfer=_env_on("LINGJING_DUCK_TRANSFER", True),
                 level_memory=_env_on("LINGJING_DUCK_MEMORY", True),
+                # 死路记忆：与过关记忆平行。LINGJING_DUCK_FAIL_ROUTES=off 可
+                # 一键关闭回到 only-success-rules 模式（保留回滚选项）。
+                fail_routes=_env_on("LINGJING_DUCK_FAIL_ROUTES", True),
                 # 局内 duck 通常几十步就结束，等不到压缩；"level" 才能让过关
                 # 记忆立刻进 system prompt（"drain" 是上游的缓存安全档）。
                 pin_policy=_env_str("LINGJING_DUCK_PIN", "level"),
@@ -225,10 +234,59 @@ class DuckBridge:
             self.started_at = time.time()
             self.log(f"[duck-bridge] start gid={self.game_id} L={levels} "
                      f"budget={int(self._budget)}s steps<={self._driver.max_steps}")
+            # 跨局持久化：把上一局（同 game_id）通关学到的规则读回 driver 的
+            # SolvedLevelMemory。这让 agent 在第二次跑同一局时直接复用上次的
+            # "Rule for level N:" —— 补 lingjing_solo transfer 未接入 my_agent
+            # 的真实缺口。LINGJING_DUCK_CROSS_DIR="" 时禁用，退化到纯 in-memory。
+            loaded = self._load_cross_game()
+            if loaded > 0:
+                self.log(f"[duck-bridge] cross-game loaded {loaded} rule(s) "
+                         f"gid={self.game_id} dir={self._cross_dir!r}")
+            # atexit 兜底：进程正常退出（WIN / NOT_FINISHED / TIME_LIMIT 都走
+            # 进程退出路径）时，如果 driver 还活着、_abandon 没被调过，强制
+            # save 一次。这是补 my_agent.is_done 三处 return True 都不调 shutdown
+            # 的真实缺口——零侵入 my_agent，但保证通关规则一定落盘。
+            atexit.register(self._save_cross_game)
             return True
         except Exception as exc:  # noqa: BLE001
             self.reason = f"start failed {type(exc).__name__}: {exc}"
             self.log(f"[duck-bridge] {self.reason}")
+            return False
+
+    def _load_cross_game(self) -> int:
+        """Pull previous-run rules into the live driver. 0 = none / disabled."""
+        if not self._cross_dir or self._driver is None:
+            return 0
+        try:
+            mem = getattr(self._driver, "memory", None)
+            fails = getattr(self._driver, "failures", None)
+            loaded = 0
+            if mem is not None and getattr(mem, "enabled", False):
+                loaded += int(mem.load_from_dir(self._cross_dir, self.game_id))
+            # 同步加载失败路线：让 agent 在第二次跑同局时直接看到上次的死路，
+            # 不再走错误路线。文件后缀 .failures.json 与 .json 分开，互不污染。
+            if fails is not None and getattr(fails, "enabled", False):
+                n_fail = int(fails.load_from_dir(self._cross_dir, self.game_id))
+                loaded += n_fail
+            return loaded
+        except Exception:  # noqa: BLE001 - cross-game is best-effort
+            return 0
+
+    def _save_cross_game(self) -> bool:
+        """Push this run's cleared-level rules AND dead routes to disk."""
+        if not self._cross_dir or self._driver is None:
+            return False
+        try:
+            mem = getattr(self._driver, "memory", None)
+            fails = getattr(self._driver, "failures", None)
+            ok_mem = (mem is not None and getattr(mem, "enabled", False)
+                      and bool(mem.save_to_dir(self._cross_dir, self.game_id)))
+            # 死路同样落盘：跨进程的失败路线复用是"提高效率"的关键 ——
+            # 第二次跑同局开局时直接绕开上次的死路，省一整段无谓的尝试。
+            ok_fail = (fails is not None and getattr(fails, "enabled", False)
+                       and bool(fails.save_to_dir(self._cross_dir, self.game_id)))
+            return ok_mem or ok_fail
+        except Exception:  # noqa: BLE001
             return False
 
     # -------------------------------------------------------------------- tick
@@ -271,6 +329,14 @@ class DuckBridge:
         return nxt
 
     def _abandon(self, why: str) -> None:
+        # 先把通关学到的规则落盘——cross-game 持久化的唯一收尾点。必须在
+        # self._driver = None 之前调，否则 SolvedLevelMemory 也跟着没了。
+        # atexit.unregister 防止 atexit 兜底时重复 save（save 本身幂等，但避免噪音日志）。
+        atexit.unregister(self._save_cross_game)
+        saved = self._save_cross_game()
+        if saved:
+            self.log(f"[duck-bridge] cross-game saved gid={self.game_id} "
+                     f"dir={self._cross_dir!r}")
         self.enabled = False
         self.reason = why
         stats = self.stats()

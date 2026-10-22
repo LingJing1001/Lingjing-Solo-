@@ -42,7 +42,7 @@ import time
 from . import prompts
 from .chat import PYTHON_TOOL
 from .env import wrap_raw
-from .memory import SolvedLevelMemory
+from .memory import SolvedLevelMemory, FailedRoutesMemory
 from .sandbox import (Sandbox, MODEL_TO_ENGINE, action_signature,
                       normalise_actions)
 
@@ -250,6 +250,7 @@ class DuckDriver:
                  max_steps: int = 200, max_turns: int = 40, max_inner: int = 6,
                  summary_tokens: int = 60_000, level_transfer: bool = True,
                  level_memory: bool = True, pin_policy: str = "drain",
+                 fail_routes: bool = True,
                  env=None, verbose: bool = True):
         self.chat = chat
         self.game_id = game_id
@@ -266,6 +267,10 @@ class DuckDriver:
         self.sandbox = DeferredSandbox(self.env)
         self.sandbox.adopt(frame, level=level)
         self.memory = SolvedLevelMemory(enabled=level_memory)
+        # 死路记忆：与 SolvedLevelMemory 平行，记"走过的错误路线"。系统 prompt
+        # 末尾会钉一个 "KNOWN DEAD-ENDS" 块，让 agent 在下次同关开局时直接绕开。
+        # 这补 SolvedLevelMemory 只记成功经验的缺口——失败时也得反思、得沉淀。
+        self.failures = FailedRoutesMemory(enabled=fail_routes)
         self._system_base = prompts.build_system(level_transfer=level_transfer)
         self.system = self._system_base
         self.messages: list[dict] = [{"role": "system", "content": self.system}]
@@ -363,7 +368,9 @@ class DuckDriver:
     # ------------------------------------------------------------------ loop
 
     def _note_reply(self, reply: dict) -> None:
-        """Keep the tail of this turn's text, and harvest a `Rule for level N:` line."""
+        """Keep the tail of this turn's text, and harvest a `Rule for level N:`
+        line (SolvedLevelMemory) and a `Dead-end for level N:` line
+        (FailedRoutesMemory). Both come out of the same model message."""
         parts = []
         for key in ("content", "reasoning_content", "reasoning"):
             value = reply.get(key)
@@ -377,19 +384,36 @@ class DuckDriver:
         if rule:
             self._say(f"[duck-drv] rule recorded for level {self.memory.levels[-1].level}: "
                       f"{rule[:80]}")
+        # 同时抓 dead-end 避坑线（同一段文本里）。两块独立 rewrite，互不影响。
+        avoid = self.failures.capture(text)
+        if avoid:
+            self._say(f"[duck-drv] dead-end avoid-line recorded for "
+                      f"level {self.failures.routes[-1].level}: {avoid[:80]}")
+        if rule or avoid:
             self._refresh_system()
 
     def _refresh_system(self) -> None:
-        """Pin the block, if this is a moment where re-reading costs nothing."""
+        """Pin both memory blocks (solved levels + known dead-ends), if this is
+        a moment where re-reading costs nothing."""
         if self.pin_policy == "drain" and not self._compacted:
             return
-        if not self.memory.changed():
+        mem_changed = self.memory.changed()
+        fail_changed = self.failures.changed()
+        if not (mem_changed or fail_changed):
             return
-        self.system = self.memory.rewrite(self._system_base)
+        # solved-level block first (older, longer prefix), then dead-ends appended
+        # after it -- dead-ends come last so the cached prefix still survives.
+        base = self.memory.rewrite(self._system_base)
+        base = self.failures.rewrite(base)
+        self.system = base
         if self.messages and self.messages[0].get("role") == "system":
             self.messages[0]["content"] = self.system
-        self._say(f"[duck-drv] solved-level block pinned "
-                  f"({len(self.memory)} level(s), {len(self.memory.block())} chars)")
+        if mem_changed:
+            self._say(f"[duck-drv] solved-level block pinned "
+                      f"({len(self.memory)} level(s), {len(self.memory.block())} chars)")
+        if fail_changed:
+            self._say(f"[duck-drv] dead-end block pinned "
+                      f"({len(self.failures)} route(s), {len(self.failures.block())} chars)")
 
     def _inner(self):
         """Model reads/computes until it spends an action (yields it)."""
@@ -495,6 +519,12 @@ class DuckDriver:
             ask = self.memory.begin_turn()
             if ask:
                 opener += "\n\n" + ask
+            # 死路反思也用 begin_turn 问"避坑线"。两个 begin_turn 互不冲突：
+            # memory 的 _asking 在通关时设；failures 的 _asking 在死亡时设。
+            # 一般不会同时为非空，但即使同时为非空也只是 append 两段。
+            ask_fail = self.failures.begin_turn()
+            if ask_fail:
+                opener += "\n\n" + ask_fail
             self.messages.append({"role": "user", "content": opener})
             acted = yield from self._inner()
             if not acted:
@@ -543,12 +573,30 @@ class DuckDriver:
                             fresh_level = int(getattr(fresh, "level", self.level))
                             self.sandbox.adopt(fresh, level=fresh_level)
                             self._prev_levels_completed = fresh_level
-                    self.messages.append({
-                        "role": "user",
-                        "content": (f"The previous attempt ended ({reason}). What you "
-                                    "established about the mechanics still holds; what you "
-                                    "were doing when it ended does not."),
-                    })
+                    # 死路反思：仅 game_over 时记一条 FailedRoute（通关路径在
+                    # 上方 LEVEL UP 块已 record 进 SolvedLevelMemory）。这补
+                    # SolvedLevelMemory 只记成功经验的缺口——失败时也得沉淀。
+                    # dedup 在 FailedRoutesMemory.record 内部：同关同一最后动作签名
+                    # 不重复记录，避免 prompt 膨胀。
+                    fail_rec = None
+                    if reason == "game_over" and self.failures.enabled:
+                        fail_rec = self.failures.record(
+                            self.level, list(self._level_actions), reason="game_over")
+                        if fail_rec is not None:
+                            self._say(f"[duck-drv] dead-end recorded for level "
+                                      f"{self.level} ({fail_rec.n_actions_total} actions)")
+                    # 复用 _refresh_system：钉 KNOWN DEAD-ENDS 块进 system prompt
+                    self._refresh_system()
+                    # 模型可能立刻在下一回合回答"避坑线"，begin_turn 在 _inner 的
+                    # 模型回复处理路径会调 capture（同 SolvedLevelMemory.begin_turn）。
+                    user_msg = (f"The previous attempt ended ({reason}). What you "
+                                "established about the mechanics still holds; what you "
+                                "were doing when it ended does not.")
+                    if fail_rec is not None:
+                        user_msg += ("\n\nThis death has been recorded as a known dead-end. "
+                                     "When asked, give a one-line `Dead-end for level "
+                                     f"{self.level}: ...` so later attempts can avoid it.")
+                    self.messages.append({"role": "user", "content": user_msg})
                     continue
                 return
 
@@ -564,5 +612,6 @@ class DuckDriver:
             "tokens": getattr(self.chat, "tokens", lambda: 0)(),
             "refusals": dict(self.sandbox.refusals),
             "solved_levels": self.memory.stats(),
+            "failed_routes": self.failures.stats(),
             "seconds": round(time.time() - self.started, 1),
         }

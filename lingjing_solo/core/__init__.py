@@ -16,6 +16,13 @@ from .actions import (
 )
 from .phi import compute_phi, compute_bubble, curvature_proxy, prefer_block_actions
 from .lingjing import PROTOCOL_MAP, LAYER_MAP, MANIFESTO, protocol_status_summary
+from .state_semantics import (
+    PersistentStateStore,
+    StateTracker,
+    TransitionRecord,
+    TransitionTable,
+    compute_state_key,
+)
 
 __all__ = [
     "SoloConfig", "Frame", "GameObject", "RuleHypothesis", "Transition",
@@ -28,6 +35,7 @@ __all__ = [
     "canonicalize", "to_alias", "normalize_valid", "from_available_ids",
     "ALIAS_TO_CANONICAL", "DEFAULT_SIMPLE",
     "compute_phi", "compute_bubble", "curvature_proxy", "prefer_block_actions",
+    "PersistentStateStore", "StateTracker", "TransitionRecord", "TransitionTable", "compute_state_key",
     "PROTOCOL_MAP", "LAYER_MAP", "MANIFESTO", "protocol_status_summary",
 ]
 

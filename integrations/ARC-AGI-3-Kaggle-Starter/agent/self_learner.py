@@ -69,6 +69,7 @@ try:  # noqa: E402
     from lexicon import Perception as _Perception
     from lexicon.planner import RulePlanner as _RulePlanner
     from lexicon.llm_planner import LLMPlanner as _LLMPlanner
+    from lexicon.llm_planner import selflearn_llm_enabled as _selflearn_llm_enabled
     from lexicon.graphsim import StateGraph as _StateGraph
     from lexicon.goalsim import (GoalModel as _GoalModel, GoalPolicy as _GoalPolicy,
                                  decompose as _decompose, Piece as _Piece,
@@ -80,6 +81,17 @@ try:  # noqa: E402
     _HAVE_LEXICON = True
 except Exception:  # pragma: no cover
     _HAVE_LEXICON = False
+
+    def _selflearn_llm_enabled() -> bool:
+        """Fallback when the lexicon package is missing (same semantics)."""
+        sl = str(os.environ.get("SELFLEARN_LLM", "") or "").strip().lower()
+        if sl in ("1", "on", "true", "yes"):
+            return True
+        if sl in ("0", "off", "false", "no", "none"):
+            return False
+        return str(os.environ.get("LINGJING_LLM", "off")).strip().lower() in {
+            "1", "on", "true", "yes",
+        }
 
 COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12]
 KEYS = ("ACTION1", "ACTION2", "ACTION3", "ACTION4")
@@ -650,7 +662,8 @@ class MyAgent(Agent):
 
         # ---- LLM 决策层（冠军的第二半：128K 模型读 code/rules 视图做决策）----
         # 关掉时完全不影响规则前瞻；开启后每 N 拍问一次模型，拿一小段动作队列。
-        self._llm = (_LLMPlanner() if (_HAVE_LEXICON and os.environ.get("SELFLEARN_LLM", "0") == "1")
+        # SELFLEARN_LLM 是权威开关：=1 挂大模型，=0 退回纯算法。
+        self._llm = (_LLMPlanner() if (_HAVE_LEXICON and _selflearn_llm_enabled())
                      else None)
         self._llm_queue: list = []
         self._llm_last_outcome = None

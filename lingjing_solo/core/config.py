@@ -6,6 +6,7 @@
 3. LLM 退居 L4 战略顾问
 """
 from dataclasses import dataclass
+import os
 from .actions import DEFAULT_SIMPLE
 
 
@@ -98,6 +99,20 @@ class SoloConfig:
     return_game_action: bool = True
     agent_id: str = "lingjing-etherealrealm-solo"
 
+    # ---------- R2 通用投影图（阶段 0：默认关闭，可回滚） ----------
+    r2_projection_graph: bool = False
+    # ---------- ARC-AGI-3 stage 6/7 exploration and deployment ----------
+    ui_top_ratio: float = 0.08
+    ui_bottom_ratio: float = 0.08
+    priority_visual_weight: float = 0.5
+    priority_dpl_weight: float = 0.3
+    priority_motion_weight: float = 0.2
+    frontier_loop_window: int = 8
+    r2_deployment_mode: str = "offline"
+    r2_canary_levels: tuple[int, ...] = ()
+    r2_canary_episodes: tuple[str, ...] = ()
+
+
     def __post_init__(self):
         self.allowed_actions = list(DEFAULT_SIMPLE)
         if self.enable_undo:
@@ -105,3 +120,17 @@ class SoloConfig:
         if self.enable_mouse or self.enable_click_sweep:
             if "ACTION6" not in self.allowed_actions:
                 self.allowed_actions.append("ACTION6")
+
+
+def projection_graph_enabled(config: SoloConfig | None = None, environ: dict[str, str] | None = None) -> bool:
+    """Resolve the R2 flag without changing legacy behavior by default.
+
+    ``R2_PROJECTION_GRAPH`` is an explicit boundary override. Unknown values
+    fail closed; an explicit config flag is used only when the environment is
+    silent.
+    """
+    env = os.environ if environ is None else environ
+    raw = env.get("R2_PROJECTION_GRAPH")
+    if raw is None:
+        return bool(config.r2_projection_graph) if config is not None else False
+    return raw.strip().lower() in {"1", "true", "on", "yes"}

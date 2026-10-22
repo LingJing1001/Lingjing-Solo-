@@ -29,6 +29,22 @@ from textwrap import dedent
 # ─────────────────────────────────────────────────────────────────────────────
 ACCELERATOR = str(os.environ.get("LINGJING_KAGGLE_ACCEL", "rtx6000")).strip().lower()
 
+# SELFLEARN_LLM is the authoritative master switch of the agent:
+#   1 = 大模型 planner（lexicon 结构化视图 + 核内千问）
+#   0 = 原策略（engine solver + 校准计划 + CEAX 兜底，纯算法，不起 vLLM）
+# Build two notebooks for an A/B by flipping this one variable:
+#   LINGJING_SELFLEARN_LLM=1 python scripts/build_notebook.py   # 大模型版
+#   LINGJING_SELFLEARN_LLM=0 python scripts/build_notebook.py   # 原策略版
+SELFLEARN_LLM = str(os.environ.get("LINGJING_SELFLEARN_LLM", "1")).strip()
+if SELFLEARN_LLM not in ("0", "1"):
+    raise SystemExit("LINGJING_SELFLEARN_LLM must be '0' or '1'")
+
+
+def _strip_comment_only_lines(source: str) -> str:
+    """Reduce notebook payload without changing executable Python statements."""
+    lines = [line for line in source.splitlines() if not line.lstrip().startswith("#")]
+    return "\n".join(lines) + ("\n" if source.endswith("\n") else "")
+
 # Internal mapping; don't edit unless Kaggle adds new options.
 # `name` → notebook metadata.kaggle.accelerator (legacy)
 # `machine_shape` → kernel-metadata.json field honored by Kaggle CLI push
@@ -61,7 +77,12 @@ LEXICON_SRC = Path(
         str(ROOT.parents[1] / "arc_adaptor" / "lexicon"),
     )
 ).expanduser().resolve()
-NOTEBOOK_PATH = ROOT / "notebooks" / "submission.ipynb"
+NOTEBOOK_PATH = Path(
+    os.environ.get(
+        "LINGJING_NOTEBOOK_OUT",
+        str(ROOT / "notebooks" / "submission.ipynb"),
+    )
+).expanduser().resolve()
 METADATA_PATH = ROOT / "notebooks" / "kernel-metadata.json"
 # 32k is the Duck/Franzen analyzer tier on RTX Pro 6000 96GB FP8: enough for
 # objects+NATIVE+RULES+PREDICTED without the KV blow-up of 64k under concurrency.
@@ -159,6 +180,7 @@ def _collect_lingjing_files() -> list[tuple[str, str]]:
         path = module_paths[module]
         rel = path.relative_to(LINGJING_SRC).as_posix()
         source = package_shims.get(rel, path.read_text(encoding="utf-8-sig"))
+        source = _strip_comment_only_lines(source)
         out.append((rel, source))
     if not any(r.endswith(".py") for r, _ in out):
         raise SystemExit(f"No .py files found under {LINGJING_SRC}")
@@ -218,24 +240,35 @@ def _lexicon_write_cell(files: list[tuple[str, str]]) -> dict:
 def build() -> dict:
     if not AGENT_SRC.exists():
         raise SystemExit(f"Could not find {AGENT_SRC}")
+    # Merge resolution (v27 upstream-merge round):
+    #   ours  -> ship agent/llm_policy.py + agent/llm_episode.py into the
+    #            notebook (the whole-qwen LLM chain needs both).
+    #   theirs-> strip comment-only lines from the agent body (keeps the
+    #            notebook under Kaggle's 1 MiB kernel-source limit).
+    # Both are needed, so take the union.
     if not LLM_POLICY_SRC.exists():
         raise SystemExit(f"Could not find {LLM_POLICY_SRC}")
-    agent_body = AGENT_SRC.read_text(encoding="utf-8")
+    agent_body = _strip_comment_only_lines(AGENT_SRC.read_text(encoding="utf-8"))
     llm_policy_body = LLM_POLICY_SRC.read_text(encoding="utf-8")
     episode_body = EPISODE_SRC.read_text(encoding="utf-8")
     lj_files = _collect_lingjing_files()
     ax_files = _collect_lexicon_files()
     use_gpu = bool(_ACCELERATORS.get(ACCELERATOR, {}).get("gpu"))
     # GPU builds enable local vLLM by default; CPU stays fail-closed off.
-    llm_env_default = "on" if use_gpu else "off"
+    # SELFLEARN_LLM=0 forces the pure-algorithm route: no model server at all.
+    llm_env_default = ("on" if use_gpu else "off") if SELFLEARN_LLM == "1" else "off"
+    selflearn = SELFLEARN_LLM
     vllm_max_len = os.environ.get("LINGJING_VLLM_MAX_LEN", DEFAULT_VLLM_MAX_LEN)
     vllm_max_seqs = os.environ.get("LINGJING_VLLM_MAX_SEQS", DEFAULT_VLLM_MAX_SEQS)
     vllm_mem = os.environ.get("LINGJING_VLLM_MEM", DEFAULT_VLLM_MEM)
 
     install_cell = code_cell(
-        "!pip install --no-index --find-links \\\n"
-        "    /kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels \\\n"
-        "    arc-agi python-dotenv numpy"
+        "import subprocess, sys\n"
+        "subprocess.run([\n"
+        "    sys.executable, '-m', 'pip', 'install', '--no-index',\n"
+        "    '--find-links', '/kaggle/input/arc-prize-2026-arc-agi-3/arc_agi_3_wheels',\n"
+        "    'arc-agi', 'python-dotenv', 'numpy'\n"
+        "], check=True)"
     )
 
     # We write the agent to /tmp/ (not /kaggle/working/) so it does NOT appear
@@ -263,6 +296,8 @@ def build() -> dict:
         # GPU submissions keep LINGJING_LLM=on. A missing wheel, a CUDA mismatch,
         # or a server that never opens /v1/models fails the cell instead of
         # silently scoring with the LLM switched off.
+        # SELFLEARN_LLM is the master switch (1 = 大模型, 0 = 原策略/纯算法).
+        os.environ['SELFLEARN_LLM'] = '{selflearn}'
         os.environ['LINGJING_LLM'] = '{llm_env_default}'
         os.environ.setdefault('LINGJING_LLM_URL', 'http://127.0.0.1:1234/v1')
         os.environ.setdefault('LINGJING_LLM_MODEL', 'vrfai/Qwen3.6-27B-FP8')
@@ -416,6 +451,7 @@ def build() -> dict:
                 'model': os.environ['LINGJING_LLM_MODEL'],
                 'enable_internet': False,
                 'required_tag': 'llm-whole-qwen',
+                'selflearn_llm': os.environ.get('SELFLEARN_LLM', '0'),
                 'llm_whole': os.environ['LINGJING_LLM_WHOLE'],
                 'llm_view': os.environ.get('LINGJING_LLM_VIEW', 'planner'),
                 'max_model_len': os.environ.get('LINGJING_VLLM_MAX_LEN', '{vllm_max_len}'),
@@ -426,8 +462,9 @@ def build() -> dict:
             )
             print('PHASE_B_FINGERPRINT', _json.dumps(_fp), flush=True)
         else:
-            print('VLLM_SKIP cpu-build', flush=True)
+            print('VLLM_SKIP selflearn_llm={selflearn} llm={llm_env_default}', flush=True)
         open('/kaggle/working/LINGJING_LLM.txt', 'w').write(os.environ['LINGJING_LLM'])
+        open('/kaggle/working/SELFLEARN_LLM.txt', 'w').write(os.environ['SELFLEARN_LLM'])
         """
     )
     vllm_cell = code_cell(vllm_cell_source)
@@ -442,7 +479,7 @@ def build() -> dict:
                   --retry-max-time 600 http://gateway:8001/api/games
 
             # Copy the framework into a writable location.
-            !cp -r /kaggle/input/competitions/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents \\
+            !cp -r /kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents \\
                    /kaggle/working/ARC-AGI-3-Agents
 
             # Drop our agent + llm_policy + lingjing_solo into the framework tree.
@@ -480,6 +517,9 @@ def build() -> dict:
             !python -c "import sys; sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents'); sys.path.insert(0,'/kaggle/working/ARC-AGI-3-Agents/arc_adaptor'); from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router'), BUILD_TAG; assert 'llm-structured-view' in BUILD_TAG, BUILD_TAG; open('/kaggle/working/BUILD_TAG.txt','w').write(BUILD_TAG); print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
 
             _llm_flag = os.environ.get('LINGJING_LLM', '{llm_env_default}')
+            _selflearn_flag = os.environ.get('SELFLEARN_LLM', '{selflearn}')
+            if _selflearn_flag != '{selflearn}':
+                raise SystemExit('SELFLEARN_LLM_DRIFT notebook=%s runtime=%s' % ('{selflearn}', _selflearn_flag))
             if _llm_flag.lower() in ('1', 'on', 'true', 'yes'):
                 import json as _json
                 from pathlib import Path as _Path
@@ -501,7 +541,7 @@ def build() -> dict:
                 or not _tag.startswith('smart-router')
             ):
                 raise SystemExit('BUILD_TAG_MISMATCH %s' % _tag)
-            print('PHASE_B_OK', _tag, 'LLM', _llm_flag, flush=True)
+            print('PHASE_B_OK', _tag, 'LLM', _llm_flag, 'SELFLEARN_LLM', _selflearn_flag, flush=True)
 
             # Point the framework at the gateway sidecar.
             with open('/kaggle/working/ARC-AGI-3-Agents/.env', 'w') as f:
@@ -515,6 +555,7 @@ def build() -> dict:
         RECORDINGS_DIR=/kaggle/working/server_recording
         AETHER_LLM=0
         LINGJING_SCRIPT_DEBUG=0
+        SELFLEARN_LLM={selflearn}
         LINGJING_LLM={{_llm_flag}}
         LINGJING_LLM_URL=http://127.0.0.1:1234/v1
         LINGJING_LLM_MODEL=vrfai/Qwen3.6-27B-FP8
@@ -625,9 +666,12 @@ def main() -> None:
             f"{sorted(_ACCELERATORS)}"
         )
     NOTEBOOK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    NOTEBOOK_PATH.write_text(json.dumps(build(), indent=1), encoding="utf-8")
-    print(f"[build_notebook] Wrote {NOTEBOOK_PATH.relative_to(ROOT)}  "
-          f"(accelerator: {ACCELERATOR})")
+    NOTEBOOK_PATH.write_text(
+        json.dumps(build(), ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    print(f"[build_notebook] Wrote {NOTEBOOK_PATH.name}  "
+          f"(accelerator: {ACCELERATOR}, SELFLEARN_LLM: {SELFLEARN_LLM})")
 
     # Keep notebooks/kernel-metadata.json in sync so the user never has to
     # edit it just to flip CPU ↔ GPU / attach LLM datasets.
@@ -649,12 +693,13 @@ def main() -> None:
         if "accelerator" in meta:
             meta.pop("accelerator", None)
             dirty = True
-        if wanted:
+        if wanted and SELFLEARN_LLM == "1":
             if meta.get("dataset_sources") != _LLM_DATASET_SOURCES:
                 meta["dataset_sources"] = list(_LLM_DATASET_SOURCES)
                 dirty = True
         else:
-            # CPU floors-only: drop heavy model datasets to keep commits light.
+            # CPU floors-only, or SELFLEARN_LLM=0 (pure algorithm, no vLLM):
+            # drop heavy model datasets to keep commits light.
             if meta.get("dataset_sources"):
                 meta["dataset_sources"] = []
                 dirty = True

@@ -264,6 +264,29 @@ def _load_dotenv() -> None:
             continue
 
 
+def selflearn_llm_enabled() -> bool:
+    """总开关：SELFLEARN_LLM=1 → 大模型决策层；=0 → 原策略（纯算法）。
+
+    这是 ``SELFLEARN_LLM`` 的权威实现，``agent/my_agent.py`` 与
+    ``agent/self_learner.py`` 使用同一套语义：
+
+    * ``SELFLEARN_LLM=1`` → 挂上 :class:`LLMPlanner`，由大模型出步；
+    * ``SELFLEARN_LLM=0`` → 不挂，整条链路退回纯算法（规则前瞻 / 搜索 / 兜底）；
+    * 未设置 → 兼容旧开关 ``LINGJING_LLM``（默认 off），老 notebook 行为不变。
+
+    显式设置 ``SELFLEARN_LLM`` 时它说了算，``LINGJING_LLM`` 只当兜底，
+    这样 A/B 两轮跑测只改一个变量。
+    """
+    sl = str(os.environ.get("SELFLEARN_LLM", "") or "").strip().lower()
+    if sl in ("1", "on", "true", "yes"):
+        return True
+    if sl in ("0", "off", "false", "no", "none"):
+        return False
+    return str(os.environ.get("LINGJING_LLM", "off")).strip().lower() in {
+        "1", "on", "true", "yes",
+    }
+
+
 class LLMPlanner:
     """Ask a model for the next few actions, from the same views the champion exposes."""
 
@@ -504,6 +527,8 @@ class LLMPlanner:
 
     def ready(self, step: int) -> bool:
         """Rate limit: do not spend a call on every single step."""
+        if not selflearn_llm_enabled():
+            return False
         return step - self._last_step >= self.every
 
     def decide(self, perc, grid, step: int, level: Any = None,
@@ -511,6 +536,10 @@ class LLMPlanner:
                outcome: Optional[str] = None, planner=None,
                fp: Any = None, inferred: Optional[list] = None) -> Optional[list[str]]:
         """Next action queue, or None (caller falls back to the rule planner)."""
+        # Fail-closed: SELFLEARN_LLM=0 means "no model in the chair", even if a
+        # caller built this object anyway. The rule planner keeps the game moving.
+        if not selflearn_llm_enabled():
+            return None
         if not self.ready(step):
             return None
         key = (level, fp)
