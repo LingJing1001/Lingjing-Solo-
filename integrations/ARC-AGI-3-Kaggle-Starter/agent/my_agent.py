@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 import traceback
 from collections import deque
@@ -30,6 +31,88 @@ from arcengine import FrameData, GameAction, GameState
 from agents.agent import Agent
 
 _FILE = Path(__file__).resolve()
+
+
+# --- 线程隔离：GameAction 是进程级枚举单例 --------------------------------
+# 竞态复刻（本地实测，2026-10-22）：同一竞赛模式网关下
+#   单局 cd82 -> 100.00 分 / 6 关 / 73 步（与顺序基准一致）
+#   25 局并发 cd82 -> 2 关 / 800 步；逐帧比对显示
+#   前 5 步（非点击动作）与单局【逐像素一致】，从第 6 步（首个 ACTION6）起分叉。
+# 原因：arcengine 的 GameAction 是枚举单例，ACTION6 全进程只有一个实例；
+#   `action.set_data({"x":..,"y":..})` 直接把坐标写在这个共享成员上，而框架
+#   `agents/agent.py::do_action_request` 要等到下一行才 `action.action_data.model_dump()`
+#   把它读出来发出去。25 局并发 = 25 个线程共用一个进程，于是 A 局刚写好的
+#   坐标会被 B 局的 set_data 覆盖 -> A 局的点击落到 B 局的格子上。
+#   计划型动作全是「按下标发坐标」，一被串坐标就全线崩掉（13 局 WIN -> 3 局 WIN）。
+#
+# 修法：把 action_data / reasoning 换成【线程本地】存储。
+#   同一线程内 set_data -> action_data 读写一致（框架照常工作）；
+#   跨线程互不可见（竞态消失）。不改动框架代码 —— 竞赛 rerun 的框架来自
+#   Kaggle 官方 input 包，改不了，只能在我们自己掌控的 my_agent.py 里修。
+def _install_thread_local_action_state() -> bool:
+    """把 GameAction 的可变载荷改成线程本地。返回是否成功安装。"""
+    ga = GameAction
+    if getattr(ga, "_lingjing_tls_actions", False):
+        return True
+    try:
+        # 先快照原始实例属性（此时读到的还是 instance __dict__ 里的值）
+        base = {m.name: m.action_data for m in ga}
+        tls = threading.local()
+
+        def _get_action_data(self: Any) -> Any:
+            store = getattr(tls, "data", None)
+            if store is not None:
+                val = store.get(self.name)
+                if val is not None:
+                    return val
+            return base.get(self.name)
+
+        def _set_action_data(self: Any, value: Any) -> None:
+            base[self.name] = value
+            store = getattr(tls, "data", None)
+            if store is None:
+                store = {}
+                tls.data = store
+            store[self.name] = value
+
+        def _get_reasoning(self: Any) -> Any:
+            store = getattr(tls, "reasoning", None)
+            if store is not None and self.name in store:
+                return store[self.name]
+            return self.__dict__.get("_lingjing_reasoning_base")
+
+        def _set_reasoning(self: Any, value: Any) -> None:
+            self.__dict__["_lingjing_reasoning_base"] = value
+            store = getattr(tls, "reasoning", None)
+            if store is None:
+                store = {}
+                tls.reasoning = store
+            store[self.name] = value
+
+        # property 是 data descriptor，优先级高于实例 __dict__，
+        # 因此旧的 instance attribute 会被自动遮蔽，不需要改写成员本身。
+        ga.action_data = property(_get_action_data, _set_action_data)  # type: ignore[attr-defined]
+        ga.reasoning = property(_get_reasoning, _set_reasoning)  # type: ignore[attr-defined]
+        ga._lingjing_tls_actions = True  # type: ignore[attr-defined]
+        ga._lingjing_tls_base = base  # type: ignore[attr-defined]
+        ga._lingjing_tls_store = tls  # type: ignore[attr-defined]
+        return True
+    except Exception as exc:  # noqa: BLE001 — 装不上就退回原行为，绝不能拖垮开局
+        print(
+            f"[action-isolation] FAILED to install thread-local action state: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+
+_ACTION_ISOLATION_OK = _install_thread_local_action_state()
+print(
+    f"[action-isolation] thread-local GameAction state: "
+    f"{'ON' if _ACTION_ISOLATION_OK else 'OFF (fallback: cross-thread coord race remains)'}",
+    flush=True,
+)
+
 
 
 def _bootstrap_paths() -> None:
