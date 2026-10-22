@@ -913,6 +913,35 @@ raw  = self.arc_env.step(action, data=data, ...)
 **⇒ 一句话：0.15 → 两位数这一跳，一半在 §8.5 的路径修复（把 agent 跑起来），
 另一半在 §8.11 的线程隔离修复（让 agent 跑对）。缺任何一个都还是 0.0x。**
 
+#### 8.11.8 全队暴露面（这一条比修复本身更重要）
+
+**根副本 `ARC-AGI-3-Kaggle-Starter/` 的 12 个 agent 文件里共有 40+ 处 `action.set_data({...})`，
+全部踩同一个竞态**——谁在那边提并发 kernel，谁就中招，而且**症状是"分数莫名偏低"，极难归因**。
+
+已做的处置：
+
+| 对象 | 状态 |
+|---|---|
+| 根副本 `agent/my_agent.py`（**根副本 notebook 内嵌的就是它**，sha256 一致 ⇒ 覆盖队友提交通路） | ✅ 已注入补丁（备份在 `agent/_bak_isolation_20261022_213617/`） |
+| 根副本 `agent/lingjing_team_agent.py` | ✅ 已注入补丁（同备份目录） |
+| 根副本其余 10 个 agent 变体 / baselines | ⚠️ **未改**（多为基准与备选，不是提交通路）——需要谁在用谁加 |
+| 大模型臂 Duck harness（`integrations/duck-kaggle/`） | ✅ **天然免疫**：它直接构造 `arcengine.ActionInput(id=..., data=...)`，**从不调用 `set_data()`** |
+
+**⇒ 结论：P0-B（Duck harness）这条线不需要为这个 bug 做任何改动。**
+
+#### 8.11.9 落地方式：标准件 + 同步生成器（防两份拷贝漂移）
+
+竞赛 rerun 的框架树来自 Kaggle 官方 input 包（改不了），notebook 也只把 `my_agent.py`
+拷进 `agents/templates/` ⇒ **提交用的 agent 必须自包含**。所以做成：
+
+| 文件 | 作用 |
+|---|---|
+| `scripts/action_isolation_patch.py` | **唯一真源**，可被任何 agent `from action_isolation_patch import install; install()` 复用 |
+| `scripts/sync_action_isolation.py` | 机械地把标准件写进 `agent/my_agent.py` 与 vendor 模板副本 |
+| `scripts/check_action_isolation.py` | **永久防线**：① 竞态复现（未打补丁时串号率必须 >0）② 补丁存在性 ③ 模板副本与 `agent/` 逐字一致 ④ 内联实现与标准件**同源** ⑤ 打补丁后串号率必须 = 0 |
+
+**⇒ 任何人改了这个补丁，跑一遍 `scripts/check_action_isolation.py` 就能知道有没有写坏。**
+
 ---
 
 ## 9. 更新后的优化 / 升级路线（第二轮之后）
