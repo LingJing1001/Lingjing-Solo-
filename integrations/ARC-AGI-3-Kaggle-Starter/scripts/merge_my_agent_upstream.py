@@ -72,6 +72,15 @@ TAKE_OURS: set[tuple] = {
     # ours: C++ Visited acceleration + the cosine-dedup lifetime fix that
     # upstream also carries (_n_seen[0] = 0 per depth iteration).
     ("meth", "MyAgent", "_iddfs_search"),
+    # ours: the whole-qwen batch call carries history/briefing, and the legacy
+    # planner it delegates to accepts them too. Upstream's pair takes neither,
+    # so taking upstream here breaks the whole-episode path with
+    # "TypeError: _try_llm_batch() got an unexpected keyword argument 'history'".
+    ("meth", "MyAgent", "_try_llm_batch"),
+    ("meth", "MyAgent", "_legacy_plan_specs"),
+    # ours: inserts the lexicon parent dir at the FRONT of sys.path, so the
+    # lexicon we ship is the one that gets imported.
+    ("func", "_lp_load"),
     # ours: a strict superset of upstream's capability tags.
     ("assign", "BUILD_TAG"),
     # ours: upstream's protected set + cn04/dc22/m0r0/sp80 (all four have a
@@ -86,8 +95,12 @@ TAKE_UPSTREAM: set[tuple] = {
     ("func", "_llm_preceax_on"),      # upstream docstring
     ("func", "_llm_spec_to_action"),  # upstream docstring
     ("func", "_lp_action_spec"),      # upstream docstring
-    ("func", "_lp_load"),             # upstream's lexicon-dir probe was refactored later
     ("meth", "MyAgent", "_duck_tick"),  # upstream adds LINGJING_DUCK_FORCE_GIDS
+    # Docstring-only differences: upstream's are better written.
+    ("meth", "MyAgent", "_lp_observe"),
+    ("meth", "MyAgent", "_clear_llm_queue"),
+    ("meth", "MyAgent", "_pop_llm_queue"),
+    ("meth", "MyAgent", "_lp_plan_specs"),
 }
 
 # ours-only symbols, inserted after a stable anchor.

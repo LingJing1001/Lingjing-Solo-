@@ -56,6 +56,12 @@ def _bootstrap_paths() -> None:
                     sys.path.insert(0, s)
         except OSError:
             continue
+    # 让同目录的 duck_bridge.py 可被 `from duck_bridge import DuckBridge` 找到。
+    # 本地是 agent/；Kaggle 上这个文件不随行，第 2023 行的 try/except 会兜底
+    # 成静默禁用 —— 这里只管把目录放进 path，不替它决定要不要用。
+    here = str(_FILE.parent)
+    if here not in seen:
+        sys.path.insert(0, here)
 
 
 _bootstrap_paths()
@@ -129,7 +135,7 @@ _ENGINE: Any = None
 # 白名单：只给"卡住"的局开，且挂在各局专用计划之后 → 已 WIN 的局零回归风险。
 _ENGINE_SOLVER_GAMES = frozenset({
     "cn04", "dc22", "g50t", "ka59", "lf52", "lp85", "m0r0",
-    "re86", "s5i5", "sk48", "tu93",
+    "re86", "s5i5", "sk48", "sp80", "tu93",
 })
 # 校准 plan / INLINE 局：choose_action 入口禁止 engine_solver / AOP 抢占。
 _PLAN_PROTECTED_GAMES = frozenset({
@@ -170,6 +176,20 @@ def _engine_solver() -> Any:
 
 # --- 批量动作协议：一次 LLM 调用换多步 ------------------------------------
 def _llm_on() -> bool:
+    """总开关：SELFLEARN_LLM=1 → 大模型 planner；=0 → 原策略（纯算法）。
+
+    SELFLEARN_LLM 是权威开关，语义与 ``arc_adaptor/lexicon/llm_planner.py`` 和
+    ``agent/self_learner.py`` 一致（1|0，默认 0）。LINGJING_LLM 保留为旧开关：
+    只有在 SELFLEARN_LLM 未显式设置时才读它，因此老 notebook 行为不变。
+
+    =0 时整条大模型链路（lexicon planner / 整局千问 / 批量动作）都不装配，
+    choose_action 退回 engine solver + 校准计划 + CEAX 兜底。
+    """
+    sl = str(os.environ.get("SELFLEARN_LLM", "") or "").strip().lower()
+    if sl in ("1", "on", "true", "yes"):
+        return True
+    if sl in ("0", "off", "false", "no", "none"):
+        return False
     return str(os.environ.get("LINGJING_LLM", "off")).strip().lower() in {
         "1", "on", "true", "yes",
     }
@@ -183,16 +203,173 @@ def _llm_preceax_on() -> bool:
 
 
 def _llm_call_budget() -> tuple[int, int]:
-    """(stride, max_calls)。一次调用可能带多步，所以 cap 是调用次数不是步数。"""
+    """(stride, max_calls)。整局模式默认每步都问，上限跟 MAX_ACTIONS 对齐。"""
     try:
         stride = max(1, int(os.environ.get("LINGJING_LLM_STRIDE", "1") or 1))
     except (TypeError, ValueError):
         stride = 1
+    default_cap = "800" if _llm_whole_on() else "30"
     try:
-        cap = max(0, int(os.environ.get("LINGJING_LLM_MAX_CALLS", "30") or 30))
+        cap = max(0, int(os.environ.get("LINGJING_LLM_MAX_CALLS", default_cap) or default_cap))
     except (TypeError, ValueError):
-        cap = 30
+        cap = 800 if _llm_whole_on() else 30
     return stride, cap
+
+
+def _llm_stall_threshold() -> int:
+    raw = os.environ.get("LINGJING_LLM_STALL", "80")
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 80
+
+
+def _llm_whole_on() -> bool:
+    """非 plan 局由千问打完整局。默认开；LINGJING_LLM_WHOLE=off 退回旧的 30 次补丁。"""
+    return str(os.environ.get("LINGJING_LLM_WHOLE", "on")).strip().lower() not in {
+        "0", "off", "false", "no", "none",
+    }
+
+
+def _load_llm_policy_plan() -> Any:
+    """Return llm_policy.propose_plan if available (legacy batch fallback)."""
+    global _POLICY_READY, _POLICY_FN
+    if _POLICY_READY:
+        return _POLICY_FN
+    _POLICY_READY = True
+    import importlib
+
+    for mod_name in ("llm_policy", "agents.templates.llm_policy"):
+        try:
+            mod = importlib.import_module(mod_name)
+            fn = getattr(mod, "propose_plan", None)
+            if fn is not None:
+                _POLICY_FN = fn
+                return _POLICY_FN
+        except Exception:  # noqa: BLE001
+            continue
+    cands: list[Path] = [_FILE.parent, Path.cwd() / "agent", Path.cwd()]
+    for c in cands:
+        try:
+            if not (c / "llm_policy.py").is_file():
+                continue
+        except OSError:
+            continue
+        key = str(c)
+        if key not in sys.path:
+            sys.path.insert(0, key)
+        try:
+            _POLICY_FN = importlib.import_module("llm_policy").propose_plan
+            return _POLICY_FN
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{BUILD_TAG}] llm_policy.propose_plan fail @ {key}: {exc}", flush=True)
+    return None
+
+
+def _llm_action_sig(act: GameAction) -> str:
+    name = str(getattr(act, "name", "") or "")
+    data = getattr(act, "data", None)
+    if not isinstance(data, dict):
+        data = getattr(act, "_data", None)
+    if isinstance(data, dict) and ("x" in data or "y" in data):
+        return f"{name}:{data.get('x')},{data.get('y')}"
+    return name
+
+
+def _llm_unused_action(valid: list[str], dead: set[str]) -> Optional[GameAction]:
+    """Pick a legal key that has not already been recorded as no_effect."""
+    for name in valid:
+        if name == "ACTION6" or name in dead:
+            continue
+        return _as_game_action(name)
+    return None
+
+
+def _try_llm_action(
+    *,
+    game_id: str,
+    levels: int,
+    latest_frame: FrameData,
+    note: str = "",
+    history: str = "",
+    briefing: str = "",
+) -> Optional[GameAction]:
+    """Consult local vLLM JSON policy; None on any failure (fail-closed)."""
+    if not _llm_on():
+        return None
+    try:
+        from llm_policy import propose_action as _llm_propose
+    except Exception:
+        try:
+            from agents.templates import llm_policy as _lp  # type: ignore
+
+            _llm_propose = _lp.propose_action
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{BUILD_TAG}] llm_policy import fail: {exc}", flush=True)
+            return None
+    valid = _valid_names(latest_frame)
+    if not valid:
+        return None
+    try:
+        grid = extract_grid(latest_frame)
+    except Exception:
+        grid = None
+    try:
+        act = _llm_propose(
+            game_id=game_id,
+            levels=levels,
+            valid_actions=valid,
+            grid=grid,
+            game_action_cls=GameAction,
+            note=note,
+            history=history,
+            briefing=briefing,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{BUILD_TAG}] llm_policy error: {type(exc).__name__}: {exc}", flush=True)
+        return None
+    if act is None:
+        return None
+    return act
+
+
+def _try_import_lingjing_explore():
+    """加载 C++ 探索核（可选）。失败则返回 None，搜索回退纯 Python。
+
+    DLL 路径：integrations/.../cpp_explore/bin/lingjing_explore.dll
+    开关：LINGJING_CPP_EXPLORE=0/off 强制走 Python（便于 A/B 对比）。
+    """
+    if str(os.environ.get("LINGJING_CPP_EXPLORE", "1")).strip().lower() in {
+        "0", "off", "false", "none", "no",
+    }:
+        return None
+    try:
+        here = Path(__file__).resolve()
+        # agent/my_agent.py → parents[1] = Kaggle-Starter
+        # templates/my_agent.py → parents[2] ≈ ARC-AGI-3-Agents，再上一级到 Starter
+        candidates = [
+            here.parents[1] / "cpp_explore" / "python",
+            here.parents[2] / "cpp_explore" / "python" if len(here.parents) > 2 else None,
+            here.parents[3] / "integrations" / "ARC-AGI-3-Kaggle-Starter" / "cpp_explore" / "python"
+            if len(here.parents) > 3 else None,
+        ]
+        for p in candidates:
+            if p is None:
+                continue
+            try:
+                if p.is_dir():
+                    s = str(p)
+                    if s not in sys.path:
+                        sys.path.insert(0, s)
+            except OSError:
+                continue
+        import lingjing_explore as _lj  # type: ignore
+
+        _ = _lj.version()
+        return _lj
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{BUILD_TAG}] cpp-explore offline: {type(exc).__name__}: {exc}", flush=True)
+        return None
 
 
 def _plan_locked(gid: str) -> bool:
@@ -635,45 +812,6 @@ BUILD_TAG = (
 AGENT_BRAND = "lingjing-smart"
 
 
-def _try_import_lingjing_explore():
-    """加载 C++ 探索核（可选）。失败则返回 None，搜索回退纯 Python。
-
-    DLL 路径：integrations/.../cpp_explore/bin/lingjing_explore.dll
-    开关：LINGJING_CPP_EXPLORE=0/off 强制走 Python（便于 A/B 对比）。
-    """
-    if str(os.environ.get("LINGJING_CPP_EXPLORE", "1")).strip().lower() in {
-        "0", "off", "false", "none", "no",
-    }:
-        return None
-    try:
-        here = Path(__file__).resolve()
-        # agent/my_agent.py → parents[1] = Kaggle-Starter
-        # templates/my_agent.py → parents[2] ≈ ARC-AGI-3-Agents，再上一级到 Starter
-        candidates = [
-            here.parents[1] / "cpp_explore" / "python",
-            here.parents[2] / "cpp_explore" / "python" if len(here.parents) > 2 else None,
-            here.parents[3] / "integrations" / "ARC-AGI-3-Kaggle-Starter" / "cpp_explore" / "python"
-            if len(here.parents) > 3 else None,
-        ]
-        for p in candidates:
-            if p is None:
-                continue
-            try:
-                if p.is_dir():
-                    s = str(p)
-                    if s not in sys.path:
-                        sys.path.insert(0, s)
-            except OSError:
-                continue
-        import lingjing_explore as _lj  # type: ignore
-
-        _ = _lj.version()
-        return _lj
-    except Exception as exc:  # noqa: BLE001
-        print(f"[{BUILD_TAG}] cpp-explore offline: {type(exc).__name__}: {exc}", flush=True)
-        return None
-
-
 def _r3_time_limit(default: float = 20.0) -> float:
     """LINGJING_R3_TLIMIT caps IDDFS/shadow search seconds (full-25 must not burn 500s/unknown)."""
     raw = str(os.environ.get("LINGJING_R3_TLIMIT", "")).strip()
@@ -909,30 +1047,12 @@ _WA30_PLANS: dict[int, list[int]] = {
         4, 3, 4, 3, 4, 1, 3, 5, 3, 3, 3, 5, 4, 3, 4, 3, 4, 1, 1, 1, 3, 5, 3, 5,
         4, 3, 4, 3, 4, 3, 2, 4, 4, 4, 1, 5, 1, 5, 4, 3, 4, 3, 4, 3, 4, 3, 2, 3,
         1, 5, 1, 5, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4],
-    # L5（index 4）：无软墙，x=36 硬墙缝。玩家自运 (60,52)/(56,8)/(44,56)，其余 NPC。
-    # 106 步 ≤125；scripts/wa30_l4_solve.py 冷回放 L0–L4→5。
-    4: [2, 2, 2, 2, 4, 4, 4, 4, 5, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5,
-        1, 1, 4, 4, 2, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 4, 4, 4, 4, 5, 2, 2, 2, 2, 2, 2,
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 5, 2, 4, 4, 1, 1, 4, 4, 4, 4, 4, 4, 2, 2, 2,
-        2, 2, 2, 4, 5, 1, 1, 1, 1, 1, 1, 3, 1, 3, 3, 3, 3, 3, 1, 1, 3, 3, 3, 2, 5],
-    # L6（index 5）：追杀 jqzhxgbmtz（面朝 4 格 ACTION5）再运块出坏区进区。50 步 ≤75。
-    # scripts/wa30_l5_solve.py 冷回放 → li=6。
-    5: [1, 1, 1, 1, 1, 1, 1, 1, 2, 4, 4, 4, 4, 4, 4, 4, 5, 4, 4, 5, 3, 3, 3, 1, 1, 3, 3, 5,
-        2, 2, 4, 4, 4, 4, 4, 4, 2, 4, 5, 1, 3, 3, 3, 3, 1, 1, 1, 3, 3, 5],
-    # L7（index 6）：同机制杀抗运块。50 步；scripts/wa30_l6_solve.py → li=7。
-    6: [1, 4, 4, 4, 4, 4, 4, 4, 4, 2, 5, 2, 5, 1, 3, 3, 3, 3, 3, 5, 3, 1, 5, 2, 3, 3, 3, 3,
-        3, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5],
-    # L8（index 7）：双抗 BFS 杀 + 运块/等 ferry。123 步 ≤150；scripts/wa30_l7_solve.py → li=8。
-    7: [1, 5, 4, 4, 4, 1, 5, 2, 2, 4, 4, 4, 4, 4, 2, 2, 2, 3, 3, 5, 3, 1, 5, 4, 4, 4, 4, 4, 4, 4,
-        2, 2, 5, 3, 3, 3, 3, 3, 3, 3, 3, 2, 5, 1, 1, 1, 4, 2, 2, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        2, 2, 2, 3, 5, 3, 3, 3, 1, 4, 3, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 1, 1, 1, 1, 3, 3, 3, 3, 5,
-        2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 4, 1, 5, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2,
-        1, 2, 1, 2, 1],
-    # L9（index 8）：先运右侧块 → greedy 杀抗 → 收尾/等 ferry。66 步 ≤70；终局 WIN（非 li+1）。
-    # scripts/wa30_l8_hybrid.py 冷回放 → GameState.WIN。
-    8: [4, 4, 4, 4, 4, 4, 5, 1, 1, 5, 3, 2, 5, 1, 4, 5, 3, 3, 5, 2, 2, 2, 3, 3, 3, 3, 1, 1, 1, 5,
-        2, 2, 2, 2, 3, 3, 3, 3, 3, 2, 2, 5, 1, 1, 3, 3, 1, 5, 4, 1, 1, 4, 4, 4, 4, 1, 5, 1, 2, 1,
-        2, 1, 2, 1, 2, 1],
+    # L5–L7（index 4/5/6）：外部 beam solver 产出，链式复核验证 PASS
+    # （_diag_20261011/wa30_l456_chain_verify_out.txt）。index 3 用上面那条更新的
+    # 92 步版（scripts/wa30_l3_solve10.py 冷回放 L0–L3→4），不取旧分支的 68 步版。
+    4: [2, 2, 2, 2, 4, 2, 3, 5, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 5, 4, 4, 4, 4, 4, 1, 4, 1, 1, 1, 1, 4, 4, 4, 4, 4, 1, 3, 5, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 1, 4, 4, 4, 4, 4, 4, 2, 2, 2, 4, 4, 4, 4, 4, 2, 5, 1, 1, 1, 1, 3, 3, 3, 3, 1, 3, 3, 3, 3, 3, 3, 1, 1, 1, 3, 3, 3, 2, 5],
+    5: [1, 3, 1, 1, 5, 1, 1, 1, 4, 4, 4, 4, 4, 4, 1, 4, 5, 4, 5, 3, 3, 3, 3, 1, 1, 3, 1, 5, 2, 4, 4, 2, 2, 2, 4, 1, 4, 4, 4, 4, 4, 2, 3, 5, 1, 3, 3, 3, 3, 3, 1, 1, 3, 5],
+    6: [4, 5, 3, 3, 3, 3, 2, 3, 1, 1, 1, 1, 5, 4, 4, 4, 4, 4, 4, 4, 5, 3, 3, 3, 2, 3, 3, 2, 5, 1, 4, 5, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 5, 3, 3, 3, 3, 3, 3, 3, 1, 3, 3, 5],
 }
 # sb26: 专用点击计划（sb26_click_solver.py 校准，8 关真机回放验证 WIN，全程 124 步）。
 # 语义：选中-放置两段点击 + ACTION5 织布提交；条目 (action_id, x, y)，(5,0,0)=提交。
@@ -1004,7 +1124,7 @@ _TR87_PLANS: dict[int, list[int]] = {
 # 向左一步过关，14 步（预算 50）。
 # 离线回放注意：逐步 step 时 _state.name 不暴露 WIN，过关信号是 levels_completed() 自增，且须在获胜
 # 动作即停计划——尾部动作会漏进下一关（线上控制器见 WIN 即停，天然满足）。
-# L4–L6 已通（三法术 sieesc/tevyeq/fibcey）。语义：(action_id, x, y)；aid=1-4 纯键盘，aid=6 点击 (x,y)。
+# L4-L6 未探（L4 起 fibcey+sieesc 双法术）。语义：(action_id, x, y)；aid=1-4 纯键盘，aid=6 点击 (x,y)。
 _SC25_PLANS: dict[int, list[tuple[int, int, int]]] = {
     0: [(6, 10, 10), (6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61), (6, 10, 10),
         (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0),
@@ -1041,20 +1161,6 @@ _SC25_PLANS: dict[int, list[tuple[int, int, int]]] = {
         (6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61),
         (6, 26, 51), (6, 31, 51), (6, 31, 56),
         (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)],
-    # L6（index 5）：缩→tele smzaik(13,41)→(17,37) 面朝上 fibcey 毁 tagsmh（拔 dosorb）→
-    # 扩→tele tevyeq(53,37)→左一步面朝左 fibcey 毁 seofsw-tagsmh（拔 seofsw-dosorb）→
-    # 再 tele 中垫(29,33)→上右上五步进 exydhv(32,8)。35 步 ≤60；冷回放 WIN lc=6。
-    5: [(6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61),
-        (6, 26, 51), (6, 31, 51), (6, 31, 56),
-        (4, 0, 0), (4, 0, 0), (1, 0, 0), (1, 0, 0),
-        (6, 31, 51), (6, 31, 56), (6, 31, 61),
-        (6, 31, 51), (6, 26, 56), (6, 36, 56), (6, 31, 61),
-        (6, 26, 51), (6, 31, 51), (6, 31, 56),
-        (3, 0, 0),
-        (6, 31, 51), (6, 31, 56), (6, 31, 61),
-        (6, 26, 51), (6, 31, 51), (6, 31, 56),
-        (1, 0, 0), (4, 0, 0),
-        (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)],
 }
 # bp35 L1: 精确世界模型 + 有界闭包搜索产出的 15 击计划（10 移动 + 5 点击，≤14 已机器证明无解）。
 # 语义：(action_id, x, y)；aid=3 ACTION3(左)、aid=4 ACTION4(右)、aid=6 ACTION6 点击。
@@ -1081,118 +1187,9 @@ _BP35_PLANS: dict[int, list[tuple[int, int, int]]] = {
         (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0),
         (6, 48, 30), (6, 48, 30), (3, 0, 0), (3, 0, 0), (6, 42, 36), (3, 0, 0),
         (6, 30, 30)],
-    # L3（index 2）：type1↔2 封洞/开门 + x 平台坠落；x=2 竖井下宝石行。36 步。
-    # scripts/bp35_l3_route.py 冷回放 → li=3。
-    2: [(6, 30, 36), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 36, 30), (6, 30, 30), (6, 24, 30),
-        (6, 18, 30), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (6, 30, 24), (6, 36, 24),
-        (6, 30, 30), (6, 36, 30), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0),
-        (6, 36, 30), (6, 30, 30), (6, 24, 30), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0),
-        (3, 0, 0), (6, 12, 30), (4, 0, 0), (6, 30, 36), (4, 0, 0), (4, 0, 0), (4, 0, 0),
-        (4, 0, 0)],
-    # L4（index 3）：g 翻转重力；y=21 清竖井 x；force-click 屏外 g；底行翻回落宝石。34 步。
-    # scripts/bp35_l4_route.py 冷回放 → li=4。
-    3: [(4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 30, 24), (6, 12, 32), (6, 18, 32),
-        (6, 30, 44), (6, 36, 44), (6, 42, 44), (6, 48, 44), (3, 0, 0), (3, 0, 0), (3, 0, 0),
-        (3, 0, 0), (3, 0, 0), (3, 0, 0), (4, 0, 0), (4, 0, 0), (6, 42, 38), (6, 48, 38),
-        (6, 42, 44), (6, 48, 44), (6, 30, 38), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0),
-        (6, 18, 66), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (6, 24, 38)],
-    # L5（index 4）：开 g→reflip；x=9 天井→点墙左移；坠 (6,7) 走宝石。15 步。
-    # scripts/bp35_l5_route.py → li=5。
-    4: [(4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 48, 36), (6, 48, 110), (4, 0, 0),
-        (4, 0, 0), (6, 54, 30), (6, 48, 36), (3, 0, 0), (6, 42, 36), (3, 0, 0), (3, 0, 0),
-        (3, 0, 0)],
-    # L6（index 5）：右到 x=8；force-click 底 g(4,31) 翻落并清挡；左走宝石。12 步。
-    # scripts/bp35_l6_route.py / _bp35_l6_plan.txt → li=6。
-    5: [(4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 24, 84),
-        (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0)],
-    # L7（index 6）：type1/2 封顶封底→x2 上翻→尖刺夹缝→x7 柱上飞→x9 井下落→y23 左落宝石。56 步。
-    # scripts/bp35_l7_route.py / _bp35_l7_plan.txt → li=7。
-    6: [(6, 36, 48), (4, 0, 0), (4, 0, 0), (4, 0, 0), (6, 0, 36), (4, 0, 0), (6, 0, 26),
-        (4, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (6, 36, 54), (6, 30, 54), (6, 24, 54),
-        (6, 0, 36), (6, 36, 20), (6, 30, 20), (6, 24, 20), (6, 0, 26), (3, 0, 0), (3, 0, 0),
-        (3, 0, 0), (6, 36, 42), (6, 30, 48), (4, 0, 0), (6, 18, 54), (6, 0, 36), (6, 18, 20),
-        (6, 24, 20), (6, 36, 20), (6, 42, 20), (6, 0, 26), (4, 0, 0), (4, 0, 0), (6, 30, 48),
-        (6, 42, 48), (6, 0, 30), (6, 36, 26), (4, 0, 0), (6, 36, 14), (6, 0, 26), (6, 42, 36),
-        (4, 0, 0), (6, 42, 30), (6, 42, 54), (6, 0, 42), (4, 0, 0), (4, 0, 0), (3, 0, 0),
-        (3, 0, 0), (6, 0, 26), (3, 0, 0), (3, 0, 0), (3, 0, 0), (3, 0, 0), (6, 0, 36)],
-    # L8（index 7）：e 蔓延架棚过刺→y22 type1 接住→y17 绕柱→flip 落宝石。123 步。
-    # scripts/bp35_l8_route.py / _bp35_l8_plan.txt → li=8。
-    7: [        (6, 12, 18), (6, 18, 18), (6, 24, 18), (6, 30, 18),
-        (6, 24, 18), (6, 36, 18), (6, 30, 18), (6, 42, 18),
-        (6, 36, 18), (6, 48, 18), (6, 42, 18), (6, 54, 18),
-        (6, 48, 18), (4, 0, 0), (4, 0, 0), (6, 30, 30),
-        (6, 36, 36), (4, 0, 0), (6, 42, 36), (4, 0, 0),
-        (6, 48, 24), (6, 48, 36), (4, 0, 0), (6, 54, 36),
-        (4, 0, 0), (6, 48, 30), (6, 54, 30), (4, 0, 0),
-        (3, 0, 0), (6, 48, 30), (6, 54, 30), (4, 0, 0),
-        (3, 0, 0), (6, 48, 30), (6, 54, 30), (4, 0, 0),
-        (3, 0, 0), (6, 48, 30), (6, 54, 30), (4, 0, 0),
-        (3, 0, 0), (6, 48, 30), (6, 54, 30), (4, 0, 0),
-        (3, 0, 0), (6, 42, 36), (6, 48, 36), (6, 18, -6),
-        (6, 24, -6), (6, 30, -6), (6, 36, -6), (6, 30, -6),
-        (6, 36, -6), (6, 36, -12), (6, 42, -12), (6, 36, -6),
-        (6, 36, 0), (6, 36, -6), (6, 30, -6), (6, 36, -6),
-        (6, 36, -12), (6, 42, -12), (6, 36, -6), (6, 48, -12),
-        (6, 42, -12), (6, 48, -12), (6, 54, -12), (6, 48, -12),
-        (6, 48, -18), (6, 48, -12), (6, 42, -12), (6, 48, -12),
-        (6, 54, -12), (6, 48, -12), (6, 48, -18), (6, 48, -12),
-        (6, 42, -12), (6, 48, -12), (6, 54, -12), (6, 48, -12),
-        (6, 54, -12), (6, 54, -18), (6, 54, -12), (6, 48, -12),
-        (6, 54, -12), (6, 54, -18), (6, 54, -12), (6, 48, -12),
-        (6, 54, -12), (6, 54, -18), (6, 54, -12), (6, 48, -12),
-        (6, 54, -12), (6, 54, -18), (6, 54, -12), (3, 0, 0),
-        (3, 0, 0), (3, 0, 0), (4, 0, 0), (4, 0, 0),
-        (4, 0, 0), (4, 0, 0), (6, 54, 30), (3, 0, 0),
-        (3, 0, 0), (3, 0, 0), (3, 0, 0), (4, 0, 0),
-        (3, 0, 0), (6, 24, 30), (6, 24, 30), (6, 24, 30),
-        (6, 30, 36), (4, 0, 0), (6, 36, 36), (4, 0, 0),
-        (6, 42, 36), (4, 0, 0), (6, 48, 36), (4, 0, 0),
-        (6, 48, 42), (6, 30, -54), (4, 0, 0)],
-    # L9 (index 8): e-shelf -> x4 climb -> flip-drop x9 -> shaft -> x0 fall gem. 127 steps <128.
-    # scripts/bp35_l9_route.py / _bp35_l9_plan.txt -> WIN.
-    8: [        (6, 36, 12), (6, 30, 12), (6, 30, 6), (6, 24, 6),
-        (6, 24, 0), (6, 24, -6), (6, 24, -12), (6, 18, -12),
-        (6, 24, -12), (6, 24, -6), (6, 24, -12), (6, 18, -12),
-        (6, 24, -12), (6, 24, -6), (6, 24, -12), (6, 18, -12),
-        (4, 0, 0), (4, 0, 0), (6, 30, 30), (6, 30, 30),
-        (6, 30, 30), (6, 30, 30), (6, 24, 36), (3, 0, 0),
-        (6, 24, 18), (6, 24, 30), (6, 24, 30), (6, 24, 30),
-        (6, 24, 30), (6, 24, 30), (6, 24, 30), (6, 24, 30),
-        (6, 24, 30), (6, 30, 36), (6, 36, 36), (6, 42, 36),
-        (6, 42, 42), (6, 42, 48), (6, 48, 48), (6, 30, 36),
-        (4, 0, 0), (6, 36, 36), (4, 0, 0), (6, 42, 36),
-        (4, 0, 0), (6, 0, 36), (6, 42, 32), (6, 42, 32),
-        (6, 48, 26), (4, 0, 0), (6, 54, 26), (4, 0, 0),
-        (6, 0, 38), (6, 54, 30), (6, 54, 30), (6, 54, 30),
-        (6, 54, 30), (6, 54, 30), (6, 54, 30), (6, 54, 30),
-        (6, 42, -12), (6, 48, -12), (6, 54, -12), (6, 54, -6),
-        (6, 6, -12), (6, 54, 30), (6, 54, 30), (6, 54, 30),
-        (6, 54, 30), (6, 48, 36), (3, 0, 0), (6, 42, 36),
-        (3, 0, 0), (6, 36, 36), (3, 0, 0), (6, 30, 36),
-        (3, 0, 0), (6, 24, 36), (3, 0, 0), (6, 18, 36),
-        (3, 0, 0), (6, 12, 36), (3, 0, 0), (6, 6, 36),
-        (3, 0, 0), (6, 0, 36), (3, 0, 0), (6, 0, 198),
-        (6, 0, 176), (6, 0, 102), (6, 0, 68), (6, 6, -6),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 0, 32),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 0, 32),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 0, 32),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 0, 32),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 0, 32),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 0, 32),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 0, 32),
-        (6, 0, 32), (6, 0, 32), (6, 0, 32), (6, 6, 26),
-        (4, 0, 0), (6, 12, 26), (4, 0, 0)],
-
 }
-# 同一关允许"中途脱轨后重新上膛"几次。2026-09-29 实测：死亡后 agent 发的 RESET 只重开当前关，
-# `levels_completed` 不回退（state/bp35_l2_death_effect.py），所以旧接线里"换关才复位"的分支
-# 永不触发 ⇒ 计划只能上一次膛，色 14 护栏一响整关作废（state/bp35_l2_death_count.py：live 里
-# 385 步共 11 次 GAME_OVER，全给了无记忆的 CEAX）。只放宽"脱轨"这一种放弃：整条打完仍未换关
-# 属确定性失败，重来必然同样结果，不重试。取 2 = 首打＋一次重试。
-_BP35_MAX_ARMS = 2
-# m0r0: 镜像双棋合并。ACTION1-4 同步镜像移动；ACTION6 点选/放下 mosdlc 挡块；
-# 门闸 gayktr 需踩 unobxw 压力板；spswjz 危险格触发闪复位。183 步全 6 关。
-# scripts/m0r0_solve_rest.py / m0r0_l2_fast.py 冷回放 → GameState.WIN。
+
+
 _M0R0_PLANS: dict[int, list[tuple[int, int, int]]] = {
     0: [(1, 0, 0), (1, 0, 0), (3, 0, 0), (1, 0, 0), (3, 0, 0), (1, 0, 0), (1, 0, 0),
         (1, 0, 0), (1, 0, 0), (1, 0, 0), (4, 0, 0), (1, 0, 0), (4, 0, 0), (4, 0, 0),
@@ -1224,8 +1221,8 @@ _M0R0_PLANS: dict[int, list[tuple[int, int, int]]] = {
         (4, 0, 0), (4, 0, 0), (4, 0, 0), (2, 0, 0), (4, 0, 0), (2, 0, 0), (1, 0, 0),
         (1, 0, 0), (1, 0, 0), (1, 0, 0)],
 }
-# sp80: 颜料分流。ACTION6 点选块，ACTION1-4 移动，ACTION5 倾倒。
-# L5 布局 vert(4,8) shelf(7,13) lex(8,8) riw(9,10)。冷回放 6/6 WIN。
+
+
 _SP80_PLANS: dict[int, list[tuple[int, int, int]]] = {
     0: [
         (1, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (5, 0, 0)
@@ -1268,9 +1265,8 @@ _SP80_PLANS: dict[int, list[tuple[int, int, int]]] = {
         (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (5, 0, 0)
     ],
 }
-# cn04: 色8/13接口配对拼图。语义 (aid,x,y)；键盘步 x=y=0。
-# L0–L3：cn04_lx_fast_solve；L4：cn04_l4_stack_solve；L5：cn04_l5_multistack_solve。
-# 冷回放 6/6 WIN（state/cn04_plans.json）。
+
+
 _CN04_PLANS: dict[int, list[tuple[int, int, int]]] = {
     0: [(2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0),
         (4, 0, 0), (4, 0, 0), (4, 0, 0), (4, 0, 0), (5, 0, 0), (5, 0, 0), (5, 0, 0)],
@@ -1307,8 +1303,8 @@ _CN04_PLANS: dict[int, list[tuple[int, int, int]]] = {
         (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0), (2, 0, 0),
         (6, 5, 38), (5, 0, 0), (1, 0, 0)],
 }
-# dc22: 移动+开关/光标抓块。L0–L4 搜索/宏；L5 orckhi1 顶桥+传送。
-# 冷回放 levels=6 WIN（state/dc22_plans.json）。
+
+
 _DC22_PLANS: dict[int, list[tuple[int, int, int]]] = {
     0: [
         (1, 0, 0), (6, 45, 34), (1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0), (4, 0, 0), (4, 0, 0),
@@ -1381,6 +1377,12 @@ _DC22_PLANS: dict[int, list[tuple[int, int, int]]] = {
     ],
 
 }
+# 同一关允许"中途脱轨后重新上膛"几次。2026-09-29 实测：死亡后 agent 发的 RESET 只重开当前关，
+# `levels_completed` 不回退（state/bp35_l2_death_effect.py），所以旧接线里"换关才复位"的分支
+# 永不触发 ⇒ 计划只能上一次膛，色 14 护栏一响整关作废（state/bp35_l2_death_count.py：live 里
+# 385 步共 11 次 GAME_OVER，全给了无记忆的 CEAX）。只放宽"脱轨"这一种放弃：整条打完仍未换关
+# 属确定性失败，重来必然同样结果，不重试。取 2 = 首打＋一次重试。
+_BP35_MAX_ARMS = 2
 # Everything else (incl. hidden ~110) → CEAX_UNKNOWN via same controller.
 
 # tr87: 六关直构求解（state/tr87_solve.py，胜利行走+组状态枚举，引擎回放验证 WIN）。
@@ -1545,319 +1547,6 @@ def _safe_fallback(levels: int) -> GameAction:
     action = GameAction.ACTION1
     action.reasoning = {"text": f"{BUILD_TAG}:fallback L{levels}"}
     return action
-
-
-def _llm_on() -> bool:
-    return str(os.environ.get("LINGJING_LLM", "off")).strip().lower() in {
-        "1", "on", "true", "yes",
-    }
-
-
-def _llm_stall_threshold() -> int:
-    raw = os.environ.get("LINGJING_LLM_STALL", "80")
-    try:
-        return max(0, int(raw))
-    except (TypeError, ValueError):
-        return 80
-
-
-def _llm_preceax_on() -> bool:
-    """未知局：引擎之后、CEAX 之前问 LLM。默认开；LINGJING_LLM_PRECEAX=off 退回只靠 stall。"""
-    return str(os.environ.get("LINGJING_LLM_PRECEAX", "on")).strip().lower() not in {
-        "0", "off", "false", "no", "none",
-    }
-
-
-def _llm_whole_on() -> bool:
-    """非 plan 局由千问打完整局。默认开；LINGJING_LLM_WHOLE=off 退回旧的 30 次补丁。"""
-    return str(os.environ.get("LINGJING_LLM_WHOLE", "on")).strip().lower() not in {
-        "0", "off", "false", "no", "none",
-    }
-
-
-def _llm_call_budget() -> tuple[int, int]:
-    """(stride, max_calls)。整局模式默认每步都问，上限跟 MAX_ACTIONS 对齐。"""
-    try:
-        stride = max(1, int(os.environ.get("LINGJING_LLM_STRIDE", "1") or 1))
-    except (TypeError, ValueError):
-        stride = 1
-    default_cap = "800" if _llm_whole_on() else "30"
-    try:
-        cap = max(0, int(os.environ.get("LINGJING_LLM_MAX_CALLS", default_cap) or default_cap))
-    except (TypeError, ValueError):
-        cap = 800 if _llm_whole_on() else 30
-    return stride, cap
-
-
-def _plan_locked(gid: str) -> bool:
-    return gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE
-
-
-
-
-def _llm_spec_to_action(spec: Any, valid: list[str]) -> Optional[GameAction]:
-    """Normalized spec dict → GameAction, re-checked against the live legal list."""
-    if not isinstance(spec, dict):
-        return None
-    name = str(spec.get("action") or "").strip().upper()
-    if not name:
-        return None
-    legal = {a.upper() for a in valid}
-    if legal and name not in legal:
-        return None
-    try:
-        act = getattr(GameAction, name)
-    except AttributeError:
-        return None
-    if name == "ACTION6":
-        if "x" not in spec or "y" not in spec:
-            return None
-        try:
-            act.set_data({"x": int(spec["x"]), "y": int(spec["y"])})
-        except (TypeError, ValueError, KeyError):
-            return None
-    try:
-        act.reasoning = {"text": f"{BUILD_TAG}:llm-batch {spec.get('why', '')}"}
-    except Exception:  # noqa: BLE001
-        pass
-    return act
-
-
-# Structured lexicon LLM view (Franzen ARCAID3) + batch action queue.
-# LINGJING_LLM_VIEW=planner|legacy  (default planner; falls back if lexicon missing)
-# LINGJING_LLM_BATCH=int            actions per call (default 4, max 12)
-# LINGJING_LLM_EVERY=int            min steps between planner calls (default 1)
-# LINGJING_LEXICON_DIR=path         optional lexicon package parent
-_LP_READY = False
-_LP_PERCEPTION: Any = None
-_LP_PLANNER_CLS: Any = None
-_LP_DISPLAY_XY: Any = None
-
-
-def _llm_view() -> str:
-    v = str(os.environ.get("LINGJING_LLM_VIEW", "planner")).strip().lower()
-    return v if v in {"planner", "legacy"} else "planner"
-
-
-def _lp_chunk() -> int:
-    try:
-        n = int(os.environ.get("LINGJING_LLM_BATCH", "4") or 4)
-    except (TypeError, ValueError):
-        n = 4
-    return max(1, min(12, n))
-
-
-def _lp_load() -> bool:
-    """Import lexicon once. False → caller uses PNG/ASCII legacy path."""
-    global _LP_READY, _LP_PERCEPTION, _LP_PLANNER_CLS, _LP_DISPLAY_XY
-    if _LP_READY:
-        return _LP_PLANNER_CLS is not None
-    _LP_READY = True
-    import importlib
-
-    try:
-        importlib.import_module("lexicon")
-    except Exception:  # noqa: BLE001
-        cands: list[Path] = []
-        env = str(os.environ.get("LINGJING_LEXICON_DIR", "") or "").strip()
-        if env:
-            cands.append(Path(env).expanduser())
-        for base in (_FILE.parent, *_FILE.parents[:6], Path.cwd()):
-            if base not in cands:
-                cands.append(base)
-        for entry in list(sys.path):
-            try:
-                cands.append(Path(entry or "."))
-            except (TypeError, ValueError):
-                continue
-        found = False
-        for c in cands:
-            for sub in (
-                c / "lexicon",
-                c / "arc_adaptor" / "lexicon",
-                c / "lingjing_solo" / "arc_adaptor" / "lexicon",
-            ):
-                try:
-                    hit = (sub / "__init__.py").is_file()
-                except OSError:
-                    hit = False
-                if not hit:
-                    continue
-                parent = str(sub.parent)
-                if parent not in sys.path:
-                    sys.path.insert(0, parent)
-                found = True
-                break
-            if found:
-                break
-    try:
-        pkg = importlib.import_module("lexicon")
-        mod = importlib.import_module("lexicon.llm_planner")
-        _LP_PERCEPTION = pkg.Perception
-        _LP_DISPLAY_XY = pkg.display_xy
-        _LP_PLANNER_CLS = mod.LLMPlanner
-    except Exception as exc:  # noqa: BLE001
-        print(f"[{BUILD_TAG}] lexicon unavailable ({type(exc).__name__}: {exc})", flush=True)
-        _LP_PERCEPTION = _LP_PLANNER_CLS = _LP_DISPLAY_XY = None
-        return False
-    return True
-
-
-_POLICY_READY = False
-_POLICY_FN: Any = None
-
-
-def _load_llm_policy_plan() -> Any:
-    """Return llm_policy.propose_plan if available (legacy batch fallback)."""
-    global _POLICY_READY, _POLICY_FN
-    if _POLICY_READY:
-        return _POLICY_FN
-    _POLICY_READY = True
-    import importlib
-
-    for mod_name in ("llm_policy", "agents.templates.llm_policy"):
-        try:
-            mod = importlib.import_module(mod_name)
-            fn = getattr(mod, "propose_plan", None)
-            if fn is not None:
-                _POLICY_FN = fn
-                return _POLICY_FN
-        except Exception:  # noqa: BLE001
-            continue
-    cands: list[Path] = [_FILE.parent, Path.cwd() / "agent", Path.cwd()]
-    for c in cands:
-        try:
-            if not (c / "llm_policy.py").is_file():
-                continue
-        except OSError:
-            continue
-        key = str(c)
-        if key not in sys.path:
-            sys.path.insert(0, key)
-        try:
-            _POLICY_FN = importlib.import_module("llm_policy").propose_plan
-            return _POLICY_FN
-        except Exception as exc:  # noqa: BLE001
-            print(f"[{BUILD_TAG}] llm_policy.propose_plan fail @ {key}: {exc}", flush=True)
-    return None
-
-
-def _lp_action_spec(text: Any, why: str = "", code: Any = None) -> Optional[dict]:
-    """`ACTION2` / `ACTION6@r,c` → batch-queue dict (native→screen for clicks)."""
-    s = str(text or "").strip().upper().replace(" ", "")
-    if not s or not s.startswith("ACTION"):
-        return None
-    head, _, tail = s.partition("@")
-    name = head
-    if name not in {f"ACTION{i}" for i in range(1, 8)}:
-        return None
-    spec: dict[str, Any] = {"action": name, "why": why}
-    if name == "ACTION6":
-        parts = tail.split(",")
-        if len(parts) != 2:
-            return None
-        try:
-            r, c = int(parts[0]), int(parts[1])
-        except ValueError:
-            return None
-        x, y = c, r
-        if code is not None and _LP_DISPLAY_XY is not None:
-            try:
-                x, y = _LP_DISPLAY_XY(code, r, c)
-            except Exception:  # noqa: BLE001
-                x, y = c, r
-        spec["x"], spec["y"] = int(x), int(y)
-    return spec
-
-
-def _action_label(action: Any) -> tuple[str, Optional[tuple]]:
-    """Dispatched action for the lexicon rule learner."""
-    name = str(getattr(action, "name", "") or "")
-    if not name:
-        return "", None
-    if name != "ACTION6":
-        return name, None
-    d = getattr(action, "action_data", None)
-    if d is None:
-        d = getattr(action, "data", None)
-
-    def _g(k: str) -> Any:
-        return d.get(k) if isinstance(d, dict) else getattr(d, k, None)
-
-    try:
-        x, y = _g("x"), _g("y")
-        if x is None or y is None:
-            return name, None
-        return name, (int(x), int(y))
-    except (TypeError, ValueError):
-        return name, None
-
-
-def _llm_action_sig(act: GameAction) -> str:
-    name = str(getattr(act, "name", "") or "")
-    data = getattr(act, "data", None)
-    if not isinstance(data, dict):
-        data = getattr(act, "_data", None)
-    if isinstance(data, dict) and ("x" in data or "y" in data):
-        return f"{name}:{data.get('x')},{data.get('y')}"
-    return name
-
-
-def _llm_unused_action(valid: list[str], dead: set[str]) -> Optional[GameAction]:
-    """Pick a legal key that has not already been recorded as no_effect."""
-    for name in valid:
-        if name == "ACTION6" or name in dead:
-            continue
-        return _as_game_action(name)
-    return None
-
-
-def _try_llm_action(
-    *,
-    game_id: str,
-    levels: int,
-    latest_frame: FrameData,
-    note: str = "",
-    history: str = "",
-    briefing: str = "",
-) -> Optional[GameAction]:
-    """Consult local vLLM JSON policy; None on any failure (fail-closed)."""
-    if not _llm_on():
-        return None
-    try:
-        from llm_policy import propose_action as _llm_propose
-    except Exception:
-        try:
-            from agents.templates import llm_policy as _lp  # type: ignore
-
-            _llm_propose = _lp.propose_action
-        except Exception as exc:  # noqa: BLE001
-            print(f"[{BUILD_TAG}] llm_policy import fail: {exc}", flush=True)
-            return None
-    valid = _valid_names(latest_frame)
-    if not valid:
-        return None
-    try:
-        grid = extract_grid(latest_frame)
-    except Exception:
-        grid = None
-    try:
-        act = _llm_propose(
-            game_id=game_id,
-            levels=levels,
-            valid_actions=valid,
-            grid=grid,
-            game_action_cls=GameAction,
-            note=note,
-            history=history,
-            briefing=briefing,
-        )
-    except Exception as exc:  # noqa: BLE001
-        print(f"[{BUILD_TAG}] llm_policy error: {type(exc).__name__}: {exc}", flush=True)
-        return None
-    if act is None:
-        return None
-    return act
 
 
 class _InlineScript:
@@ -2774,10 +2463,20 @@ class MyAgent(Agent):
           2. `LINGJING_DUCK` 未开时构造完立刻关掉，`_duck_request` 清空，之后零开销；
           3. 任何异常都冒泡给调用方那层 try/except，本函数绝不自己吞成"没动作"。
         """
-        if gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE:
+        # 测试用开关：LINGJING_DUCK_FORCE_GIDS="ar25,cd82" 让特定 INLINE 局
+        # 也走 duck。逗号分隔；空或未设 = 默认行为（INLINE 局绝不进 duck）。
+        # 这条线只在用户主动开 env 时才生效，零默认影响。
+        _force_gids = frozenset(
+            g.strip() for g in os.environ.get("LINGJING_DUCK_FORCE_GIDS", "").split(",")
+            if g.strip()
+        ) if gid in ROUTE_INLINE or gid in _PLAN_PROTECTED_GAMES else frozenset()
+        if (gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE) and gid not in _force_gids:
             return None
-        if self._duck_request < 0:
+        # forced 模式：直接以当前 levels 为 request，让 duck 立即起。
+        if self._duck_request < 0 and gid not in _force_gids:
             return None
+        if self._duck_request < 0:  # forced 模式初始化
+            self._duck_request = int(getattr(latest_frame, "levels_completed", 0) or 0)
 
         if self._duck is None:
             try:
@@ -2818,240 +2517,6 @@ class MyAgent(Agent):
             action.set_data({"x": int(col), "y": int(row)})
         action.reasoning = {"text": f"{BUILD_TAG}:duck L{levels}"}
         return action
-
-
-    def _lp_observe(self, latest_frame: FrameData, grid: Any) -> None:
-        """Feed frame to lexicon rule learner (best-effort)."""
-        perc = getattr(self, "_lp_perc", None)
-        if perc is None or grid is None:
-            return
-        step = int(getattr(self, "action_counter", 0) or 0)
-        if step == self._lp_step_seen:
-            return
-        self._lp_step_seen = step
-        levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
-        if levels != self._lp_level:
-            self._lp_level = levels
-            try:
-                perc.reset_level(levels)
-            except Exception:  # noqa: BLE001
-                pass
-            self._lp_hash = ""
-            self._lp_recent = []
-            self._lp_outcome = ""
-            self._clear_llm_queue(f"level ->{levels}")
-        act = self._lp_prev_action or None
-        click = self._lp_prev_click
-        try:
-            ev = perc.observe(grid, action=act, click=click)
-        except Exception as exc:  # noqa: BLE001
-            if self._errors < 5:
-                print(
-                    f"[{BUILD_TAG}] lp-observe ERROR: {type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-            return
-        try:
-            h = hash_grid(grid)
-        except Exception:  # noqa: BLE001
-            h = ""
-        state_name = str(getattr(getattr(latest_frame, "state", None), "name", "") or "")
-        if state_name == "GAME_OVER":
-            outcome = "death"
-        elif h and h == self._lp_hash:
-            outcome = "noop"
-        elif act:
-            outcome = "changed" if ev else "noop"
-        else:
-            outcome = ""
-        self._lp_hash = h
-        self._lp_outcome = outcome
-        if act:
-            tag = f" [{outcome}]" if outcome in ("death", "noop") else ""
-            self._lp_recent.append(f"{act}->{len(ev or [])}chg{tag}")
-            del self._lp_recent[:-12]
-
-    def _clear_llm_queue(self, reason: str = "") -> None:
-        had = len(self._llm_queue)
-        self._llm_queue.clear()
-        self._llm_queue_level = -1
-        self._llm_queue_hash = ""
-        self._llm_queue_stuck = 0
-        if had and reason:
-            print(
-                f"[{BUILD_TAG}] llm-batch abort gid="
-                f"{getattr(self, 'game_id', '')} dropped={had} reason={reason}",
-                flush=True,
-            )
-
-    def _pop_llm_queue(
-        self, latest_frame: FrameData, levels: int, grid: Any
-    ) -> Optional[GameAction]:
-        if not self._llm_queue:
-            return None
-        if levels != self._llm_queue_level:
-            self._clear_llm_queue(f"level {self._llm_queue_level}->{levels}")
-            return None
-        if latest_frame.state in (GameState.GAME_OVER, GameState.NOT_PLAYED):
-            self._clear_llm_queue(f"state={latest_frame.state}")
-            return None
-        try:
-            h = hash_grid(grid) if grid is not None else ""
-        except Exception:  # noqa: BLE001
-            h = ""
-        if h and self._llm_queue_hash:
-            if h == self._llm_queue_hash:
-                self._llm_queue_stuck += 1
-                if self._llm_queue_stuck >= 2:
-                    self._clear_llm_queue("no-change x2")
-                    return None
-            else:
-                self._llm_queue_stuck = 0
-        if h:
-            self._llm_queue_hash = h
-        spec = self._llm_queue.popleft()
-        act = _llm_spec_to_action(spec, _valid_names(latest_frame))
-        if act is None:
-            self._clear_llm_queue(f"illegal {str(spec.get('action'))[:16]}")
-            return None
-        self._llm_batch_steps += 1
-        return act
-
-    def _lp_plan_specs(self, lp: Any, grid: Any, valid: list[str], levels: int) -> list:
-        step = int(getattr(self, "action_counter", 0) or 0)
-        try:
-            fp = hash_grid(grid) if grid is not None else ""
-        except Exception:  # noqa: BLE001
-            fp = ""
-        try:
-            acts = lp.decide(
-                self._lp_perc,
-                grid,
-                step,
-                levels,
-                allowed=tuple(valid),
-                recent=self._lp_recent,
-                outcome=self._lp_outcome or None,
-                planner=None,
-                fp=fp,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"[{BUILD_TAG}] lp-decide error: {type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            return []
-        if not acts:
-            return []
-        why = str(getattr(lp, "last_why", "") or "")[:60]
-        code = getattr(self._lp_perc, "last_code", None)
-        specs = [s for s in (_lp_action_spec(a, why, code) for a in acts) if s]
-        if specs and (step < 5 or step % 20 == 0):
-            print(
-                f"[{BUILD_TAG}] lp-plan gid={getattr(self, 'game_id', '')} L={levels} "
-                f"step={step} n={len(specs)} why={why!r}",
-                flush=True,
-            )
-        return specs
-
-    def _legacy_plan_specs(
-        self, gid: str, levels: int, valid: list[str], grid: Any, note: str,
-        history: str = "", briefing: str = "",
-    ) -> list:
-        _llm_plan = _load_llm_policy_plan()
-        if _llm_plan is None:
-            return []
-        try:
-            return _llm_plan(
-                game_id=gid,
-                levels=levels,
-                valid_actions=valid,
-                grid=grid,
-                note=note,
-                history=history,
-                briefing=briefing,
-            ) or []
-        except TypeError:
-            try:
-                return _llm_plan(
-                    game_id=gid,
-                    levels=levels,
-                    valid_actions=valid,
-                    grid=grid,
-                    note=note,
-                ) or []
-            except Exception as exc:  # noqa: BLE001
-                print(
-                    f"[{BUILD_TAG}] llm-batch error: {type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-                return []
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"[{BUILD_TAG}] llm-batch error: {type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            return []
-
-    def _try_llm_batch(
-        self,
-        *,
-        levels: int,
-        latest_frame: FrameData,
-        note: str = "",
-        history: str = "",
-        briefing: str = "",
-    ) -> Optional[GameAction]:
-        """Ask for a short burst; return step 1 and queue the rest."""
-        if not _llm_on():
-            return None
-        gid = _norm_game(getattr(self, "game_id", "") or "")
-        valid = _valid_names(latest_frame)
-        if not valid:
-            return None
-        try:
-            grid = extract_grid(latest_frame)
-        except Exception:  # noqa: BLE001
-            grid = None
-        lp = getattr(self, "_lp_plan", None)
-        if lp is not None and getattr(self, "_lp_perc", None) is not None:
-            specs = self._lp_plan_specs(lp, grid, valid, levels)
-        else:
-            specs = self._legacy_plan_specs(
-                gid, levels, valid, grid, note, history=history, briefing=briefing,
-            )
-        if not specs:
-            return _try_llm_action(
-                game_id=gid,
-                levels=levels,
-                latest_frame=latest_frame,
-                note=note,
-                history=history,
-                briefing=briefing,
-            )
-        specs = specs[: _lp_chunk()]
-        first = _llm_spec_to_action(specs[0], valid)
-        if first is None:
-            return None
-        rest = specs[1:]
-        if rest:
-            self._clear_llm_queue()
-            self._llm_queue.extend(rest)
-            self._llm_queue_level = levels
-            try:
-                self._llm_queue_hash = hash_grid(grid) if grid is not None else ""
-            except Exception:  # noqa: BLE001
-                self._llm_queue_hash = ""
-            self._llm_queue_stuck = 0
-            self._llm_batches += 1
-            avg = self._llm_batch_steps / max(self._llm_batches, 1)
-            print(
-                f"[{BUILD_TAG}] llm-batch gid={gid} L={levels} n={len(specs)} "
-                f"queued={len(rest)} batches={self._llm_batches} avg={avg:.1f}",
-                flush=True,
-            )
-        return first
-
 
     def _choose_action_inner(
         self, frames: list[FrameData], latest_frame: FrameData
@@ -3779,7 +3244,11 @@ class MyAgent(Agent):
                                 print(f"[{BUILD_TAG}] local_solver {gid} failed: {type(_lse).__name__}: {_lse}", flush=True)
                         if _has_sa and found is None and gid in _sa._SHADOW_MODULES:
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
-                            path = _sa.solve(gid, env_ref._game, t_limit=_tl)
+                            # env= is mandatory: shadow_adapter sets mod._env from the
+                            # *env* object. Passing only env_ref._game left _env=None
+                            # inside every shadow solver, so they all bailed out and
+                            # cn04/g50t/ka59/lf52/m0r0 regressed to 0 levels.
+                            path = _sa.solve(gid, env_ref._game, t_limit=_tl, env=env_ref)
                             if path:
                                 # 转换格式: int → int, dict → tuple, tuple → tuple
                                 found = []
