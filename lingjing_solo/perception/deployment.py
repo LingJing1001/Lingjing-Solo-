@@ -6,9 +6,19 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import resource
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows has no POSIX resource module
+    resource = None  # type: ignore[assignment]
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
+
+
+def _max_rss_kb() -> int:
+    """Return peak RSS in KiB where the platform exposes it."""
+    if resource is None:
+        return 0
+    return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
 from .dpl_adapter import GateReport
 from .world_model import ProjectionWorldModel
@@ -124,7 +134,7 @@ class OfflineReplayRunner:
                 transition_result={"executed": False, "offline": True, "fail_closed": bool(errors)},
                 errors=tuple(errors),
                 latency_ms=(time.perf_counter() - started) * 1000.0,
-                memory_kb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+                memory_kb=_max_rss_kb(),
             )
             logger.append(record)
             records.append(record)
