@@ -309,6 +309,11 @@ def build() -> dict:
         # SELFLEARN_LLM is the master switch (1 = 大模型, 0 = 原策略/纯算法).
         os.environ['SELFLEARN_LLM'] = '{selflearn}'
         os.environ['LINGJING_LLM'] = '{llm_env_default}'
+        # 校准计划开关：默认开（树内已校准、已真机回放验证的计划）。
+        # 显式写出来是为了 notebook 自证 —— A/B 两轮之间只允许 SELFLEARN_LLM
+        # 这一个变量不同；'on' 时 ar25/ls20/ft09/cd82/sb26/r11l 等局会走校准计划，
+        # 'off' 时这些局退回 CEAX 通用路径（实测 25 局 19.37 vs 62+，差在开关）。
+        os.environ.setdefault('LINGJING_SCRIPTS', 'on')
         os.environ.setdefault('LINGJING_LLM_URL', 'http://127.0.0.1:1234/v1')
         os.environ.setdefault('LINGJING_LLM_MODEL', 'vrfai/Qwen3.6-27B-FP8')
         # Planner view is text (objects/NATIVE/RULES). Vision stays off so the
