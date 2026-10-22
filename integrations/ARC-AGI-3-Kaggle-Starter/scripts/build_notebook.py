@@ -272,11 +272,33 @@ def build() -> dict:
     vllm_max_seqs = os.environ.get("LINGJING_VLLM_MAX_SEQS", DEFAULT_VLLM_MAX_SEQS)
     vllm_mem = os.environ.get("LINGJING_VLLM_MEM", DEFAULT_VLLM_MEM)
 
+    # The competition wheelhouse is mounted at DIFFERENT paths depending on how
+    # Kaggle attaches the competition to the kernel:
+    #   /kaggle/input/competitions/<slug>/arc_agi_3_wheels   (official sample,
+    #       and the 2026-10-20 submission that scored 0.15)
+    #   /kaggle/input/<slug>/arc_agi_3_wheels                (some kernels)
+    # Hard-coding one of them killed the whole notebook: pip printed
+    # "Could not find a version that satisfies the requirement arc-agi
+    # (from versions: none)" and the run died in this very cell, so the
+    # competition rerun never reached `main.py` and never played a single
+    # game. Probe every candidate and fall back to a glob.
     install_cell = code_cell(
         "import subprocess, sys\n"
+        "from pathlib import Path\n"
+        "_WHEEL_CANDIDATES = [\n"
+        "    '/kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels',\n"
+        "    '/kaggle/input/arc-prize-2026-arc-agi-3/arc_agi_3_wheels',\n"
+        "]\n"
+        "_wheel = next((p for p in _WHEEL_CANDIDATES if Path(p).is_dir()), None)\n"
+        "if _wheel is None:\n"
+        "    _found = sorted(str(p) for p in Path('/kaggle/input').rglob('arc_agi_3_wheels') if p.is_dir())\n"
+        "    if not _found:\n"
+        "        raise SystemExit('WHEELS_NOT_FOUND candidates=%s' % _WHEEL_CANDIDATES)\n"
+        "    _wheel = _found[0]\n"
+        "print('WHEELS', _wheel, flush=True)\n"
         "subprocess.run([\n"
         "    sys.executable, '-m', 'pip', 'install', '--no-index',\n"
-        "    '--find-links', '/kaggle/input/arc-prize-2026-arc-agi-3/arc_agi_3_wheels',\n"
+        "    '--find-links', _wheel,\n"
         "    'arc-agi', 'python-dotenv', 'numpy'\n"
         "], check=True)"
     )
@@ -375,7 +397,19 @@ def build() -> dict:
             ])
             # Lockfile replaces numpy/pydantic/dotenv. Put the competition
             # agent stack back on top without downgrading the vLLM torch build.
-            _comp = '/kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels'
+            _comp_candidates = [
+                '/kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels',
+                '/kaggle/input/arc-prize-2026-arc-agi-3/arc_agi_3_wheels',
+            ]
+            _comp = next((p for p in _comp_candidates if Path(p).is_dir()), None)
+            if _comp is None:
+                _found = sorted(
+                    str(p) for p in Path('/kaggle/input').rglob('arc_agi_3_wheels') if p.is_dir()
+                )
+                if not _found:
+                    raise SystemExit('WHEELS_NOT_FOUND candidates=%s' % _comp_candidates)
+                _comp = _found[0]
+            print('WHEELS', _comp, flush=True)
             subprocess.check_call([
                 'pip', 'install', '--no-index', '--find-links', _comp,
                 'arc-agi', 'python-dotenv',
@@ -493,9 +527,28 @@ def build() -> dict:
             !curl --fail --retry 999 --retry-all-errors --retry-delay 5 \\
                   --retry-max-time 600 http://gateway:8001/api/games
 
-            # Copy the framework into a writable location.
-            !cp -r /kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents \\
-                   /kaggle/working/ARC-AGI-3-Agents
+            # Copy the framework into a writable location. The framework tree is
+            # mounted under /kaggle/input/<slug>/ or
+            # /kaggle/input/competitions/<slug>/ depending on the kernel --
+            # probe both instead of guessing, then fall back to a glob.
+            import shutil as _sh
+            from pathlib import Path as _P
+            _FW_CANDIDATES = [
+                '/kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents',
+                '/kaggle/input/competitions/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents',
+            ]
+            _fw_src = next((p for p in _FW_CANDIDATES if _P(p).is_dir()), None)
+            if _fw_src is None:
+                _found = sorted(
+                    str(p) for p in _P('/kaggle/input').rglob('ARC-AGI-3-Agents') if p.is_dir()
+                )
+                if not _found:
+                    raise SystemExit('FRAMEWORK_NOT_FOUND candidates=%s' % _FW_CANDIDATES)
+                _fw_src = _found[0]
+            print('FRAMEWORK_SRC', _fw_src, flush=True)
+            if _P('/kaggle/working/ARC-AGI-3-Agents').exists():
+                _sh.rmtree('/kaggle/working/ARC-AGI-3-Agents', ignore_errors=True)
+            _sh.copytree(_fw_src, '/kaggle/working/ARC-AGI-3-Agents')
 
             # Drop our agent + llm_policy + lingjing_solo into the framework tree.
             !cp /tmp/my_agent.py \\
@@ -624,9 +677,23 @@ def build() -> dict:
             _WORK = Path("/kaggle/working")
             _FW = _WORK / "ARC-AGI-3-Agents"
             if not _FW.is_dir():
-                shutil.copytree(
-                    "/kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents", _FW
-                )
+                # Same mount-path ambiguity as the submission cell: probe the
+                # known locations, then glob. A wrong guess here only breaks
+                # the offline bench, but the same helper keeps both in sync.
+                _FW_CANDIDATES = [
+                    "/kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents",
+                    "/kaggle/input/competitions/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents",
+                ]
+                _fw_src = next((p for p in _FW_CANDIDATES if Path(p).is_dir()), None)
+                if _fw_src is None:
+                    _found = sorted(
+                        str(p) for p in Path("/kaggle/input").rglob("ARC-AGI-3-Agents") if p.is_dir()
+                    )
+                    if not _found:
+                        raise SystemExit("FRAMEWORK_NOT_FOUND candidates=%s" % _FW_CANDIDATES)
+                    _fw_src = _found[0]
+                print("FRAMEWORK_SRC", _fw_src, flush=True)
+                shutil.copytree(_fw_src, _FW)
             # The slim registry below does `from .templates.my_agent import MyAgent`,
             # so the agent has to actually EXIST inside the framework tree. The
             # notebook only wrote it to /tmp/my_agent.py, so the first version of
@@ -875,6 +942,18 @@ def main() -> None:
 
     # Keep notebooks/kernel-metadata.json in sync so the user never has to
     # edit it just to flip CPU ↔ GPU / attach LLM datasets.
+    #
+    # NOTE: that file is shared with the teammate's kernel
+    # (wangausx/arc-prize-2026-smart-router-v2-dpl). Building a *variant*
+    # notebook (CPU 保底版 / A/B 臂) must not silently rewrite it, so
+    # LINGJING_SKIP_METADATA_SYNC=1 leaves it alone. Each variant ships its
+    # own metadata under notebooks/_push_*/kernel-metadata.json instead.
+    if os.environ.get("LINGJING_SKIP_METADATA_SYNC", "0").strip() == "1":
+        print(
+            "[build_notebook] LINGJING_SKIP_METADATA_SYNC=1 -> "
+            f"{METADATA_PATH.relative_to(ROOT)} left untouched"
+        )
+        return
     if METADATA_PATH.exists():
         meta = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
         wanted = _ACCELERATORS[ACCELERATOR]["gpu"]

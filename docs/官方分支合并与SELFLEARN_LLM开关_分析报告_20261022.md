@@ -1,4 +1,4 @@
-# 官方分支合并 + SELFLEARN_LLM 开关 —— 分析报告（终版）
+# 官方分支合并 + SELFLEARN_LLM 开关 —— 分析报告（终版 · 含第 8 章竞赛 0.15 根因定位）
 
 日期：2026-10-22　范围：`灵境战队AGI课题探索`（课题探索仓库）· ARC-AGI-3-Kaggle-Starter（SmartRouter 线）
 关联：`docs/v27_根因定位与提分方案_20261022.md`（duck 线 v27）
@@ -17,6 +17,8 @@
 | 跑测结果怎么样？ | 本地 25 局 × 400 步（`SELFLEARN_LLM=0` 原策略臂）：**计划关 19.37 分 / 35 关 / 4 局 WIN / 16 个零关局**；**计划开 + 出网守卫 60.40 分 / 108 关 / 13 局 WIN / 5 个零关局**（**已反超官方分支的 57.37**）。Kaggle 上独立复现同一结论（同一 kernel 单变量 A/B：15.48 → 56.23 分、28 → 99 关）。 |
 | 最大的杠杆是什么？ | **不是"再合分支"，是"把已经在树里的东西打开"**：`LINGJING_SCRIPTS` 默认 off，16 个零关局里 11 个是这么来的。已改为**默认开 + 逐局可排除**。 |
 | 继续合并还是优化？ | **继续合并，但只做一件：移植 `unify-decoder-entry` 的 25 文件破零包**（它打的正是我们剩下的 5 个零关局）。其余分支收益低、风险高。**同时必须清醒：计划带来的分是公开局分，隐藏集的胜负手是通用能力（engine solver / IDDFS / LLM）。** |
+| ★ **竞赛公开分 0.15 的根因** | **提交通路在第 1 个 cell 就断了**：`build_notebook.py` 把竞赛 wheelhouse 路径写死成 `/kaggle/input/<slug>/arc_agi_3_wheels`，而官方样例用的是 `/kaggle/input/**competitions**/<slug>/…`。路径不对 ⇒ `pip` 装不上 `arc-agi` ⇒ notebook 抛错 ⇒ **永远走不到 `python main.py --agent myagent`** ⇒ agent 一局都没玩 ⇒ 网关按 25 局全关卡生成近乎全 0 的提交文件 ⇒ 公开分 0.00~0.15。**三处路径已改成多候选探测 + glob 兜底，CPU kernel v1(ERROR) → v2(COMPLETE) 当场验证通过。**（见第 8 章） |
+| ★ **本地 60.40 vs 竞赛 0.15** | **不是能力差距，是通路差距。** 证据：官方样例 `.env` 与我们逐字一致（API key 对）；直接跑竞赛 cell 的 `BUILD_TAG` 门控逻辑**通过**；`swarm.py` 每局一个 agent 实例（无并发状态污染）；官方 `Code Requirements` 给 9 小时（vLLM 启动只占 28.5 分钟）；**本地用 `create_app(arc, competition_mode=True)` + 不带 `--game` 复刻，agent 玩满 25/25 局、网关产出 183 行（25 局 × 183 关）**。 |
 | 有什么硬阻断？ | **Kaggle 周 GPU 配额已耗尽**（用 41196s / 上限 21600s），**下次刷新 2026-10-24T00:00:00Z（北京时间 10-24 08:00）**。挡住 llm1 臂、A/B 的 LLM 侧、**以及明天要提的 v27 竞赛重提交**。日提交配额另算（今天已被队友用掉，UTC 明日解锁）。 |
 
 ---
@@ -436,3 +438,281 @@ LINGJING_SCRIPTS_EXCLUDE=a,b   # 逐局排除
 | `liaojiaxuan/smartrouter-merged-ab-llm0`（CPU，`SELFLEARN_LLM=0`） | v5 | ✅ COMPLETE | **56.228 分 / 99 关 / 13 WIN**（v4 计划关时 15.477 / 28 关） |
 | `liaojiaxuan/smartrouter-merged-ab-llm1`（GPU，`SELFLEARN_LLM=1`） | — | ❌ 未推送 | **被周 GPU 配额挡住**，刷新时间 2026-10-24T00:00:00Z |
 | `liaojiaxuan/lingjing-duck-harness-v27` | — | COMPLETE | 18.61 离线均值 |
+---
+
+## 8. 竞赛公开分 0.15 —— 根因定位（第二轮诊断，2026-10-22 晚）
+
+> 本节是本轮后半段新增内容。前七节讲的是"合并 + 开关 + 本地跑测"；
+> 这一节回答的是另一个问题：**为什么本地能打 60.40，提交到竞赛却只有 0.15。**
+
+### 8.1 问题的精确表述
+
+| 量 | 值 | 来源 |
+|---|---|---|
+| 我们最好的公开分 | **0.15** | `competition_submissions`（20 次提交：0.00×8、0.02、0.03×2、0.04、0.05、0.06、0.08、0.15×2、ERROR×3） |
+| 排行榜第一 | Tufa Labs **68.91** | `competition_leaderboard_view`（翻页取全） |
+| 排行榜第二 / 第三 | Yi-Chia Chen 67.77 / Team Turducken 52.82 | 同上 |
+| 本地同 25 局同 agent | **60.402**（108 关 / 13 局 WIN） | `benchmark_all_games.py` 干净基准 |
+| 服务端 25 局实例 vs 本地 `environment_files` | **25/25 逐个哈希一致** | `compare_server_vs_local_games.py` |
+
+⇒ 差 **~250~450 倍**。**分数尺度与本地一致（都是几十点），所以不是"能力问题"，是"运行时没跑起来"。**
+
+### 8.2 榜单结构：4625 队的双峰分布（实测）
+
+之前只看了前 100 名，结论不完整。翻页取全量 4625 队后的分布：
+
+| 分数带 | 队伍数 | 占比 | 解读 |
+|---|---|---|---|
+| ≥ 60 | 2 | 0.0% | 顶尖 |
+| 50–60 | 2 | 0.0% | |
+| 40–50 | 7 | 0.2% | |
+| **30–40** | **680** | **14.7%** | **"跑起来了"带** |
+| **20–30** | **1098** | **23.7%** | **"跑起来了"带** |
+| 10–20 | 21 | 0.5% | 断层 |
+| 1–10 | 635 | 13.7% | |
+| **0.1–1** | **1499** | **32.4%** | **"没跑起来"带** |
+| 0–0.1 | 490 | 10.6% | **"没跑起来"带** |
+| == 0 | 191 | 4.1% | |
+
+**关键结论：**
+
+1. **"跑起来"带 20–40 共 1778 队（38.4%），"没跑起来"带 0–1 共 2180 队（47.1%）。**
+   我们的 0.15 稳稳落在"没跑起来"带里。
+2. **"没跑起来"带的分数是 0.00、0.01、0.02 … 0.15 这样一条连续阶梯**——
+   这是"每关都试了但几乎没解出"的特征，不是"完全没跑"的特征。
+3. **同 org 的 `Ethereal49`（teamId 17031730）2026-10-04 拿到 27.20**，
+   落在"跑起来"带 ⇒ **我方曾经跑通过，这是回归，不是从未工作。**
+
+### 8.3 官方评分规则（`Evaluation` 页原文，避免口径误判）
+
+> Scores for individual game range from 0 to 100%. A score of 100% represents an agent
+> matching human-level performance… The final score averages individual game scores
+> across levels.
+>
+> **Submission files are automatically calculated. As long as the agent takes action on
+> _any_ of the games, a submission file for all of the games is created.**
+
+⇒ **最终分 = 25 局每局分（0~100）的平均。** 我们的 0.15 ⇒ 25 局总分 **3.75**（满分 2500）。
+⇒ **提交文件覆盖全部 25 局**（不是"玩了几局就写几局"）——这一条后面用来解释 parquet 结构。
+⇒ `Code Requirements` 页：**CPU ≤ 9 小时、GPU ≤ 9 小时、必须禁网**。
+⇒ vLLM 启动 28.5 分钟**不是**超时主因（9 小时额度），这条假设被排除。
+
+### 8.4 提交 parquet 的真实结构（实测修正）
+
+之前"提交文件有 130~175 行"的结论**是错的**——它是用短合成 `game_id` 反推的。
+用**真实 `game_id`（如 `ar25-0c556536`）**重算后：
+
+| 样本 | 字节 | 推断行数 |
+|---|---|---|
+| kernel 输出里的 dummy（**实测下载**） | 2648 B | **1 行**（`row_id='1_0', game_id='1', end_of_game=True, score=1`） |
+| 真实提交 | 3421 / 3432 / 3524 / 3559 / 3567 / 3568 / 3602 B | **~18~24 行**（`name` 格式）/ ~60~73 行（`idx` 格式） |
+| 本地竞赛模式复刻产出（**183 行 = 25 局 × 183 关**） | 4621 B | 183 |
+
+**并且拿到了两个硬事实：**
+
+1. **kernel 输出里的 `submission.parquet` 是 1 行 dummy**（三个 kernel 全一样，2648 B）。
+   ⇒ **真 parquet 由竞赛网关 sidecar 产出，不是 notebook 产的**；notebook 里那份只是提交占位。
+2. **本地完整复刻（`create_app(arc, competition_mode=True)` + `main.py --agent myagent` 不带 `--game`）
+   产出 183 行、覆盖全部 25 局全部 183 关** ⇒ 与 Evaluation 页"为全部局生成提交文件"完全吻合。
+
+**⇒ 提交 parquet 不可下载**：`api.kaggle.com` RPC 返回 **403 Forbidden**，
+`www.kaggle.com/submissions/{ref}/{ref}.raw` 返回 **401 Unauthenticated**（需浏览器会话）。
+这是 Kaggle 的反作弊设计 ⇒ **历史提交的逐关明细永久拿不到**。任何"靠下载历史 parquet 反推"的方案都是死路。
+
+### 8.5 ★ 根因：竞赛数据挂载路径前缀 —— notebook 在第 1 个 cell 就死
+
+**证据（全部来自 Kaggle 官方接口 + 真实 kernel 日志）：**
+
+| 对象 | install 路径前缀 | 结果 |
+|---|---|---|
+| **官方样例** `inversion/arc3-sample-submission-random-agent` | `/kaggle/input/**competitions**/<slug>/arc_agi_3_wheels` | ✅ |
+| **我们 10-20 那次 dpl**（得 0.15） | `/kaggle/input/**competitions**/<slug>/…` | ✅ 装上 |
+| **我们 10-22 wangausx 那次**（得 0.03） | `/kaggle/input/<slug>/…`（**少 `competitions/` 段**） | 手动运行能装上，**但竞赛 rerun 里装不上** |
+| **合并后 `build_notebook.py` 当时的状态** | `/kaggle/input/<slug>/…`（少 `competitions/` 段） | ❌ |
+| **官方样例的框架 `cp -r` 源** | `/kaggle/input/arc-prize-2026-arc-agi-3/ARC-AGI-3-Agents` | 与 wheels 路径**不同** |
+
+**同一台机器上，路径前缀会随 kernel 挂载方式变化**——实测日志：
+
+```
+liaojiaxuan/smartrouter-merged-ab-llm0 (从未提交竞赛)
+  Looking in links: /kaggle/input/arc-prize-2026-arc-agi-3/arc_agi_3_wheels   ✅ 装上
+liaojiaxuan/smartrouter-merged-cpu-submit v1 (新推的，同一写法)
+  WARNING: Location '/kaggle/input/arc-prize-2026-arc-agi-3/arc_agi_3_wheels' is ignored
+  ERROR: No matching distribution found for arc-agi                              ❌ 装不上
+```
+
+**失败链：**
+
+```
+arc-agi 装不上
+  → notebook 在第 1 个 cell 抛错（papermill allow_errors=False）
+  → 永远走不到竞赛 cell 里的 `python main.py --agent myagent`
+  → agent 一局都没玩
+  → 网关按 25 局全部关卡生成"几乎全 0"的提交文件
+  → 公开分 0.00 ~ 0.15（"没跑起来"带）
+```
+
+**这不是猜的 —— 修复后当场验证：**
+
+```
+v2 (加多候选探测):
+  WHEELS /kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels
+  Successfully installed arc-agi-0.9.8 arcengine-0.9.3
+  STATUS: COMPLETE          (v1 是 ERROR)
+```
+
+**探测到的正是 `competitions/` 前缀，与官方样例一致。**
+
+**修复方式（`build_notebook.py`，三处路径全部改成"多候选探测 + glob 兜底"）：**
+
+1. `install_cell` 的 wheels 路径 → 依次试 `competitions/<slug>/…`、`<slug>/…`，再 glob `arc_agi_3_wheels`；
+   找不到就 `WHEELS_NOT_FOUND` **响亮失败**（不再静默拿不到包）。
+2. 竞赛 cell 的框架 `cp -r` 源 → 同样探测两个候选 + glob `ARC-AGI-3-Agents`；
+   找不到就 `FRAMEWORK_NOT_FOUND`。
+3. vllm cell 里重装 `arc-agi` 的 `_comp` 路径 → 同样探测（原来与 install cell 不一致，是个定时炸弹）。
+
+**并且新增 `LINGJING_SKIP_METADATA_SYNC=1`**：构建变体 notebook 时**不再改动队友共享的
+`notebooks/kernel-metadata.json`**（那个文件指向 `wangausx/arc-prize-2026-smart-router-v2-dpl`）。
+
+### 8.6 被逐一排除的假设（避免后人重复踩坑）
+
+| 假设 | 检验方法 | 结论 |
+|---|---|---|
+| 是 vLLM / GPU 炸的？ | 队友 10-22 提交是 **CPU-only、无模型数据集**的 notebook | ❌ 仍只有 0.03 ⇒ GPU 不是主因 |
+| 是 `BUILD_TAG` 门控 `SystemExit` 拦的？ | **直接执行竞赛 cell 的门控逻辑**，打印真实 `BUILD_TAG` | ❌ 门控**通过**（提交版与当前 HEAD 都含 `llm-whole-qwen` + `llm-structured-view`） |
+| 是 API key 错？ | 与**官方样例逐字比对** `.env` | ❌ 完全一致（`ARC_API_KEY=test-key-123` / `OPERATION_MODE=online`） |
+| 是 9 小时时限不够？ | 读 `Code Requirements` 页 + vLLM 启动耗时 | ❌ 额度 9 小时，启动只花 28.5 分钟 |
+| 是 agent 状态在并发下互相污染？ | 读 `agents/swarm.py:76-87` | ❌ **每局一个 agent 实例**，无共享状态 |
+| 是"幽灵 LLM 调用"拖垮了？ | 已在 `75f7d8b` 用出网层 fail-closed 硬守卫修掉 | ❌ 不是主因（但确实是真 bug，已修） |
+| 能不能下载历史提交 parquet 反推逐关明细？ | `DownloadSubmission` RPC / web raw 路径 | ❌ **403 / 401，永久不可得** |
+| 提交文件只有玩过的局？ | Evaluation 页 + 本地 183 行复刻 | ❌ **覆盖全部 25 局全部 183 关** |
+
+### 8.7 本地竞赛模式全量复刻（结构复现成功）
+
+`_tmp_comp_rerun.py`（升级版）用**与竞赛完全同构**的配置本地复刻：
+
+- 网关：`arc_agi.server.create_app(arc, competition_mode=True)`（= Kaggle sidecar 的形态）
+- 客户端：`.env` 与 notebook 逐字一致（`ARC_BASE_URL=http://gateway:8001/`、`OPERATION_MODE=online`）
+- 命令：`python main.py --agent myagent`（**不带 `--game`**，= 提交时的原样形态）
+
+**结果：**
+
+| 指标 | 值 |
+|---|---|
+| `/api/games` 返回 | **25 局** |
+| 实际玩到 | **25 / 25 局** ✔ |
+| 网关侧 environments | **25** |
+| 产出 parquet | **183 行**（= 25 局 × 全部 183 关） |
+| 分数 | 见 §9（长超时复刻中） |
+
+**⇒ 结构层面完全复现成功：agent 在"竞赛模式网关 + 不带 `--game`"下确实能玩满 25 局、
+网关确实按"全部局 × 全部关卡"出文件。**
+**⇒ 0.15 的根因收敛到"notebook 在装 `arc-agi` 那一步就死了，agent 根本没上场"。**
+
+### 8.8 本轮针对 0.15 的代码改动
+
+| 文件 | 改动 |
+|---|---|
+| `scripts/build_notebook.py` | install cell / 竞赛 cell 框架源 / vllm cell 三处路径改**多候选探测 + glob 兜底**，并响亮失败 |
+| `scripts/build_notebook.py` | 新增 `LINGJING_SKIP_METADATA_SYNC=1`，构建变体不动队友共享 metadata |
+| `scripts/push_cpu_submit_kernel.py`（新） | 推 **CPU 保底提交版** kernel（`enable_gpu=false`、无模型数据集、不烧 GPU 配额） |
+| `scripts/submit_to_competition.py`（新） | **程序化提交**（`competition_submit_code`），带三重护栏：kernel 必须 COMPLETE、日配额检查、`--dry-run` |
+| `notebooks/submission_cpu.ipynb`（新） | 提交用纯算法臂：CPU、`SELFLEARN_LLM=0`、`LINGJING_SCRIPTS=on`、**无 bench cell**（rerun 不需要，还省时限） |
+
+### 8.9 ★ 关键修正：这是**两个独立问题**，别混成一句"没跑起来"
+
+在写本节的过程中，我们把官方竞赛页（`data-description`）也抓了下来，原文：
+
+> **Note:** Competition evaluation uses a **separate, private set of 110 games** that your
+> agent has never seen. Half of these are used for the Public Leaderboard score, and the
+> other half for the Private Leaderboard score.
+
+官方评分口径（同页 `Scoring`）：
+
+| 项 | 官方定义 |
+|---|---|
+| 每关分 | `min(human_actions / agent_actions, 1.0)²` |
+| 每局分 | 各关分的加权平均（按关卡序号 1-indexed 加权） |
+| 总分 | 所有局分的平均，输出 **0%–100%** |
+
+**⇒ 评测集是 110 个隐藏局。我们本地基准那 25 局是"公开练习局"，根本不在评测集里。**
+
+于是 0.15 这个数必须拆成两个**互相独立**的问题：
+
+| | 问题 A：**通路断了** | 问题 B：**泛化差距** |
+|---|---|---|
+| 表现 | 提交后 **agent 一局都没玩** | agent 玩了，但**几乎解不出隐藏局** |
+| 证据 | install 路径前缀写死 → notebook 第 1 个 cell 死（**本轮实测：v1 ERROR → v2 COMPLETE**）；duck 线 v25 "6 小时零 in-game action"（v27 已修四处自伤旋钮） | 官方页明写评测集 = 110 隐藏局；本地 60.40 是 25 公开练习局的分；第三方实测程序化 agent 天花板 ≈ **0.27**、随机 agent ≈ 0.10 |
+| 修好能拿到 | 0.00 → **0.15**（把"没跑"变回"跑了"） | 0.15 → 20~40 集群 |
+| 状态 | ✅ **已修 + 已验证**（§8.5） | ⏳ 未解，**必须换架构** |
+
+**⇒ 对上一轮结论的重要修正（必须诚实写下来）：**
+
+> 我们在 §4 / §6.2 里说"计划带来的是公开局分，不是隐藏集分"。
+> **官方页面给出了更狠的版本：评测集是另外 110 局，连那 25 局都不在里面。**
+> 所以 `LINGJING_SCRIPTS` 默认开（`100fdc2`）让本地从 19.37 → 60.40，
+> **对榜分的期望贡献精确地等于 0**。
+> 它仍然值得做——但理由要改成"**本地回归测试 / 冒烟基线**"，
+> **不能**再当成提分手段，也不能再拿本地 60.40 去推算榜分。
+
+**⇒ 0.15 的真实构成（与团队 10-20 诊断一致，本次得到官方页面背书）：**
+通用兜底路径（CEAX 探索 + Qwen 每步 JSON）在隐藏局上偶尔蹭过 1~3 关，
+且动作数远高于人类基准 ⇒ `(human/agent)²` 趋近 0 ⇒ 25 局平均 0.15。
+比随机 agent（0.10）只高 0.05。
+
+---
+
+## 9. 更新后的优化 / 升级路线（第二轮之后）
+
+### 9.1 结论调整（已按官方"110 隐藏局"再修一次）
+
+**上一轮结论"继续合并 vs 优化"不变，但优先级被彻底改写两次：**
+
+> **第一次修正**：本地 60.40 → 竞赛 0.15 的落差**不是单一原因**，是
+> **① 通路断了**（已修）**+ ② 评测集是 110 隐藏局、我们的公开局分不迁移**（未解）。
+>
+> **第二次修正（官方页面背书后）**：
+> **在修好提交通路之前，任何"提分"工作都测不出来**；
+> 而且**修好通路只能把 0.00 拉回 0.15**——**0.15 → 20~40 集群必须换架构**，
+> 继续在 25 个公开局上加计划，对榜分的贡献**精确为 0**。
+
+**⇒ 一句话结论：**
+**先把路修通（拿回 0.15，别再交 0.00），然后立刻把主力切到 Duck harness（LLM + REPL）路线；
+公开 25 局的计划资产降级为"回归测试基线"，不再当提分手段。**
+
+### 9.2 路线图
+
+| 优先级 | 动作 | 状态 | 判据 |
+|---|---|---|---|
+| **P0** | 修 install/框架路径前缀（多候选探测） | ✅ **已修 + 已验证**（CPU kernel v1 ERROR → v2 COMPLETE） | kernel 状态 COMPLETE 且日志出现 `WHEELS .../competitions/...` |
+| **P0** | 推 CPU 保底提交版（不烧 GPU） | ✅ `liaojiaxuan/smartrouter-merged-cpu-submit` v2 | 提交配额解锁即可交 |
+| **P0** | 日配额解锁后提交 CPU 保底版 | ⏳ 定时任务已排（UTC 00:00 之后） | `competition_submissions` 出现新条目 |
+| **P0** | 提交后**第一时间回读公开分** | ⏳ | **公开分应从 0.0x 跳到两位数**——这是通路修复是否生效的唯一判据 |
+| **P1** | 重新测并发下的真实分（长超时复刻） | 🔄 后台跑（5400s） | 25 局并发下的总分 vs 顺序基准 1510 |
+| **P0-B** | ★ **Duck harness 修活并提交**（官方配置：110 局 ÷ 28 并发 × 7920 s 铺满 9 h） | ⏳ 等 GPU 配额（10-24 08:00） | 目标 0.15 → **1.5~3.0**（官方公开局均值 1.6002） |
+| **P0-C** | 把 **§8.5 路径修复 + v27 四处自伤旋钮修复** 一起搬进 duck kernel | ⏳ 纯本地可做 | duck kernel 不再 6 小时零 action |
+| **P1** | 移植 `feat/unify-decoder-entry` 的 25 文件破零包 | ⏳ 可立即开始 | **降级目标**：只作为本地回归基线，**不再计入榜分预期** |
+| **P2** | 通用能力（探索 / 记忆 / LLM 写代码分析网格） | ⏳ | **隐藏集唯一胜负手**（官方题面原话：exploration, memory, goal acquisition） |
+| **P2** | 基准可复现（清 `state/engine_solver_cache.json`、不并发、seed 固定） | ⏳ | 前后两次跑测逐局一致 |
+| **P3** | 公开 25 局的校准计划继续维护 | ⏳ | **只作回归测试/冒烟基线**，榜分预期贡献 = 0 |
+### 9.3 仍然不要做的事
+
+- **不要用公开榜调参**（`0.15` 这类分数不是能力信号，调它只会过拟合噪声）。
+- **不要再堆公开局 plan**：`LINGJING_SCRIPTS` 已经是"把树里已有的资产打开"，不是新增特判。
+- **不要在 GPU 配额墙前反复重推 GPU kernel**（每次失败都在烧配额墙的时间）。
+- **不要指望下载历史提交 parquet**（403/401，永久不可得）。
+
+### 9.4 一条给全队的硬规则（本次事故的直接教训）
+
+> **Kaggle 竞赛数据的挂载路径前缀会随 kernel 的挂载方式变化。**
+> 凡是写死 `/kaggle/input/<something>` 的 notebook cell，都必须改成
+> **"多候选探测 + glob 兜底 + 响亮失败"**。
+> 我们在环境目录上已经踩过一次（`_tmp_bench` 猜路径 → 改多候选探测），
+> 这次在 **wheels / 框架树**上又踩了一次——**同一类 bug，两次都让整轮跑测白跑。**
+>
+> 落地护栏（`build_notebook.py` 内置，不靠人记）：
+> - 路径找不到 → `SystemExit('WHEELS_NOT_FOUND' / 'FRAMEWORK_NOT_FOUND')`，**在第一个 cell 就炸**；
+> - 装包用 `check=True`，**装不上就炸**，绝不静默继续；
+> - 竞赛 cell 的 `main.py` 用 `!python main.py --agent myagent`，
+>   后面**补一行 `!python -c "print('MAIN_EXIT', 0)"` 之类的哨兵**，
+>   这样"到底跑没跑起来"在日志里一眼可见，而不是靠猜。
