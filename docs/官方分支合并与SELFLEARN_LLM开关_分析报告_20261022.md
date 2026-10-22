@@ -615,7 +615,7 @@ v2 (加多候选探测):
 |---|---|
 | `scripts/build_notebook.py` | install cell / 竞赛 cell 框架源 / vllm cell 三处路径改**多候选探测 + glob 兜底**，并响亮失败 |
 | `scripts/build_notebook.py` | 新增 `LINGJING_SKIP_METADATA_SYNC=1`，构建变体不动队友共享 metadata |
-| `scripts/push_cpu_submit_kernel.py`（新） | 推 **CPU 保底提交版** kernel（`enable_gpu=false`、无模型数据集、不烧 GPU 配额） |
+| `scripts/push_submit_kernel.py`（新，cpu/llm 双臂） | 推 **提交用 kernel**：cpu 臂 = 保底（`enable_gpu=false`、无模型数据集、不烧 GPU 配额）；llm 臂 = 大模型臂（RTX Pro 6000 + vLLM wheelhouse + Qwen3.6-27B-FP8）。`notebooks/submission_llm.ipynb`（新）配套 |
 | `scripts/submit_to_competition.py`（新） | **程序化提交**（`competition_submit_code`），带三重护栏：kernel 必须 COMPLETE、日配额检查、`--dry-run` |
 | `notebooks/submission_cpu.ipynb`（新） | 提交用纯算法臂：CPU、`SELFLEARN_LLM=0`、`LINGJING_SCRIPTS=on`、**无 bench cell**（rerun 不需要，还省时限） |
 
