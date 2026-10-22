@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import traceback
 from collections import deque
 from pathlib import Path
@@ -55,6 +56,12 @@ def _bootstrap_paths() -> None:
                     sys.path.insert(0, s)
         except OSError:
             continue
+    # 让同目录的 duck_bridge.py 可被 `from duck_bridge import DuckBridge` 找到。
+    # 本地是 agent/；Kaggle 上这个文件不随行，第 2023 行的 try/except 会兜底
+    # 成静默禁用 —— 这里只管把目录放进 path，不替它决定要不要用。
+    here = str(_FILE.parent)
+    if here not in seen:
+        sys.path.insert(0, here)
 
 
 _bootstrap_paths()
@@ -165,6 +172,283 @@ def _engine_solver() -> Any:
         except Exception:  # noqa: BLE001
             _ENGINE = False
     return _ENGINE or None
+
+
+# --- 批量动作协议：一次 LLM 调用换多步 ------------------------------------
+def _llm_on() -> bool:
+    return str(os.environ.get("LINGJING_LLM", "off")).strip().lower() in {
+        "1", "on", "true", "yes",
+    }
+
+
+def _llm_preceax_on() -> bool:
+    """未知局在 CEAX 之前问 LLM。默认开；LINGJING_LLM_PRECEAX=off 关掉。"""
+    return str(os.environ.get("LINGJING_LLM_PRECEAX", "on")).strip().lower() not in {
+        "0", "off", "false", "no", "none",
+    }
+
+
+def _llm_call_budget() -> tuple[int, int]:
+    """(stride, max_calls)。一次调用可能带多步，所以 cap 是调用次数不是步数。"""
+    try:
+        stride = max(1, int(os.environ.get("LINGJING_LLM_STRIDE", "1") or 1))
+    except (TypeError, ValueError):
+        stride = 1
+    try:
+        cap = max(0, int(os.environ.get("LINGJING_LLM_MAX_CALLS", "30") or 30))
+    except (TypeError, ValueError):
+        cap = 30
+    return stride, cap
+
+
+def _plan_locked(gid: str) -> bool:
+    return gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE
+
+
+def _llm_spec_to_action(spec: Any, valid: list[str]) -> Optional[GameAction]:
+    """Normalized spec dict → GameAction, re-checked against the live legal list.
+
+    Built at dispatch time (not parse time) so two ACTION6 steps in one burst
+    cannot overwrite each other: GameAction.ACTION6 is a shared enum member.
+    """
+    if not isinstance(spec, dict):
+        return None
+    name = str(spec.get("action") or "").strip().upper()
+    if not name:
+        return None
+    legal = {a.upper() for a in valid}
+    if legal and name not in legal:
+        return None
+    try:
+        act = getattr(GameAction, name)
+    except AttributeError:
+        return None
+    if name == "ACTION6":
+        if "x" not in spec or "y" not in spec:
+            return None
+        try:
+            act.set_data({"x": int(spec["x"]), "y": int(spec["y"])})
+        except (TypeError, ValueError, KeyError):
+            return None
+    try:
+        act.reasoning = {"text": f"{BUILD_TAG}:llm-batch {spec.get('why', '')}"}
+    except Exception:  # noqa: BLE001
+        pass
+    return act
+
+
+# --- 结构化视图 LLM 层：冠军「对象视图 + 规则」那一半，接在批量队列上 ----------
+# 旧链路（llm_policy）给模型一帧 PNG + ASCII 和 256 token 的输出预算，物理上只能
+# "看一眼给一个动作"。lexicon 这条给的是 objects/rules/PREDICTED/CHANGES 四段文本
+# （约 1.5-2K token），模型才有空间做多步因果推理。开关：
+#   LINGJING_LLM_VIEW=planner|legacy  默认 planner；import 不到 lexicon 自动回退 legacy
+#   LINGJING_LLM_BATCH=int           每批动作数（planner 的 chunk，默认 4，上限 12）
+#   LINGJING_LLM_EVERY=int           两次调用之间最少几步（默认 1，靠队列自然节流）
+#   LINGJING_LEXICON_DIR=path        手动指定 lexicon 包所在目录
+_LP_READY = False
+_LP_PERCEPTION: Any = None
+_LP_PLANNER_CLS: Any = None
+_LP_DISPLAY_XY: Any = None
+
+
+def _llm_view() -> str:
+    v = str(os.environ.get("LINGJING_LLM_VIEW", "planner")).strip().lower()
+    return v if v in {"planner", "legacy"} else "planner"
+
+
+def _lp_chunk() -> int:
+    try:
+        n = int(os.environ.get("LINGJING_LLM_BATCH", "4") or 4)
+    except (TypeError, ValueError):
+        n = 4
+    return max(1, min(12, n))
+
+
+def _lp_load() -> bool:
+    """Import the lexicon package once. False = 没有这套文件，调用方走旧链路。"""
+    global _LP_READY, _LP_PERCEPTION, _LP_PLANNER_CLS, _LP_DISPLAY_XY
+    if _LP_READY:
+        return _LP_PLANNER_CLS is not None
+    _LP_READY = True
+    import importlib
+
+    try:
+        importlib.import_module("lexicon")
+    except Exception:  # noqa: BLE001 — 先按候选目录补 sys.path
+        cands: list[Path] = []
+        env = str(os.environ.get("LINGJING_LEXICON_DIR", "") or "").strip()
+        if env:
+            cands.append(Path(env).expanduser())
+        # 三种摆放都可能：repo/arc_adaptor/lexicon、Starter 同级的 integrations、
+        # Kaggle 的 /tmp/lingjing_solo/arc_adaptor/lexicon。逐个父目录探一遍，
+        # 再扫 sys.path（框架已经按 LINGJING_SRC 把仓库根放进来过）。
+        for base in (_FILE.parent, *_FILE.parents[:5], Path.cwd()):
+            if base not in cands:
+                cands.append(base)
+        for entry in list(sys.path):
+            try:
+                cands.append(Path(entry or "."))
+            except (TypeError, ValueError):
+                continue
+        found = False
+        for c in cands:
+            for sub in (
+                c / "lexicon",
+                c / "arc_adaptor" / "lexicon",
+                c / "lingjing_solo" / "arc_adaptor" / "lexicon",
+            ):
+                try:
+                    hit = (sub / "__init__.py").is_file()
+                except OSError:
+                    hit = False
+                if not hit:
+                    continue
+                parent = str(sub.parent)
+                if parent not in sys.path:
+                    sys.path.append(parent)
+                found = True
+                break
+            if found:
+                break
+    try:
+        pkg = importlib.import_module("lexicon")
+        mod = importlib.import_module("lexicon.llm_planner")
+        _LP_PERCEPTION = pkg.Perception
+        _LP_DISPLAY_XY = pkg.display_xy
+        _LP_PLANNER_CLS = mod.LLMPlanner
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{BUILD_TAG}] lexicon unavailable ({type(exc).__name__}: {exc})", flush=True)
+        _LP_PERCEPTION = _LP_PLANNER_CLS = _LP_DISPLAY_XY = None
+        return False
+    return True
+
+
+_POLICY_READY = False
+_POLICY_FN: Any = None
+
+
+def _load_llm_policy() -> Any:
+    """Return llm_policy.propose_plan, or None if the file cannot be located.
+
+    Only the legacy (PNG + ASCII) view needs it. It used to rely on the file
+    sitting next to my_agent.py, which breaks whenever the agent is loaded from
+    another directory (`--agent /path/to/copy.py`, or a bundle that shipped the
+    agent without the policy). Missing it silently degraded to CEAX, so every
+    caller must be able to tell "no policy" from "policy said nothing".
+    """
+    global _POLICY_READY, _POLICY_FN
+    if _POLICY_READY:
+        return _POLICY_FN
+    _POLICY_READY = True
+    import importlib
+
+    try:
+        _POLICY_FN = importlib.import_module("llm_policy").propose_plan
+        return _POLICY_FN
+    except Exception:  # noqa: BLE001 — 下面按候选目录再找
+        pass
+
+    cands: list[Path] = []
+    env = str(os.environ.get("LINGJING_LLM_POLICY_DIR", "") or "").strip()
+    if env:
+        cands.append(Path(env).expanduser())
+    src = str(os.environ.get("LINGJING_SRC", "") or "").strip()
+    if src:
+        root = Path(src).expanduser()
+        cands.extend(
+            [
+                root / "agent",
+                root / "integrations" / "ARC-AGI-3-Kaggle-Starter" / "agent",
+            ]
+        )
+    cands.extend([_FILE.parent, Path.cwd() / "agent", Path.cwd()])
+    try:
+        cands.append(Path(sys.argv[0]).resolve().parent)
+    except (TypeError, ValueError, OSError):
+        pass
+    for base in _FILE.parents[:4]:
+        cands.append(base / "agent")
+    for entry in list(sys.path):
+        try:
+            cands.append(Path(entry or ".") / "agent")
+        except (TypeError, ValueError):
+            continue
+
+    seen: set[str] = set()
+    for c in cands:
+        key = str(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            if not (c / "llm_policy.py").is_file():
+                continue
+        except OSError:
+            continue
+        if key not in sys.path:
+            sys.path.insert(0, key)
+        try:
+            _POLICY_FN = importlib.import_module("llm_policy").propose_plan
+            return _POLICY_FN
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{BUILD_TAG}] llm_policy load fail @ {key}: {exc}", flush=True)
+    print("[%s] llm_policy not found; legacy LLM view disabled" % BUILD_TAG, flush=True)
+    return None
+
+
+def _lp_action_spec(text: Any, why: str = "", code: Any = None) -> Optional[dict]:
+    """`ACTION2` / `ACTION6@r,c` → the dict the batch queue already speaks.
+
+    The BOARD view prints native cells, ACTION6 wants screen pixels: without the
+    scale/offset conversion every click lands at 1/scale of the intended spot.
+    """
+    s = str(text or "").strip().upper().replace(" ", "")
+    if not s or not s.startswith("ACTION"):
+        return None
+    head, _, tail = s.partition("@")
+    name = head
+    if name not in {f"ACTION{i}" for i in range(1, 8)}:
+        return None
+    spec: dict[str, Any] = {"action": name, "why": why}
+    if name == "ACTION6":
+        parts = tail.split(",")
+        if len(parts) != 2:
+            return None
+        try:
+            r, c = int(parts[0]), int(parts[1])
+        except ValueError:
+            return None
+        x, y = c, r
+        if code is not None and _LP_DISPLAY_XY is not None:
+            try:
+                x, y = _LP_DISPLAY_XY(code, r, c)
+            except Exception:  # noqa: BLE001
+                x, y = c, r
+        spec["x"], spec["y"] = int(x), int(y)
+    return spec
+
+
+def _action_label(action: Any) -> tuple[str, Optional[tuple]]:
+    """What was actually dispatched, for the lexicon's rule learner."""
+    name = str(getattr(action, "name", "") or "")
+    if not name:
+        return "", None
+    if name != "ACTION6":
+        return name, None
+    d = getattr(action, "action_data", None)
+    if d is None:
+        d = getattr(action, "data", None)
+
+    def _g(k: str) -> Any:
+        return d.get(k) if isinstance(d, dict) else getattr(d, k, None)
+
+    try:
+        x, y = _g("x"), _g("y")
+        if x is None or y is None:
+            return name, None
+        return name, (int(x), int(y))
+    except (TypeError, ValueError):
+        return name, None
 
 
 def _ceax_giveup_after() -> int:
@@ -333,10 +617,11 @@ def _aop_apply(
 
 
 BUILD_TAG = (
-    "smart-router-v2+inline-ls20x7-ar25x8-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
+    "smart-router-v2+inline-ls20x7-ft09x6+ceax+vc33x7+sb26x8+r11lx6"
     "+r3fix+v14.2-transition+engine-solver-wired+engine-probe-cache-maps-only"
     "+ceax-giveup150+dual-path-fix+aop-readiness-v2+plan-protect"
     "+perc-r3cap+iddfs-hasclick-fix+wa30-gbk-fix"
+    "+ar25-champion-v2-llm-on+rule-enhance"
 )
 AGENT_BRAND = "lingjing-smart"
 
@@ -538,6 +823,13 @@ ROUTE_INLINE = frozenset({"ls20", "ar25", "ft09", "tr87"})
 ROUTE_CEAX_KNOWN = frozenset({
     "lp85", "su15", "sb26", "s5i5", "tu93", "r11l",
 })
+
+# 脚本清零开关（LINGJING_SCRIPTS=1 才启用校准计划）。
+# 默认 off：不读任何录像/硬编码序列，全部交给在线学习（SelfLearner）。
+SCRIPTS_ENABLED = str(os.environ.get("LINGJING_SCRIPTS", "off")).strip().lower() in {
+    "1", "on", "true", "yes",
+}
+_SCRIPTS_OFF = not SCRIPTS_ENABLED
 # vc33: 专用点击计划（vc33_click_solver/vc33_abstract_solver 校准，7 关真机回放验证 WIN）。
 _VC33_PLANS: dict[int, list[tuple[int, int]]] = {
     0: [(63, 35), (63, 35), (63, 35)],
@@ -830,6 +1122,40 @@ def _valid_names(frame: FrameData) -> list[str]:
     return out
 
 
+def _semantic_prompt(frame: Any) -> str:
+    """把 LexiconFrame 渲染成 LLM 可读文本（懒加载，避免非 ARCAID3 路径的导入开销）。"""
+    try:
+        from lingjing_solo.arcaid3.lexicon_view import grid_to_semantic_prompt
+
+        return grid_to_semantic_prompt(frame)
+    except Exception:
+        return ""
+
+
+def _rule_to_action(rule, valid_actions: list[str]) -> str | None:
+    if rule is None:
+        return None
+    pattern = getattr(rule, "pattern", "") or ""
+    pattern_lower = pattern.lower()
+    if "click" in pattern_lower or "action6" in pattern_lower:
+        return "ACTION6" if "ACTION6" in valid_actions else None
+    if "left" in pattern_lower or "action3" in pattern_lower or "←" in pattern:
+        return "ACTION3" if "ACTION3" in valid_actions else None
+    if "right" in pattern_lower or "action4" in pattern_lower or "→" in pattern:
+        return "ACTION4" if "ACTION4" in valid_actions else None
+    if "up" in pattern_lower or "action1" in pattern_lower or "↑" in pattern:
+        return "ACTION1" if "ACTION1" in valid_actions else None
+    if "down" in pattern_lower or "action2" in pattern_lower or "↓" in pattern:
+        return "ACTION2" if "ACTION2" in valid_actions else None
+    if "submit" in pattern_lower or "action5" in pattern_lower:
+        return "ACTION5" if "ACTION5" in valid_actions else None
+    pattern_upper = pattern.upper()
+    for va in valid_actions:
+        if va.upper() in pattern_upper:
+            return va
+    return None
+
+
 def _safe_reset() -> GameAction:
     action = GameAction.RESET
     action.reasoning = {"text": f"{BUILD_TAG}:reset"}
@@ -1051,11 +1377,15 @@ class MyAgent(Agent):
     """CEAX primary + inline ls20/ar25 floor. Crash-proof choose_action."""
 
     MAX_ACTIONS: int = 800
+    # 每局墙钟上限（秒）。0 = 不限。实例可用 time_deadline 传绝对截止
+    # 时间（runner 用），或用环境变量 ARC_GAME_TIME_LIMIT_MIN 设分钟数。
+    TIME_LIMIT_SEC: float = 0.0
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.cfg = SoloConfig(
-            use_llm_advisor=False,
+            use_llm_advisor=True,
+            llm_calls_per_game=200,
             enable_transfer=True,
             enable_mouse=True,
             enable_click_sweep=True,
@@ -1110,10 +1440,39 @@ class MyAgent(Agent):
         self.ar25 = _InlineScript(
             {str(i): [f"ACTION{n}" for n in acts] for i, acts in _AR25_LEVEL_ACTIONS.items()}
         )
+        # --- ARCAID3 Champion 组件（词法视图 / 规则学习 / No-op Guard）---
+        # 默认关闭，ARCAID3_CHAMPION=1 才启用；开关关闭时属性仍存在，避免 AttributeError。
+        self._champion_enabled = str(
+            os.environ.get("ARCAID3_CHAMPION", "0")
+        ).strip().lower() in {"1", "on", "true", "yes"}
+        self._champion_step = 0
+        self._champion_prev_frame = None
+        self._champion_last_action = None
+        self._lexicon = None
+        self._rule_learner = None
+        self._noop_guard = None
+        if self._champion_enabled:
+            try:
+                from lingjing_solo.arcaid3.lexicon_view import ARCAID3LexiconView
+                from lingjing_solo.arcaid3.noop_guard import NoOpRepeatGuard
+                from lingjing_solo.arcaid3.rule_learner import RuleLearner
+
+                self._lexicon = ARCAID3LexiconView()
+                self._rule_learner = RuleLearner(window_size=15, min_confidence=0.55)
+                self._noop_guard = NoOpRepeatGuard(max_block_attempts=1)
+                print("[ARCAID3] champion online: lexicon+rule+noop", flush=True)
+            except Exception as _e:
+                self._champion_enabled = False
+                print(f"[ARCAID3] init failed → disabled: {_e}", flush=True)
         self._prev_grid: Optional[np.ndarray] = None
         self._levels_seen = 0
         self._errors = 0
         self._r3_path: list[int] = []
+        # duck：R3 三道链（本地求解器 / shadow / IDDFS）全空手时的最后一道门。
+        # _duck_request 记的是"在哪个关卡上失败"，换关即作废；_duck 懒构造，
+        # 保证没有本地模型时这条线连对象都不存在（对现有分数零影响）。
+        self._duck: Any = None
+        self._duck_request: int = -1
         self._env_ref: Any = getattr(self, "arc_env", None)
         self._v14_transition = V14ArcTransition()
         self._hybrid_click_budget: int = 20
@@ -1123,32 +1482,82 @@ class MyAgent(Agent):
         self._engine_level: int = -1
         self._engine_level_steps: int = 0
         self._engine_off: bool = False
+        self._engine_reason: str = ""
+        # LLM 通道：调用计数 + 批量队列（一次调用换多步）
+        self._llm_calls: int = 0
+        self._llm_took: bool = False
+        self._llm_queue: deque = deque()
+        self._llm_queue_level: int = -1
+        self._llm_queue_hash: str = ""
+        self._llm_queue_stuck: int = 0
+        self._llm_batches: int = 0
+        self._llm_batch_steps: int = 0
+        # 结构化视图（lexicon）LLM：perception 负责累积规则，planner 负责问模型
+        self._lp_perc: Any = None
+        self._lp_plan: Any = None
+        self._lp_level: int = -1
+        self._lp_step_seen: int = -1
+        self._lp_prev_action: str = ""
+        self._lp_prev_click: Optional[tuple] = None
+        self._lp_hash: str = ""
+        self._lp_outcome: str = ""
+        self._lp_recent: list = []
+        if _llm_on() and _llm_view() == "planner" and _lp_load():
+            try:
+                self._lp_perc = _LP_PERCEPTION()
+                self._lp_plan = _LP_PLANNER_CLS(
+                    chunk=_lp_chunk(),
+                    every=max(1, int(os.environ.get("LINGJING_LLM_EVERY", "1") or 1)),
+                )
+                print(
+                    f"[{BUILD_TAG}] llm-view=planner chunk={self._lp_plan.chunk} "
+                    f"every={self._lp_plan.every} maxchars={self._lp_plan.max_chars}",
+                    flush=True,
+                )
+            except Exception as _e:  # noqa: BLE001
+                self._lp_perc = self._lp_plan = None
+                print(f"[{BUILD_TAG}] planner init failed -> legacy: {_e}", flush=True)
+        elif _llm_on():
+            print(f"[{BUILD_TAG}] llm-view=legacy (no lexicon)", flush=True)
         # CEAX 止损：同一关连续零进展计步 + 只播一次日志
         self._stag_level: int = -1
         self._stag_count: int = 0
         self._stag_logged: bool = False
+        # 每局墙钟上限：runner 设绝对截止 time_deadline；否则看环境变量
+        # ARC_GAME_TIME_LIMIT_MIN（分钟，0/缺省 = 不限）。
+        self.time_deadline: Optional[float] = None
+        self._deadline_hit: bool = False
+        self._deadline_logged: bool = False
+        try:
+            self.TIME_LIMIT_SEC = (
+                float(os.environ.get("ARC_GAME_TIME_LIMIT_MIN", "0") or 0) * 60.0
+            )
+        except (TypeError, ValueError):
+            self.TIME_LIMIT_SEC = 0.0
         gid = _norm_game(getattr(self, "game_id", ""))
-        if gid in ROUTE_INLINE:
-            route = f"INLINE:{gid}"
-        elif gid == "vc33" and _VC33_PLANS:
+        # 清零模式下 route_gid 置空 → 所有校准计划分支失效，落到 CEAX_UNKNOWN。
+        _route_gid = gid if SCRIPTS_ENABLED else "__none__"
+        if _route_gid in ROUTE_INLINE:
+            route = f"INLINE:{_route_gid}"
+        elif _route_gid == "vc33" and _VC33_PLANS:
             route = "VC33_PLAN"
-        elif gid == "wa30" and _WA30_PLANS:
+        elif _route_gid == "wa30" and _WA30_PLANS:
             route = "WA30_PLAN"
-        elif gid == "sb26" and _SB26_PLANS:
+        elif _route_gid == "sb26" and _SB26_PLANS:
             route = "SB26_PLAN"
-        elif gid == "r11l" and _R11L_PLANS:
+        elif _route_gid == "r11l" and _R11L_PLANS:
             route = "R11L_PLAN"
-        elif gid == "cd82" and _CD82_PLANS:
+        elif _route_gid == "cd82" and _CD82_PLANS:
             route = "CD82_PLAN"
-        elif gid == "tn36" and _TN36_PLANS:
+        elif _route_gid == "tn36" and _TN36_PLANS:
             route = "TN36_PLAN"
-        elif gid == "sc25" and _SC25_PLANS:
+        elif _route_gid == "sc25" and _SC25_PLANS:
             route = "SC25_PLAN"
-        elif gid == "bp35" and _BP35_PLANS:
+        elif _route_gid == "bp35" and _BP35_PLANS:
             route = "BP35_PLAN"
-        elif gid == "tr87" and _TR87_PLANS:
+        elif _route_gid == "tr87" and _TR87_PLANS:
             route = "TR87_PLAN"
-        elif gid in ROUTE_CEAX_KNOWN:
+        elif _route_gid in ROUTE_CEAX_KNOWN:
             route = "CEAX_KNOWN"
         else:
             route = "CEAX_UNKNOWN"
@@ -1203,7 +1612,33 @@ class MyAgent(Agent):
     def is_done(self, frames: list[FrameData], latest_frame: FrameData) -> bool:
         if latest_frame.state is GameState.WIN:
             return True
-        return self.action_counter >= self.MAX_ACTIONS
+        if self.action_counter >= self.MAX_ACTIONS:
+            return True
+        deadline = self._time_deadline()
+        if deadline is not None and time.time() >= deadline:
+            if not self._deadline_logged:
+                self._deadline_logged = True
+                self._deadline_hit = True
+                print(
+                    f"[{BUILD_TAG}] TIME-LIMIT hit game={self.game_id} "
+                    f"after {self.action_counter} actions / "
+                    f"{time.time() - (getattr(self, 'timer', time.time())):.0f}s",
+                    flush=True,
+                )
+            return True
+        return False
+
+    def _time_deadline(self) -> Optional[float]:
+        """墙钟截止时刻；None = 本局不限时。"""
+        d = getattr(self, "time_deadline", None)
+        if d:
+            return float(d)
+        sec = float(getattr(self, "TIME_LIMIT_SEC", 0) or 0)
+        if sec > 0:
+            t0 = getattr(self, "timer", None)
+            if t0:
+                return float(t0) + sec
+        return None
 
     def choose_action(
         self, frames: list[FrameData], latest_frame: FrameData
@@ -1228,6 +1663,14 @@ class MyAgent(Agent):
                     if str(getattr(_ga, "name", "")) == "ACTION6" and _cx is not None:
                         _ga.set_data({"x": int(_cx), "y": int(_cy or 0)})
                     _ga.reasoning = {"text": "engine_solver"}
+                    # 这条 early return 不经过 _choose_action_inner：lexicon 仍要
+                    # 看到这一帧，否则规则链会少一步证据。
+                    if self._lp_perc is not None:
+                        try:
+                            self._lp_observe(latest_frame, extract_grid(latest_frame))
+                            self._lp_prev_action, self._lp_prev_click = _action_label(_ga)
+                        except Exception:  # noqa: BLE001
+                            pass
                     return _ga
                 except (KeyError, AttributeError, TypeError, ValueError):
                     pass  # 转换失败 → 走原流程
@@ -1243,6 +1686,35 @@ class MyAgent(Agent):
             if self._errors < 5:
                 print(
                     f"[{BUILD_TAG}] v14-observe ERROR: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+        # 结构化视图：把这一帧连同"上一步动作"喂给 lexicon（每一步都要喂，
+        # 规则是从连续两帧的差里归纳出来的，漏一步就等于丢一条证据）。
+        if self._lp_perc is not None:
+            try:
+                self._lp_observe(latest_frame, grid)
+            except Exception as exc:  # noqa: BLE001
+                if self._errors < 5:
+                    print(
+                        f"[{BUILD_TAG}] lp-observe ERROR: {type(exc).__name__}: {exc}",
+                        flush=True,
+                    )
+        # --- duck：未知局的最后一道门 ---
+        # 只有 R3 三条链全空手（_duck_request >= 0）才走到这里；动作必须原样交给
+        # harness，因此这一支必须在 v14_transition / AOP 改写之前 return。
+        try:
+            _duck_act = self._duck_tick(latest_frame, _gid_early)
+            if _duck_act is not None:
+                if self._lp_perc is not None:
+                    try:
+                        self._lp_prev_action, self._lp_prev_click = _action_label(_duck_act)
+                    except Exception:  # noqa: BLE001
+                        pass
+                return _duck_act
+        except Exception as exc:  # noqa: BLE001 — duck 不得影响主流程
+            if self._errors < 5:
+                print(
+                    f"[{BUILD_TAG}] duck-raised: {type(exc).__name__}: {exc}",
                     flush=True,
                 )
         try:
@@ -1293,15 +1765,304 @@ class MyAgent(Agent):
                         self._aop_overrides += 1
                 except Exception:
                     pass
+        self._llm_took = False
         try:
-            return self._v14_transition.transition(action, grid)
+            action = self._v14_transition.transition(action, grid)
         except Exception as exc:  # noqa: BLE001 — preserve ARC action fallback
             if self._errors < 5:
                 print(
                     f"[{BUILD_TAG}] v14-transition ERROR: {type(exc).__name__}: {exc}",
                     flush=True,
                 )
-            return action
+        # 记下发出去的那一步：下一步 observe 时它是"产出这一帧的动作"。
+        if self._lp_perc is not None:
+            try:
+                self._lp_prev_action, self._lp_prev_click = _action_label(action)
+            except Exception:  # noqa: BLE001
+                self._lp_prev_action, self._lp_prev_click = "", None
+        return action
+
+    # --- 批量动作协议：一次 LLM 调用换多步 --------------------------------
+    def _lp_observe(self, latest_frame: FrameData, grid: Any) -> None:
+        """Feed the new frame to the lexicon: objects, rules and their counts.
+
+        Called once per step from `choose_action`, i.e. *after* the previous action
+        landed and *before* the next one is chosen — exactly the `(grid, action)`
+        pair the rule learner needs. Everything is best-effort: a lexicon bug must
+        never take the agent down, it only costs the model its context.
+        """
+        perc = getattr(self, "_lp_perc", None)
+        if perc is None or grid is None:
+            return
+        step = int(getattr(self, "action_counter", 0) or 0)
+        if step == self._lp_step_seen:      # 同一帧不重复喂（choose_action 可能被重入）
+            return
+        self._lp_step_seen = step
+
+        levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+        if levels != self._lp_level:
+            self._lp_level = levels
+            try:
+                perc.reset_level(levels)
+            except Exception:  # noqa: BLE001
+                pass
+            self._lp_hash = ""
+            self._lp_recent = []
+            self._lp_outcome = ""
+            self._clear_llm_queue(f"level ->{levels}")
+
+        act = self._lp_prev_action or None
+        click = self._lp_prev_click
+        try:
+            ev = perc.observe(grid, action=act, click=click)
+        except Exception as exc:  # noqa: BLE001
+            if self._errors < 5:
+                print(
+                    f"[{BUILD_TAG}] lp-observe ERROR: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+            return
+
+        try:
+            h = hash_grid(grid)
+        except Exception:  # noqa: BLE001
+            h = ""
+        state_name = str(getattr(getattr(latest_frame, "state", None), "name", "") or "")
+        if state_name == "GAME_OVER":
+            outcome = "death"
+        elif h and h == self._lp_hash:
+            outcome = "noop"
+        elif act:
+            outcome = "changed" if ev else "noop"
+        else:
+            outcome = ""
+        self._lp_hash = h
+        self._lp_outcome = outcome
+        if act:
+            tag = f" [{outcome}]" if outcome in ("death", "noop") else ""
+            self._lp_recent.append(f"{act}->{len(ev or [])}chg{tag}")
+            del self._lp_recent[:-12]
+
+    def _clear_llm_queue(self, reason: str = "") -> None:
+        """Drop the pending burst. A stale plan is worse than no plan."""
+        had = len(self._llm_queue)
+        self._llm_queue.clear()
+        self._llm_queue_level = -1
+        self._llm_queue_hash = ""
+        self._llm_queue_stuck = 0
+        if had and reason:
+            print(
+                f"[{BUILD_TAG}] llm-batch abort gid="
+                f"{getattr(self, 'game_id', '')} dropped={had} reason={reason}",
+                flush=True,
+            )
+
+    def _pop_llm_queue(
+        self, latest_frame: FrameData, levels: int, grid: Any
+    ) -> Optional[GameAction]:
+        """Take one step from the burst, or None if the burst must be dropped."""
+        if not self._llm_queue:
+            return None
+        # 守卫1：过关了 → 计划已完成或前提已变，立即作废
+        if levels != self._llm_queue_level:
+            self._clear_llm_queue(f"level {self._llm_queue_level}->{levels}")
+            return None
+        # 守卫2：死亡/重开 → 作废
+        if latest_frame.state in (GameState.GAME_OVER, GameState.NOT_PLAYED):
+            self._clear_llm_queue(f"state={latest_frame.state}")
+            return None
+        # 守卫3：连续两拍棋盘完全没变 → 计划前提错了
+        try:
+            h = hash_grid(grid) if grid is not None else ""
+        except Exception:  # noqa: BLE001
+            h = ""
+        if h and self._llm_queue_hash:
+            if h == self._llm_queue_hash:
+                self._llm_queue_stuck += 1
+                if self._llm_queue_stuck >= 2:
+                    self._clear_llm_queue("no-change x2")
+                    return None
+            else:
+                self._llm_queue_stuck = 0
+        if h:
+            self._llm_queue_hash = h
+        spec = self._llm_queue.popleft()
+        act = _llm_spec_to_action(spec, _valid_names(latest_frame))
+        if act is None:
+            self._clear_llm_queue(f"illegal {str(spec.get('action'))[:16]}")
+            return None
+        self._llm_batch_steps += 1
+        return act
+
+    def _lp_plan_specs(self, lp: Any, grid: Any, valid: list[str], levels: int) -> list:
+        """Ask the model through the lexicon view; [] on any soft failure."""
+        step = int(getattr(self, "action_counter", 0) or 0)
+        try:
+            fp = hash_grid(grid) if grid is not None else ""
+        except Exception:  # noqa: BLE001
+            fp = ""
+        try:
+            acts = lp.decide(
+                self._lp_perc,
+                grid,
+                step,
+                levels,
+                allowed=tuple(valid),
+                recent=self._lp_recent,
+                outcome=self._lp_outcome or None,
+                planner=None,
+                fp=fp,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[{BUILD_TAG}] lp-decide error: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return []
+        if not acts:
+            return []
+        why = str(getattr(lp, "last_why", "") or "")[:60]
+        code = getattr(self._lp_perc, "last_code", None)
+        specs = [s for s in (_lp_action_spec(a, why, code) for a in acts) if s]
+        if specs and (step < 5 or step % 20 == 0):
+            print(
+                f"[{BUILD_TAG}] lp-plan gid={getattr(self, 'game_id', '')} L={levels} "
+                f"step={step} n={len(specs)} why={why!r}",
+                flush=True,
+            )
+        return specs
+
+    def _try_llm_batch(
+        self, *, levels: int, latest_frame: FrameData, note: str = ""
+    ) -> Optional[GameAction]:
+        """Ask for a short burst; return step 1 and queue the rest."""
+        if not _llm_on():
+            return None
+        gid = _norm_game(getattr(self, "game_id", "") or "")
+        valid = _valid_names(latest_frame)
+        if not valid:
+            return None
+        try:
+            grid = extract_grid(latest_frame)
+        except Exception:  # noqa: BLE001
+            grid = None
+
+        lp = getattr(self, "_lp_plan", None)
+        if lp is not None:
+            specs = self._lp_plan_specs(lp, grid, valid, levels)
+        else:
+            specs = self._legacy_plan_specs(gid, levels, valid, grid, note)
+        if not specs:
+            return None
+        specs = specs[: _lp_chunk()]
+        first = _llm_spec_to_action(specs[0], valid)
+        if first is None:
+            return None
+        rest = specs[1:]
+        if rest:
+            self._clear_llm_queue()
+            self._llm_queue.extend(rest)
+            self._llm_queue_level = levels
+            try:
+                self._llm_queue_hash = hash_grid(grid) if grid is not None else ""
+            except Exception:  # noqa: BLE001
+                self._llm_queue_hash = ""
+            self._llm_queue_stuck = 0
+            self._llm_batches += 1
+            avg = self._llm_batch_steps / max(self._llm_batches, 1)
+            print(
+                f"[{BUILD_TAG}] llm-batch gid={gid} L={levels} n={len(specs)} "
+                f"queued={len(rest)} batches={self._llm_batches} avg={avg:.1f}",
+                flush=True,
+            )
+        return first
+
+    def _legacy_plan_specs(
+        self, gid: str, levels: int, valid: list[str], grid: Any, note: str
+    ) -> list:
+        """Old path: PNG + ASCII, one call per action (kept as a fallback)."""
+        _llm_plan = _load_llm_policy()
+        if _llm_plan is None:
+            return []
+        try:
+            return _llm_plan(
+                game_id=gid,
+                levels=levels,
+                valid_actions=valid,
+                grid=grid,
+                note=note,
+            ) or []
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[{BUILD_TAG}] llm-batch error: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return []
+
+    # ------------------------------------------------------------------ duck
+
+    def _duck_tick(self, latest_frame: FrameData, gid: str) -> Optional[GameAction]:
+        """未知局交给 duck 时，一步换一个动作；None = 这一步不归它。
+
+        契约写在 `duck_bridge.py` 里，这里只守三条：
+          1. 校准 plan / INLINE 局绝不进 duck（那里已经有解，别拿模型去换）；
+          2. `LINGJING_DUCK` 未开时构造完立刻关掉，`_duck_request` 清空，之后零开销；
+          3. 任何异常都冒泡给调用方那层 try/except，本函数绝不自己吞成"没动作"。
+        """
+        # 测试用开关：LINGJING_DUCK_FORCE_GIDS="ar25,cd82" 让特定 INLINE 局
+        # 也走 duck。逗号分隔；空或未设 = 默认行为（INLINE 局绝不进 duck）。
+        # 这条线只在用户主动开 env 时才生效，零默认影响。
+        _force_gids = frozenset(
+            g.strip() for g in os.environ.get("LINGJING_DUCK_FORCE_GIDS", "").split(",")
+            if g.strip()
+        ) if gid in ROUTE_INLINE or gid in _PLAN_PROTECTED_GAMES else frozenset()
+        if (gid in _PLAN_PROTECTED_GAMES or gid in ROUTE_INLINE) and gid not in _force_gids:
+            return None
+        # forced 模式：直接以当前 levels 为 request，让 duck 立即起。
+        if self._duck_request < 0 and gid not in _force_gids:
+            return None
+        if self._duck_request < 0:  # forced 模式初始化
+            self._duck_request = int(getattr(latest_frame, "levels_completed", 0) or 0)
+
+        if self._duck is None:
+            try:
+                from duck_bridge import DuckBridge
+            except Exception as exc:  # noqa: BLE001
+                # 打包进 Kaggle notebook 时不带这条线：静默禁用，别再每步重试。
+                print(
+                    f"[{BUILD_TAG}] duck-off gid={gid} "
+                    f"(duck_bridge unavailable: {type(exc).__name__})",
+                    flush=True,
+                )
+                self._duck_request = -1
+                return None
+            bridge = DuckBridge(gid, log=lambda s: print(f"[{BUILD_TAG}] {s}", flush=True))
+            if not bridge.enabled:
+                # 没有本地模型（auto 探测不到端点）是常态：静默记一次，不再尝试。
+                print(
+                    f"[{BUILD_TAG}] duck-off gid={gid} ({bridge.reason})",
+                    flush=True,
+                )
+                self._duck_request = -1
+                return None
+            self._duck = bridge
+
+        levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
+        nxt = self._duck.tick(latest_frame, levels, request=self._duck_request)
+        if nxt is None:
+            if not self._duck.enabled:
+                # duck 跑完/超预算/放弃：本局不再起它，回落原流程。
+                self._duck_request = -1
+            return None
+        name, spec = nxt
+        action = _as_game_action(name)
+        if str(getattr(action, "name", "") or "") == "ACTION6":
+            row, col = spec.get("row"), spec.get("col")
+            if row is None or col is None:
+                return None
+            action.set_data({"x": int(col), "y": int(row)})
+        action.reasoning = {"text": f"{BUILD_TAG}:duck L{levels}"}
+        return action
 
     def _choose_action_inner(
         self, frames: list[FrameData], latest_frame: FrameData
@@ -1313,6 +2074,7 @@ class MyAgent(Agent):
         levels = int(getattr(latest_frame, "levels_completed", 0) or 0)
 
         if latest_frame.state in (GameState.NOT_PLAYED, GameState.GAME_OVER):
+            self._clear_llm_queue(f"state={latest_frame.state}")
             if latest_frame.state is GameState.NOT_PLAYED:
                 self.ceax.game_id = str(getattr(latest_frame, "game_id", "") or gid)
                 self.ceax.reset_game()
@@ -1367,8 +2129,10 @@ class MyAgent(Agent):
             action.reasoning = {"text": f"{BUILD_TAG}:reset gid={gid}"}
             return action
 
+        # 清零模式：plan_gid 置空 → 下面所有校准计划分支全部跳过。
+        plan_gid = gid if SCRIPTS_ENABLED else ""
         # --- vc33 专用点击计划（校准于 vc33-5430563c，离线真机回放验证） ---
-        if gid == "vc33" and levels in _VC33_PLANS and self._vc33_exhausted != levels:
+        if plan_gid == "vc33" and levels in _VC33_PLANS and self._vc33_exhausted != levels:
             if self._vc33_level != levels:
                 self._vc33_level = levels
                 self._vc33_idx = 0
@@ -1384,7 +2148,7 @@ class MyAgent(Agent):
             self._vc33_exhausted = levels
 
         # --- wa30 机制级在线规划（carry 贪心，克隆回放验证后执行） ---
-        if gid == "wa30":
+        if plan_gid == "wa30":
             if self._wa30_level != levels:
                 self._wa30_level = levels
                 self._wa30_idx = 0
@@ -1399,7 +2163,7 @@ class MyAgent(Agent):
             self._wa30_plan = None
 
         # --- sb26 专用点击计划（sb26_click_solver.py 校准，8 关真机回放验证 WIN） ---
-        if gid == "sb26" and levels in _SB26_PLANS and self._sb26_exhausted != levels:
+        if plan_gid == "sb26" and levels in _SB26_PLANS and self._sb26_exhausted != levels:
             if self._sb26_level != levels:
                 self._sb26_level = levels
                 self._sb26_idx = 0
@@ -1418,7 +2182,7 @@ class MyAgent(Agent):
             self._sb26_exhausted = levels
 
         # --- r11l 专用点击计划（r11l_click_solver.py 校准，6 关真机回放验证 WIN） ---
-        if gid == "r11l" and levels in _R11L_PLANS and self._r11l_exhausted != levels:
+        if plan_gid == "r11l" and levels in _R11L_PLANS and self._r11l_exhausted != levels:
             if self._r11l_level != levels:
                 self._r11l_level = levels
                 self._r11l_idx = 0
@@ -1434,7 +2198,7 @@ class MyAgent(Agent):
             self._r11l_exhausted = levels
 
         # --- cd82 专用计划（state/cd82_solve.py 校准，6 关真机回放验证 WIN） ---
-        if gid == "cd82" and levels in _CD82_PLANS and self._cd82_exhausted != levels:
+        if plan_gid == "cd82" and levels in _CD82_PLANS and self._cd82_exhausted != levels:
             if self._cd82_level != levels:
                 self._cd82_level = levels
                 self._cd82_idx = 0
@@ -1453,7 +2217,7 @@ class MyAgent(Agent):
             self._cd82_exhausted = levels
 
         # --- tn36 专用点击计划（state/tn36_solve.py 校准，6/7 关真机回放过关） ---
-        if gid == "tn36" and levels in _TN36_PLANS and self._tn36_exhausted != levels:
+        if plan_gid == "tn36" and levels in _TN36_PLANS and self._tn36_exhausted != levels:
             if self._tn36_level != levels:
                 self._tn36_level = levels
                 self._tn36_idx = 0
@@ -1469,7 +2233,7 @@ class MyAgent(Agent):
             self._tn36_exhausted = levels
 
         # --- bp35 L1 专用计划（state/bp35_l1_export.py 校准，真机多 seed 回放 15 击过关） ---
-        if gid == "bp35" and levels in _BP35_PLANS and self._bp35_exhausted != levels:
+        if plan_gid == "bp35" and levels in _BP35_PLANS and self._bp35_exhausted != levels:
             if self._bp35_level != levels:
                 self._bp35_level = levels
                 self._bp35_idx = 0
@@ -1513,7 +2277,7 @@ class MyAgent(Agent):
                     return action
 
         # --- sc25 专用计划（L1-L2 真机回放验证 WIN；L3 2026-09-30 离线引擎连跑验证，待真机复核） ---
-        if gid == "sc25" and levels in _SC25_PLANS and self._sc25_exhausted != levels:
+        if plan_gid == "sc25" and levels in _SC25_PLANS and self._sc25_exhausted != levels:
             if self._sc25_level != levels:
                 self._sc25_level = levels
                 self._sc25_idx = 0
@@ -1532,7 +2296,7 @@ class MyAgent(Agent):
             self._sc25_exhausted = levels
 
         # --- tr87 INLINE: 六关直构计划（state/tr87_solve.py 校准，6/6 WIN 引擎回放验证） ---
-        if gid == "tr87":
+        if plan_gid == "tr87":
             acts = _TR87_LEVEL_ACTIONS.get(levels)
             if acts and self._tr87_exhausted != levels:
                 if self._tr87_level != levels:
@@ -1548,14 +2312,14 @@ class MyAgent(Agent):
                 self._tr87_exhausted = levels
 
         # --- INLINE known solvers (not plugins) ---
-        if gid == "ls20":
+        if plan_gid == "ls20":
             name = self.ls20.next(levels)
             if name:
                 action = _as_game_action(name)
                 action.reasoning = {"text": f"{BUILD_TAG}:ls20 L{levels} {name}"}
                 return action
 
-        if gid == "ar25":
+        if plan_gid == "ar25":
             name = self.ar25.next(levels)
             if name:
                 action = _as_game_action(name)
@@ -1563,7 +2327,7 @@ class MyAgent(Agent):
                 return action
 
         # --- ft09 INLINE: calibrated click plans (6 levels → WIN) ---
-        if gid == "ft09":
+        if plan_gid == "ft09":
             if self._ft09_plan is None or self._ft09_level != levels:
                 self._ft09_plan = self._ft09_solve_online(latest_frame, levels)
                 self._ft09_idx = 0
@@ -1619,6 +2383,48 @@ class MyAgent(Agent):
                         }
                         return action
 
+        # --- 批量动作协议：先消费上一批 LLM 计划（一次调用换多步）---
+        if self._llm_queue and not _plan_locked(gid):
+            try:
+                _qgrid = extract_grid(latest_frame)
+            except Exception:  # noqa: BLE001
+                _qgrid = None
+            _queued = self._pop_llm_queue(latest_frame, levels, _qgrid)
+            if _queued is not None:
+                self._llm_took = True
+                return _queued
+
+        # --- 未知局：引擎之后、CEAX 之前问 LLM。校准 plan / INLINE 不进。---
+        if _llm_on() and _llm_preceax_on() and not _plan_locked(gid):
+            stride, cap = _llm_call_budget()
+            calls = int(getattr(self, "_llm_calls", 0) or 0)
+            # planner 自己带节流（every）：没到点就别消耗调用预算
+            _lp_ok = True
+            if getattr(self, "_lp_plan", None) is not None:
+                try:
+                    _lp_ok = bool(self._lp_plan.ready(int(self.action_counter)))
+                except Exception:  # noqa: BLE001
+                    _lp_ok = True
+            if calls < cap and _lp_ok and int(self.action_counter) % stride == 0:
+                reason = str(getattr(self, "_engine_reason", "") or "")
+                if not reason:
+                    reason = "搜不到" if gid in _ENGINE_SOLVER_GAMES else "未启用引擎"
+                self._llm_calls = calls + 1
+                _llm_act = self._try_llm_batch(
+                    levels=levels,
+                    latest_frame=latest_frame,
+                    note=f"pre-ceax engine={reason}",
+                )
+                if _llm_act is not None:
+                    self._llm_took = True
+                    if self.action_counter < 5 or self.action_counter % 25 == 0:
+                        print(
+                            f"[{BUILD_TAG}] llm-preceax gid={gid} L={levels} "
+                            f"engine={reason} calls={self._llm_calls}/{cap}",
+                            flush=True,
+                        )
+                    return _llm_act
+
         # --- CEAX unknown path ---
         valid = _valid_names(latest_frame)
 
@@ -1673,6 +2479,15 @@ class MyAgent(Agent):
                 prev_grid=self._prev_grid,
                 grid=grid,
             )
+            # No-op Guard：记录上一步动作是否有效
+            if self._champion_enabled and self._noop_guard is not None:
+                try:
+                    _had_effect = delta_px > 0 or progressed
+                    _prev_act = getattr(self, "_champion_last_action", None)
+                    if _prev_act is not None:
+                        self._noop_guard.record_result(gid, latest_frame, _prev_act, _had_effect)
+                except Exception:
+                    pass
         if levels > self._levels_seen:
             self._levels_seen = levels
             self.ceax.game_id = str(getattr(latest_frame, "game_id", "") or gid)
@@ -1723,7 +2538,29 @@ class MyAgent(Agent):
                             _has_sa = False
 
                         _tl = _r3_time_limit(20.0)
-                        if _has_sa and gid in _sa._SHADOW_MODULES:
+                        # 本地专用求解器（不依赖 C:/newtask-pi，机制来自直读游戏源码）：
+                        #   g50t: 快档位置 BFS(引擎预言函数) + 回放聚焦 + 俯冲
+                        #   ka59: 回放加权队列 + 俯冲（含 0022 方块点击候选）
+                        # 失败一律兜底回 shadow / IDDFS，绝不影响主流程。
+                        if gid in ("g50t", "ka59") and found is None:
+                            try:
+                                import os as _os5, sys as _sys5
+                                _adir = _os5.path.dirname(_os5.path.abspath(__file__))
+                                if _adir not in _sys5.path:
+                                    _sys5.path.insert(0, _adir)
+                                _lmod = __import__("g50t_solver" if gid == "g50t" else "ka59_solver")
+                                _lstl = _r3_time_limit(90.0)
+                                print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (local_solver t={_lstl}s)", flush=True)
+                                _sp = _lmod.solve(env_ref._game, t_limit=_lstl)
+                                if _sp:
+                                    found = [
+                                        (6, int(a["x"]), int(a["y"])) if isinstance(a, dict) else int(a)
+                                        for a in _sp
+                                    ]
+                                    print(f"[{BUILD_TAG}] local_solver path_len={len(found)}", flush=True)
+                            except Exception as _lse:
+                                print(f"[{BUILD_TAG}] local_solver {gid} failed: {type(_lse).__name__}: {_lse}", flush=True)
+                        if _has_sa and found is None and gid in _sa._SHADOW_MODULES:
                             print(f"[{BUILD_TAG}] r3-attempt gid={gid} L={levels} (shadow_solver)", flush=True)
                             path = _sa.solve(gid, env_ref._game, t_limit=_tl)
                             if path:
@@ -1749,6 +2586,9 @@ class MyAgent(Agent):
                                 f"path_len={len(found)}", flush=True,
                             )
                         else:
+                            # 三条链都空手：这块板子躲开了我们能写出来的所有搜索。
+                            # 记一个请求，下一次 choose_action 由 duck 接手（若能连上模型）。
+                            self._duck_request = int(levels)
                             print(
                                 f"[{BUILD_TAG}] r3-none gid={gid} L={levels} "
                                 f"(no path within budget)", flush=True,
@@ -1824,12 +2664,105 @@ class MyAgent(Agent):
                 )
             return action
 
+        # --- ARCAID3 Champion 铁三角增强 ---
+        # 1. 词法视图：提取语义化对象表示，增强 CEAX 的理解
+        # 2. 规则学习：从历史动作中自动发现 when...then... 规则
+        # 3. No-op Guard：阻止重复无效动作
+        _champion_semantic = ""
+        if self._champion_enabled and self._lexicon is not None and grid is not None:
+            try:
+                self._champion_step += 1
+                _lex_frame = self._lexicon.extract(
+                    grid, level_id=gid, frame_id=self._champion_step
+                )
+                _champion_semantic = _semantic_prompt(_lex_frame)
+                if self._champion_step <= 3 or self._champion_step % 25 == 0:
+                    print(
+                        f"[ARCAID3] step={self._champion_step} gid={gid} L={levels} "
+                        f"objects={len(_lex_frame.objects)} "
+                        f"symbols={list(_lex_frame.symbols.keys())}",
+                        flush=True,
+                    )
+                # 规则学习：记录当前帧用于后续规则提取
+                if self._rule_learner is not None and self._champion_prev_frame is not None:
+                    try:
+                        _changes = self._lexicon.changes_since(
+                            self._champion_prev_frame, _lex_frame
+                        )
+                        _had_effect = (
+                            len(_changes.moved) > 0
+                            or len(_changes.appeared) > 0
+                            or len(_changes.disappeared) > 0
+                            or len(_changes.recolored) > 0
+                        )
+                        self._rule_learner.record_action(
+                            step_id=self._champion_step,
+                            action_type="CEAX",
+                            action_params={"level": levels},
+                            frame_before=self._champion_prev_frame,
+                            frame_after=_lex_frame,
+                            had_effect=_had_effect,
+                        )
+                        if self._champion_step % 10 == 0:
+                            _rules = self._rule_learner.learn_from_history()
+                            if _rules and len(_rules) > 0:
+                                print(
+                                    f"[ARCAID3] rules_learned={len(_rules)} "
+                                    f"top={_rules[0].pattern[:60]} "
+                                    f"conf={_rules[0].confidence:.2f}",
+                                    flush=True,
+                                )
+                    except Exception:
+                        pass
+                self._champion_prev_frame = _lex_frame
+            except Exception as _e:
+                if self._champion_step <= 3:
+                    print(f"[ARCAID3] extract failed: {_e}", flush=True)
+
         act_name, xy, why = self.ceax.choose(
             valid_actions=valid or ["ACTION1"],
             objects=objects,
             grid=grid,
             grid_hash=ghash,
         )
+
+        # No-op Guard：阻止相同状态下重复无效动作
+        if self._champion_enabled and self._noop_guard is not None:
+            try:
+                _should_block, _block_reason = self._noop_guard.should_block(
+                    gid, latest_frame, _as_game_action(act_name)
+                )
+                if _should_block:
+                    if _valid_names(latest_frame):
+                        _alt_valid = [a for a in _valid_names(latest_frame) if a != act_name]
+                        if _alt_valid:
+                            act_name = _alt_valid[0]
+                            why = f"noop-guard-redirect:{_block_reason[:40]}"
+                            if self._champion_step % 5 == 0:
+                                print(f"[ARCAID3] noop-blocked → {act_name}", flush=True)
+            except Exception:
+                pass
+
+        # --- Champion 规则增强：用学习到的规则指导决策 ---
+        if self._champion_enabled and self._rule_learner is not None and _champion_semantic:
+            try:
+                _rules = self._rule_learner.learn_from_history()
+                if _rules and len(_rules) > 0:
+                    _top_rule = _rules[0]
+                    if _top_rule.confidence >= 0.7:
+                        _rule_action = _rule_to_action(_top_rule, valid or ["ACTION1"])
+                        if _rule_action and _rule_action != act_name:
+                            act_name = _rule_action
+                            why = f"champion-rule:{_top_rule.pattern[:50]}"
+                            if self._champion_step % 10 == 0:
+                                print(
+                                    f"[ARCAID3] rule-override conf={_top_rule.confidence:.2f} "
+                                    f"→ {act_name}",
+                                    flush=True,
+                                )
+            except Exception:
+                pass
+
         action = _as_game_action(act_name)
         if action.is_complex():
             if xy is not None:
@@ -1841,6 +2774,7 @@ class MyAgent(Agent):
             self._prev_grid = grid.copy()
 
         action.reasoning = {"text": f"{BUILD_TAG}:{why} L{levels}"}
+        self._champion_last_action = action
         if self.action_counter < 3 or self.action_counter % 25 == 0 or progressed:
             snap = self.ceax.snapshot()
             print(

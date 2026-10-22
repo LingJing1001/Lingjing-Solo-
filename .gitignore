@@ -55,3 +55,13 @@ models/aop/checkpoints/
 *.pth
 integrations/ARC-AGI-3-Kaggle-Starter/environment_files/**/__pycache__/
 integrations/ARC-AGI-3-Kaggle-Starter/environment_files/**/*.pyc
+
+# Local run artifacts (2026-10 cleanup)
+*.log
+runs*/
+.venv*/
+.selflearn_memory*.json
+.llm_io/
+.llm_env/
+.claude/
+.ipynb_checkpoints/
