@@ -110,6 +110,28 @@ def main() -> int:
         else:
             print(f"[ok] 模板副本与 agent/my_agent.py 逐字一致")
 
+    # --- 2b. 内联实现必须与标准件 scripts/action_isolation_patch.py 同源 ---
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        import sync_action_isolation as sync
+
+        canon = sync.canonical_source()
+        for t in (AGENT, TEMPLATE):
+            if not t.is_file():
+                continue
+            cur = sync.current_inline(t)
+            if cur is None:
+                failures.append(f"{t.name} 里找不到 {sync.INLINE_NAME}()")
+            elif cur != canon:
+                failures.append(
+                    f"{t.name} 的内联实现与 scripts/action_isolation_patch.py 不一致 —— "
+                    "跑 scripts/sync_action_isolation.py 同步"
+                )
+            else:
+                print(f"[ok] {t.name}: 内联实现与标准件同源")
+    except Exception as exc:  # noqa: BLE001
+        failures.append(f"标准件同源校验失败: {type(exc).__name__}: {exc}")
+
     # --- 3. 竞态复现 + 隔离有效性 ---
     try:
         from arcengine import GameAction

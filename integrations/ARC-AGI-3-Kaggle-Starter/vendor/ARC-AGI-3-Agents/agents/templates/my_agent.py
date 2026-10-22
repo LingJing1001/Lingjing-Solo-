@@ -50,8 +50,21 @@ _FILE = Path(__file__).resolve()
 #   跨线程互不可见（竞态消失）。不改动框架代码 —— 竞赛 rerun 的框架来自
 #   Kaggle 官方 input 包，改不了，只能在我们自己掌控的 my_agent.py 里修。
 def _install_thread_local_action_state() -> bool:
-    """把 GameAction 的可变载荷改成线程本地。返回是否成功安装。"""
-    ga = GameAction
+    """把 GameAction 的可变载荷改成线程本地。返回是否成功安装。
+
+    成功时：同一线程内 `set_data()` → `action_data` 读写一致（框架照常工作）；
+    跨线程互不可见（竞态消失）。失败时打印一行 FAILED 并退回原行为，
+    绝不拖垮开局。
+    """
+    try:
+        from arcengine.enums import GameAction as ga
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"[action-isolation] FAILED to import GameAction: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
     if getattr(ga, "_lingjing_tls_actions", False):
         return True
     try:
@@ -97,7 +110,7 @@ def _install_thread_local_action_state() -> bool:
         ga._lingjing_tls_base = base  # type: ignore[attr-defined]
         ga._lingjing_tls_store = tls  # type: ignore[attr-defined]
         return True
-    except Exception as exc:  # noqa: BLE001 — 装不上就退回原行为，绝不能拖垮开局
+    except Exception as exc:  # noqa: BLE001 — 装不上就退回原行为
         print(
             f"[action-isolation] FAILED to install thread-local action state: "
             f"{type(exc).__name__}: {exc}",
