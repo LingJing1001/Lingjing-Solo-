@@ -15,7 +15,8 @@ Provenance: Daniel Franzen's Milestone 2 notebook (public LB 27.89), cell
 verbatim apart from one line in `rules.py` (the sandbox's file loader for `LX`
 becomes a normal package import).
 
-Reference: C:\\Users\\huawei\\Music\\arc-agi-3-champion-solution.ipynb
+Reference: arc-agi-3-champion-solution.ipynb (Daniel Franzen champion-solution
+notebook; resolve via arc_adaptor/paths.py if a local copy is needed)
 """
 from . import lexicon as LX
 from . import rules as R
