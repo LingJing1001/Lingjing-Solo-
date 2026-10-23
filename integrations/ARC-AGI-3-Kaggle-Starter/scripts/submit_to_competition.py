@@ -44,8 +44,20 @@ def _detect_version(kernel: str) -> int:
     to a kernel-metadata.json that carries the slug. Matching on the slug keeps
     this correct even when both arms are pushed, and means a scheduled submit
     never fires with a stale hard-coded version number.
+
+    Several push dirs can carry the SAME slug (a superseded dir is often left
+    behind, e.g. `_push_cpu_submit` holding v2 while `_push_submit_cpu` holds
+    the current v3).  Taking the first match in sorted order therefore returns
+    the OLD version -- which silently submits a kernel that predates the
+    latest fix.  Take the HIGHEST version among all matching dirs instead.
+
+    Verified failure this fixes (2026-10-23): `_push_cpu_submit`=2 sorted
+    before `_push_submit_cpu`=3, so `_detect_version()` returned 2 and a
+    scheduled submit without `--version` would have shipped the pre-patch
+    v2 instead of the isolation-fixed v3.
     """
     root = Path(__file__).resolve().parents[1] / "notebooks"
+    best = 0
     for meta_path in sorted(root.glob("_push*/kernel-metadata.json")):
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -56,10 +68,10 @@ def _detect_version(kernel: str) -> int:
         ver_file = meta_path.parent / "_last_version.txt"
         if ver_file.is_file():
             try:
-                return int(ver_file.read_text(encoding="utf-8").strip())
+                best = max(best, int(ver_file.read_text(encoding="utf-8").strip()))
             except Exception:
                 pass
-    return 0
+    return best
 
 
 def limits(api):

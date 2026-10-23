@@ -913,6 +913,127 @@ raw  = self.arc_env.step(action, data=data, ...)
 **⇒ 一句话：0.15 → 两位数这一跳，一半在 §8.5 的路径修复（把 agent 跑起来），
 另一半在 §8.11 的线程隔离修复（让 agent 跑对）。缺任何一个都还是 0.0x。**
 
+**★ 实测落地（2026-10-23 08:13，北京时间）**
+
+| 项 | 值 |
+|---|---|
+| 提交 ref | **57542504** |
+| 提交时间 | **2026-10-23T00:13:46Z**（北京时间 08:13:46） |
+| kernel / 版本 | `liaojiaxuan/smartrouter-merged-cpu-submit` **v3**（scriptVersionId 361149242） |
+| description | `CPU fallback: path-probe fix + GameAction thread-isolation fix (concurrent 408->1450)` |
+| 提交前 kernel 状态 | **COMPLETE**（脚本三重护栏第一道已过） |
+| 配额 | 提交前 `numAllowedNow=1 / numTotal=28` → 提交后 `numToday=1 / numTotal=29`（**当日配额兑现**） |
+| 回读状态（08:18） | `status=None`、`publicScore=None`、`totalBytes=0` ⇒ **rerun 进行中，未出分** |
+| **★ 最终结果（09:38:57Z 出分）** | **status=COMPLETE**（非 ERROR，`errorDescription` 空）、**publicScore = 0.00**、**totalBytes = 3509**（落在历史 3421–3602B 真 parquet 窄带内，**不是** 2648B 占位符）、rerun 耗时 **85.2 分钟** |
+| **★ 验收判据结论** | **未达成**（0.00 ≤ 0.2，预期是跳到两位数） |
+
+**本次提交对标的两条历史基线（判读分数时用这张表）**
+
+| 历史提交 | wheels 路径前缀 | 线程隔离补丁 | 实际结果 | 含义 |
+|---|---|---|---|---|
+| ref 57419796（10-20 dpl） | ✅ `/kaggle/input/**competitions**/<slug>/…` | ❌ 无 | **0.15** | 装上了、agent 真跑了，但**并发把计划型动作全打坏** ⇒ 几乎全 0 |
+| ref 57505157（10-22 wangausx） | ❌ `/kaggle/input/<slug>/…`（少 `competitions/`） | ❌ 无 | **0.03** | **与本次要修的 bug 同源**：rerun 里装不上 ⇒ 第 1 个 cell 死 ⇒ **一局都没玩** |
+| **ref 57542504（本次 v3）** | ✅ **多候选探测命中 `/competitions/`** | ✅ **有** | **待出分** | **两条通路同修** ⇒ 预期跳出 0.0x |
+
+⇒ **本次提交 = 同时消掉「0.03（通路断）」与「0.15（跑歪）」两个已知坏态。**
+官方 `Evaluation` 页规则：**最终分 = 各局分（0~100）的平均**；
+官方样例 `inversion/arc3-sample-submission-random-agent` 用的正是 `/kaggle/input/competitions/<slug>/…` ⇒ **我们的路径写法与官方样例一致**。
+
+**v3 的 push-run 日志实测**（`api.kernels_logs('liaojiaxuan/smartrouter-merged-cpu-submit')`）：
+
+```
+WHEELS /kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels
+Successfully installed arc-agi-0.9.8 arcengine-0.9.3
+[lingjing_solo] wrote 116 /tmp/lingjing_solo
+[arc_adaptor] wrote 12 /tmp/arc_adaptor
+Writing /tmp/my_agent.py
+Writing /tmp/llm_policy.py
+Writing /tmp/llm_episode.py
+VLLM_SKIP selflearn_llm=0 llm=off
+```
+
+⇒ 路径探测（§8.5）、arc-agi 安装、补丁入提交件（`Writing /tmp/my_agent.py`）、CPU 臂不烧 GPU，**四项在真实 Kaggle 环境里全部通过**。
+
+**⚠️ `[action-isolation] thread-local GameAction state: ON` 这一行为什么在 push-run 日志里看不到**
+该打印发生在 `my_agent.py` **被 import 的时刻**；push-run 只把 agent 文件拷进 `/tmp` 就结束（`Writing /tmp/my_agent.py`），
+**从不 import、从不跑局**。⇒ 只有**竞赛 rerun** 的日志里才会有这一行。
+**判据的正确表述：在竞赛 rerun 日志里找这一行 + `main.py` 的出招记录**，而不是在 kernel push 日志里找。
+
+**★ 提交后离线复验（2026-10-23 09:30）——把「rerun 里到底跑没跑」这条链逐环钉死**
+
+已推送的 v3 notebook 拆 cell 复验 + 本地按竞赛布局 import 复刻：
+
+| # | 复验项 | 结果 |
+|---|---|---|
+| 1 | cell 1 wheels 多候选探测 | ✅ **官方样例同款** `/kaggle/input/competitions/<slug>/arc_agi_3_wheels` 优先 → 退 `/kaggle/input/<slug>/…` → `rglob` 兜底 → `SystemExit('WHEELS_NOT_FOUND')` 响亮失败 |
+| 2 | cell 4 隔离补丁在提交件里 | ✅ 7 个探针全中（`property` + `threading.local` + `[action-isolation] …` 自证行） |
+| 3 | cell 7 CPU 臂环境 | ✅ `SELFLEARN_LLM=0` / `LINGJING_LLM=off` / `LINGJING_SCRIPTS=on`；`_require_llm=False` ⇒ 不会 `VLLM_INPUT_MISSING` 提前退 |
+| 4 | cell 8 框架探测 + 覆盖 agent | ✅ 多候选 + glob + `SystemExit('FRAMEWORK_NOT_FOUND')`；`cp /tmp/my_agent.py → agents/templates/my_agent.py` ⇒ **跑的就是打过补丁的那份** |
+| 5 | cell 8 真的会出招 | ✅ `python main.py --agent myagent`（`ARC_MAX_ACTIONS=800`）→ `MAIN_EXIT 0` |
+| 6 | 补丁在 import 时不炸 | ✅ 两份 agent 本地 `IMPORT OK`、`_ACTION_ISOLATION_OK=True`、`ACTION6` 回读正确（`x=7 y=9`） |
+| 7 | 永久防线 | ✅ `scripts/check_action_isolation.py` **PASS**：模板副本与 `agent/my_agent.py` 逐字一致；串号率 5.8% → **0/16000** |
+
+**★ 关键推论：rerun 日志里这一行必然出现，且不止一次**
+cell 8 的「响亮失败」指纹自检本身就会 import 打过补丁的 `my_agent.py`：
+```
+python -c "... from agents.templates.my_agent import BUILD_TAG, MyAgent; assert BUILD_TAG.startswith('smart-router') ...; print('SMART_CHECK', BUILD_TAG, 'MAX_ACTIONS', MyAgent.MAX_ACTIONS)"
+```
+⇒ **rerun 日志里 `[action-isolation] thread-local GameAction state: ON` 会出现两次**（指纹自检一次 + `main.py` import agent 一次），
+且其前必有 `FRAMEWORK_SRC` → `SMART_CHECK` → `PHASE_B_OK` 三行，把
+「框架找到 → agent 到位 → 开关正确 → 开跑」整条链串起来。
+**⇒ 判据升级为：rerun 日志里看到 `SMART_CHECK` + `PHASE_B_OK` + `[action-isolation] … ON` = 两条通路在竞赛环境里同时生效。**
+
+**★ 最终结果与定案（2026-10-23 09:38 出分 / 09:50 定案）**
+
+| 项 | 值 |
+|---|---|
+| 出分 | **2026-10-23T01:38:57Z**（北京 09:38:57），rerun 耗时 **85.2 分钟** |
+| status / publicScore / totalBytes | **COMPLETE**（非 ERROR）/ **0.00** / **3509**（在 3421–3602B 真 parquet 窄带内 ⇒ 网关确实写了真 parquet） |
+| 验收判据 | **未达成**（预期跳到两位数，实际 0.00） |
+| 定案（用户决策） | **采纳 H1：两条通路已修好且生效，但公开 25 局的校准计划/分数口径不迁移到网关暴露的隐藏局 ⇒ 分数停在 0.0x。瓶颈从「通路」转移到「隐藏局泛化」。** |
+| ⚠️ 保留意见 | **该结论是「基于决策采纳」，不是「基于 rerun 日志证明」。H2（agent 没跑 / 还有第三处没修好的东西）并未被排除** —— rerun 日志最终未读到（需人工登录 Kaggle，API 全通道实测拿不到）。日后拿到日志应回头复核。 |
+
+**★ 证据侧的关键校准（支撑 H1）**
+网关每轮只给 **~4 个游戏**，且 v15 实测这 4 个的 id 是 `ib29` / `pb24` / `vd19` / `ycm93` ——
+**都不是我们本地 `environment_files/` 里的公开局 id**（`ar25` / `ls20` / `ft09` / `cd82` / `sb26` / `r11l` / `tn36` / `vc33` / `cn04` / `dc22` / `m0r0` / `sp80` …）。
+⇒ 我们的校准计划**按 id 匹配** ⇒ 在隐藏局上**全部不命中** ⇒ 只剩通用路径 ⇒ ~0.0x。
+⇒ **§8.11.6 的 1449.82 是在公开 25 局上量的，从来没有验证过能迁移。**
+历史 30 笔 COMPLETE 提交**全部**落在 0.00~0.15 窄带（0.15 / 0.06 / 0.03 / **0.00**）⇒ 与「CPU 臂在未见局上≈0」完全自洽。
+
+**🚨 顺带挖出两个「会烧掉明天配额」的地雷**
+
+| # | 地雷 | 证据 | 处置 |
+|---|---|---|---|
+| **L1** | **`submit_to_competition.py` 版本自动探测取到旧版** | `_detect_version()` 按 `sorted(glob("_push*/…"))` **取第一个匹配**；`_push_cpu_submit`(=v2，**无补丁**) 排在 `_push_submit_cpu`(=v3，**有补丁**) 之前 ⇒ 实测返回 **2 而不是 3** ⇒ **任何省略 `--version` 的定时提交都会交上没有线程隔离补丁的 v2** | ✅ **已修**：改为**取所有匹配目录里的最高版本**。实测现在返回 3；`--dry-run` 回归正常（仍正确报 COMPLETE + `numAllowedNow=0`） |
+| **L2** | **LLM 臂两个 kernel 都没带线程隔离补丁** | `_push_ab_llm0`(v6, 10-22 20:23) 与 `_push_ab_llm1`(10-22 17:33) 的 notebook 里 **grep `action-isolation` 无命中**；补丁 **21:33** 才注入 `agent/my_agent.py`（两份 push dir 都比它早 1~4 小时） | ⏳ **待办**：明天 08:10 的 LLM 臂提交前必须**用打过补丁的 `agent/my_agent.py` 重建并重推**。Duck harness 天然免疫（直接构造 `ActionInput`，从不调 `set_data()`），但 `smartrouter-merged-ab-llm0/1` 走 `my_agent.py` ⇒ **受影响** |
+
+**四个 push 目录体检（2026-10-23 09:52 实测）**
+
+| push 目录 | kernel | 版本 | 构建时间 | 路径多候选探测 | 线程隔离补丁 |
+|---|---|---|---|---|---|
+| `_push_ab_llm0` | `smartrouter-merged-ab-llm0` | 6 | 10-22 20:23 | ✅ | ❌ **缺** |
+| `_push_ab_llm1` | `smartrouter-merged-ab-llm1` | （无） | 10-22 17:33 | ✅ | ❌ **缺** |
+| `_push_cpu_submit` | `smartrouter-merged-cpu-submit` | 2 | 10-22 20:23 | ✅ | ❌ 缺（已被 v3 取代，仅作历史目录） |
+| **`_push_submit_cpu`** | `smartrouter-merged-cpu-submit` | **3** | 10-22 21:23 | ✅ | ✅ **有** |
+
+**⏱ 出分时间预期（队内历史实测校准）**
+同型 **SmartRouter CPU 臂**：ref 57505157（wangausx）10-22 09:49 → 10:22 10:10 CST，**约 2 小时**出分（0.03）。
+LLM 臂（duck v25，ref 57459857）因 vLLM 加载 + per-game 90 分钟预算，**约 25 小时**才出分（0.06）。
+本次是 CPU 臂（`VLLM_SKIP selflearn_llm=0 llm=off`，无模型加载）⇒ **预期 1~3 小时内出分**；
+**45 分钟仍 PENDING 属正常**。超过 3 小时仍 PENDING 才按「rerun 没跑起来」立案。
+
+**⚠️ 取证通道的权限边界（2026-10-23 实测，避免重复踩坑）**
+
+| 通道 | 结论 |
+|---|---|
+| `api.kernels_logs(kernel)` | **只给 push-run 日志**（永远那 34 秒打包日志），**拿不到竞赛 rerun 日志** |
+| `api.kernels_output(kernel)` | 其中的 `submission.parquet`（2648B）是**离线占位符**（`1_0 / 1 / True / 1`），**不是**真提交；真 parquet 由 **Kaggle 网关**在 rerun 时写出 |
+| `api.competition_list_episodes(ref)` | 对**所有**提交（含 COMPLETE 的）返回 **0 条** ⇒ 本账号拿不到 episode 日志 |
+| `api.competition_submissions(...)` | ✅ **唯一可用通道**：拿 `publicScore` / `totalBytes` / `status` |
+
+⇒ **definitive 的 rerun parquet / 日志只能人工浏览器登录 Kaggle 下载**（队内记录同此结论）。
+⇒ **本机内置 Browser 当前未登录 Kaggle**（页面显示 `Login / Sign Up`）⇒ 若最终 ≤0.2 且需浏览器取证，**需要用户在内置 Browser 登录一次**。
+
 #### 8.11.8 全队暴露面（这一条比修复本身更重要）
 
 **根副本 `ARC-AGI-3-Kaggle-Starter/` 的 12 个 agent 文件里共有 40+ 处 `action.set_data({...})`，
@@ -981,15 +1102,19 @@ raw  = self.arc_env.step(action, data=data, ...)
 | 优先级 | 动作 | 状态 | 判据 |
 |---|---|---|---|
 | **P0** | 修 install/框架路径前缀（多候选探测） | ✅ **已修 + 已验证**（CPU kernel v1 ERROR → v2 COMPLETE） | kernel 状态 COMPLETE 且日志出现 `WHEELS .../competitions/...` |
-| **P0** | 推 CPU 保底提交版（不烧 GPU） | ✅ `liaojiaxuan/smartrouter-merged-cpu-submit` v2 | 提交配额解锁即可交 |
-| **P0** | 日配额解锁后提交 CPU 保底版 | ⏳ 定时任务已排（UTC 00:00 之后） | `competition_submissions` 出现新条目 |
-| **P0** | 提交后**第一时间回读公开分** | ⏳ | **公开分应从 0.0x 跳到两位数**——这是通路修复是否生效的唯一判据 |
-| **P0-A2** | ★★★ **修并发退化**（见 §8.11）：根因是 **`arcengine.GameAction` 枚举单例的 `action_data` 被并发线程互相覆盖** ⇒ 点击坐标串到别的局 ⇒ 计划全线跑歪。**修法：`my_agent.py` 把 `action_data`/`reasoning` 改成线程本地（框架代码一行不用改，因为竞赛 rerun 的框架来自官方 input 包改不了）** | ✅ **已实现 + 已本地验证**（25 局并发复刻：总分 **408.20 → 1449.82**、关数 **38 → 103**、满分局 **3 → 13**，与顺序基准的 13 局 WIN 对齐；单元级：坐标串号 13.9% → **0%**） | 已达成；永久防线 `scripts/check_action_isolation.py` |
-| **P0-A2′** | **重推带修复的 CPU kernel 并同步定时任务的 `--version`** | ✅ **已推 `liaojiaxuan/smartrouter-merged-cpu-submit` v3**（含 `[action-isolation] … ON`）；⏳ 待确认 v3 COMPLETE | kernel v3 COMPLETE 且日志出现 `[action-isolation] thread-local GameAction state: ON` |
+| **P0** | 推 CPU 保底提交版（不烧 GPU） | ✅ `liaojiaxuan/smartrouter-merged-cpu-submit` **v3**（含线程隔离补丁） | 提交配额解锁即可交 |
+| **P0** | 日配额解锁后提交 CPU 保底版 | ✅ **已提交并已出分**（2026-10-23T00:13:46Z 提交，北京 08:13:46），ref **57542504**；**出分 2026-10-23T01:38:57Z**（北京 09:38:57），**status=COMPLETE、publicScore=0.00、totalBytes=3509**，rerun 耗时 85.2 分钟；配额 `numToday=1 / numTotal=29`（**当日已用完，次日 UTC 00:00 重置**） | `competition_submissions` 出现新条目 ✅ 已满足 |
+| **P0** | 提交后**第一时间回读公开分** | ❌ **已回读，但判据未达成**：公开分 **0.00**（预期跳到两位数）。**两条通路在本地全部复验通过**，但分数没上去 ⇒ 瓶颈不在通路 | **公开分应从 0.0x 跳到两位数**——❌ 未达成，**必须读 rerun 日志才能定案**（见 §8.11.7 的 H1/H2/H3） |
+| **P0-A2** | ★★★ **修并发退化**（见 §8.11）：根因是 **`arcengine.GameAction` 枚举单例的 `action_data` 被并发线程互相覆盖** ⇒ 点击坐标串到别的局 ⇒ 计划全线跑歪。**修法：`my_agent.py` 把 `action_data`/`reasoning` 改成线程本地（框架代码一行不用改，因为竞赛 rerun 的框架来自官方 input 包改不了）** | ✅ **已实现 + 已本地验证**（25 局并发复刻：总分 **408.20 → 1449.82**、关数 **38 → 103**、满分局 **3 → 13**，与顺序基准的 13 局 WIN 对齐；单元级：坐标串号 13.9% → **0%**）；✅ 提交件复验：`scripts/check_action_isolation.py` **PASS**（模板逐字一致、串号 5.8%→0/16000）、本地按竞赛布局 import `IMPORT OK` / `_ACTION_ISOLATION_OK=True` | 已达成；永久防线 `scripts/check_action_isolation.py`。**⚠️ 但本地 1449.82 是在公开 25 局上量的，未在竞赛分数上体现（0.00）⇒ 怀疑是「公开局分不迁移到隐藏局」** |
+| **P0-A2′** | **重推带修复的 CPU kernel 并同步定时任务的 `--version`** | ✅ **v3 已确认 COMPLETE**（`api.kernels_status` = COMPLETE；push-run 日志含 `WHEELS /kaggle/input/competitions/arc-prize-2026-arc-agi-3/arc_agi_3_wheels` + `Successfully installed arc-agi-0.9.8 arcengine-0.9.3` + `Writing /tmp/my_agent.py` + `VLLM_SKIP selflearn_llm=0 llm=off`）**且已提交并出分**（ref **57542504**，**0.00**），定时任务 `--version 3` 已生效 | kernel v3 COMPLETE ✅ **已达成**；`[action-isolation] thread-local GameAction state: ON` 这一行 **只在竞赛 rerun 日志里找**（push-run 只把 `my_agent.py` 拷到 `/tmp`、不 import ⇒ 该行不出现是正常的）——⚠️ **rerun 日志需人工浏览器登录 Kaggle 才能读，API 全部通道均拿不到** |
 | **P0-A2″** | 通用路径单步成本 / 计划按观测重同步 / 自适应节流（原 A/B/C） | ⏳ 降级为 P2 | 坐标竞态已消除，这三项**不再是并发退化的主因**，只在隐藏集通用路径上仍有价值 |
 
-| **P0-B** | ★ **Duck harness 修活并提交**（官方配置：110 局 ÷ 28 并发 × 7920 s 铺满 9 h） | ⏳ 等 GPU 配额（10-24 08:00） | 目标 0.15 → **1.5~3.0**（官方公开局均值 1.6002） |
+| **P0-B** | ★ **Duck harness 修活并提交**（官方配置：110 局 ÷ 28 并发 × 7920 s 铺满 9 h） | ⏳ 等 GPU 配额（**10-24 08:00 刷新**）——**H1 定案后，这是隐藏集唯一有希望的杠杆，已升为第一优先** | 目标 0.15 → **1.5~3.0**（官方公开局均值 1.6002；榜首 68.91） |
 | **P0-C** | 把 **§8.5 路径修复 + v27 四处自伤旋钮修复** 一起搬进 duck kernel | ⏳ 纯本地可做 | duck kernel 不再 6 小时零 action |
+| **P0-L1** | 🚨 **修 `submit_to_competition.py` 的版本自动探测**（`_detect_version` 取最高版本而非第一个匹配） | ✅ **已修 + 已验证**（原来返回 2，现在返回 3；`--dry-run` 回归正常） | 定时提交省略 `--version` 时**必须**拿到最新版本，否则会白交一次 |
+| **P0-L2** | 🚨 **重建 + 重推带线程隔离补丁的 LLM 臂 notebook**（`_push_ab_llm0` v6 / `_push_ab_llm1` 都缺补丁） | ⏳ **必须在 10-24 08:10 LLM 臂提交之前完成**（否则白交一次） | 两个 LLM 臂 notebook 里 grep `action-isolation` **必须**有命中，且 `agent/my_agent.py` 与 `vendor/.../templates/my_agent.py` 逐字一致 |
+| **P0-L2′** | 🚨 **明天要交的 GPU 臂 `_push_ab_llm1` 从未推送过**（`_last_version.txt` 不存在，`_detect_version` 返回 0） | ⏳ GPU 配额 **2026-10-24T00:00:00Z**（北京 08:00）刷新，只够推一次 ⇒ **首次推送就必须用打过补丁的 `agent/my_agent.py` 构建** | 推出来的 v1 notebook 里 grep `action-isolation` **必须**有命中；推完把 `--version` 同步到定时任务 |
+| **P0-新规** | **不再花配额修通路类 bug、不再用公开榜调参** | ✅ **写入硬规则**（H1 定案后） | 通路已修好且本地全绿；重复提交只会再拿 0.0x。公开 25 局的计划资产**降级为回归基线**，不再当提分手段 |
 | **P1** | 移植 `feat/unify-decoder-entry` 的 25 文件破零包 | ⏳ 可立即开始 | **降级目标**：只作为本地回归基线，**不再计入榜分预期** |
 | **P2** | 通用能力（探索 / 记忆 / LLM 写代码分析网格） | ⏳ | **隐藏集唯一胜负手**（官方题面原话：exploration, memory, goal acquisition） |
 | **P2** | 基准可复现（清 `state/engine_solver_cache.json`、不并发、seed 固定） | ⏳ | 前后两次跑测逐局一致 |
