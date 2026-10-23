@@ -256,7 +256,64 @@ def build() -> dict:
                 MPLBACKEND=agg \\
                 PYTHONPATH=/kaggle/working/ARC-AGI-3-Agents:${PYTHONPATH} \\
                 python main.py --agent myagent
-            !python -c "print('MAIN_EXIT', 0)"
+            !echo "MAIN_EXIT $?"
+
+            # ---- submission.parquet harvest & fallback (borrowed from vcore-arc V45) ----
+            # Guarantee /kaggle/working/submission.parquet exists after the rerun:
+            #   1) already present -> done; 2) harvest from the framework tree;
+            #   3) fall back to sample_submission.parquet; 4) last resort: write a
+            #   minimal valid parquet. This block never raises — a 0-score parquet
+            #   beats a "Kaggle Error" submission with no artifacts to debug.
+            import glob as _glob
+            import shutil as _sh
+            import pandas as _pd
+            _out = '/kaggle/working/submission.parquet'
+            try:
+                if os.path.isfile(_out):
+                    print('[PARQUET] already present (%d bytes)'
+                          % os.path.getsize(_out), flush=True)
+                else:
+                    _cands = sorted(
+                        p for p in _glob.glob(
+                            '/kaggle/working/**/submission.parquet', recursive=True)
+                        if os.path.realpath(p) != os.path.realpath(_out)
+                    )
+                    if _cands:
+                        _sh.copy(_cands[0], _out)
+                        print('[PARQUET] harvested %s (%d bytes)'
+                              % (_cands[0], os.path.getsize(_out)), flush=True)
+                    else:
+                        print('[PARQUET] WARN: no real submission.parquet found '
+                              '(main.py likely crashed or was cut short)', flush=True)
+                        _sample = None
+                        for _sp in (
+                            '/kaggle/input/competitions/arc-prize-2026-arc-agi-3/'
+                            'sample_submission.parquet',
+                            '/kaggle/input/arc-prize-2026-arc-agi-3/'
+                            'sample_submission.parquet',
+                        ):
+                            if os.path.isfile(_sp):
+                                _sample = _sp
+                                break
+                        if _sample is None:
+                            _hits = sorted(_glob.glob(
+                                '/kaggle/input/**/sample_submission.parquet',
+                                recursive=True))
+                            _sample = _hits[0] if _hits else None
+                        if _sample is not None:
+                            _sh.copy(_sample, _out)
+                            print('[PARQUET] fallback initialized from %s'
+                                  % _sample, flush=True)
+                        else:
+                            _pd.DataFrame(
+                                data=[['1_0', '1', True, 1]],
+                                columns=['row_id', 'game_id', 'end_of_game', 'score'],
+                            ).to_parquet(_out, index=False)
+                            print('[PARQUET] last-resort dummy parquet written',
+                                  flush=True)
+            except Exception as _pe:
+                print('[PARQUET] harvest failed: %s: %s'
+                      % (type(_pe).__name__, _pe), flush=True)
         """
     )
     run_cell = code_cell(run_cell_source)
