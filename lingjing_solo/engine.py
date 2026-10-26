@@ -30,6 +30,7 @@ import numpy as np
 from lingjing_solo.core.field import Field, FieldConfig
 from lingjing_solo.core.scenario import Scenario
 from lingjing_solo.core.writeback import AgentWriteback, validate_writeback
+from lingjing_solo.core.consensus import ConsensusLayer
 from lingjing_solo.agents import Agent
 
 
@@ -76,6 +77,8 @@ class Engine:
         self.tick_count = 0
         self.agents: List[Agent] = []
         self.records: List[TickRecord] = []
+        # V15.0.1：共识层（统一提交队列 + 版本号）
+        self.consensus = ConsensusLayer(self.field)
         # 初始化场景
         self._initialize()
 
@@ -183,7 +186,8 @@ class Engine:
         exit_pos = self._exit_pos
 
         # 1-4. 感知 → 决策 → 位移 + 即时撤离判定
-        write_set = []  # [AgentWriteback, ...]
+        # V15.0.1：用 ConsensusLayer 统一提交队列替代内联 write_set
+        self.consensus.begin_tick()
         n_moved = 0
         for agent in self.agents:
             if not agent.alive or agent.id in evacuated_ids:
@@ -196,11 +200,10 @@ class Engine:
                 wb = agent.apply_action(direction, field)  # V14.2：返回 AgentWriteback
                 if agent.pos != pos_before:
                     n_moved += 1
-                write_set.append(wb)
             else:
                 # 零方向也算一次写回（空），保证"写场契约"每 tick 都有明确声明
                 wb = agent.apply_action(direction, field)
-                write_set.append(wb)
+            self.consensus.submit(str(agent.id), wb)  # R3：入队
             # ---- 即时撤离判定（位移后，同 tick 冻结，原地更新集合）----
             if exit_pos is not None and agent.id not in evacuated_ids:
                 d = float(np.linalg.norm(agent.sub_pos - exit_pos))
@@ -210,14 +213,11 @@ class Engine:
         # 5. 场景 step：环境源项 J_env（出口势阱持续注入，对抗扩散）
         J_env = self.scenario.step(field, self.agents, dt)  # ndarray 或 None
 
-        # 6. 聚合源项 + 演化（唯一写入点，V13.2 A2 严格版）
-        # V14.2：所有 AgentWriteback 经校验后累加，shape 不匹配立即报错
-        J_total = np.zeros_like(field.phi)
-        if J_env is not None:
-            J_total += J_env
-        for wb in write_set:
-            J_total += validate_writeback(wb, field.phi.shape)
+        # 6. 聚合源项 + 演化（R4：统一求解，唯一写入点）
+        J_total = self.consensus.aggregate(J_env)
         field.apply_sources_and_evolve(J_total, dt)
+        # R5：版本号 +1
+        self.consensus.commit()
 
         # 7. 记录
         record = TickRecord(

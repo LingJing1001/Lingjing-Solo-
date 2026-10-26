@@ -119,3 +119,46 @@ def prefer_block_actions(phi: PhiDensity) -> dict[str, float]:
     else:
         bias["ACTION5"] += 0.15
     return bias
+
+
+# ---------- V14.3.1: 2D → 3D 桥接 ----------
+
+def phi_blocks_to_3d_slice(blocks: np.ndarray, h: float = 1.0) -> np.ndarray:
+    """
+    V14.3.1：把 2D 粗粒 PhiDensity.blocks 转成 3D 场的 z=0 薄切片。
+
+    桥接语义：AR25/2D 路径的粗粒块统计，可视为 3D 信息场在 z=0 平面的
+    一个切片。这样 2D 感知层可以借用 3D 的度规/曲率计算（core/geometry.py），
+    而不需要把整个 WorldModelField 改成 3D Field。
+
+    参数：
+        blocks: (B, B) 粗粒块密度。
+        h: 网格间距（与 FieldConfig.h 一致；块间距 = h_block = grid_size / B）。
+
+    返回：
+        (B, B, 1) 的 3D ndarray，可直接喂给 compute_spatial_metric()。
+    """
+    blocks = np.asarray(blocks, dtype=np.float64)
+    if blocks.ndim != 2:
+        raise ValueError(f"blocks must be 2D, got shape {blocks.shape}")
+    return blocks[:, :, np.newaxis]  # (B, B, 1)
+
+
+def curvature_from_2d_blocks(blocks: np.ndarray, h: float = 1.0,
+                            kappa: float = 1.0, phi0: float = 0.0) -> tuple[float, float]:
+    """
+    V14.3.1：从 2D 粗粒块直接计算曲率代理（桥接到 core/geometry.py）。
+
+    返回 (curvature_proxy_scalar, trace_deviation)：
+        - curvature_proxy_scalar: 弱场 Ricci scalar 近似的空间平均
+        - trace_deviation: 度规迹偏离 3.0 的平均（整体弯曲度）
+
+    向后兼容：不依赖 3D Field 实例，直接从 blocks 算。
+    """
+    from .geometry import MetricConfig, compute_spatial_metric, curvature_proxy, metric_trace
+    phi_3d = phi_blocks_to_3d_slice(blocks, h=h)
+    cfg = MetricConfig(h=h, kappa=kappa, phi0=phi0)
+    g = compute_spatial_metric(phi_3d, cfg)
+    R = curvature_proxy(phi_3d, cfg)
+    tr = metric_trace(g)
+    return float(np.mean(R)), float(np.mean(np.abs(tr - 3.0)))
